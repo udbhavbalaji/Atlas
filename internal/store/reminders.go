@@ -75,42 +75,55 @@ func (s *Store) CreateReminder(ctx context.Context, title, scheduled, timezone s
 	return s.CreateLinkedReminder(ctx, title, scheduled, timezone, "")
 }
 func (s *Store) CreateLinkedReminder(ctx context.Context, title, scheduled, timezone, taskID string) (Reminder, error) {
+	r, _, err := s.CreateReminderRequest(ctx, "", title, scheduled, timezone, taskID)
+	return r, err
+}
+func (s *Store) CreateReminderRequest(ctx context.Context, key, title, scheduled, timezone, taskID string) (Reminder, bool, error) {
+	hash := fingerprint(title, scheduled, timezone, taskID)
 	title = strings.TrimSpace(title)
 	if len([]rune(title)) == 0 || len([]rune(title)) > 500 {
-		return Reminder{}, ErrInvalid
+		return Reminder{}, false, ErrInvalid
 	}
 	scheduled, err := reminderTime(scheduled)
 	if err != nil {
-		return Reminder{}, err
+		return Reminder{}, false, err
 	}
 	if timezone == "" || timezone == "Local" {
-		return Reminder{}, ErrInvalidReminder
+		return Reminder{}, false, ErrInvalidReminder
 	}
 	if _, err = time.LoadLocation(timezone); err != nil {
-		return Reminder{}, ErrInvalidReminder
+		return Reminder{}, false, ErrInvalidReminder
 	}
 	id, err := newID()
 	if err != nil {
-		return Reminder{}, err
+		return Reminder{}, false, err
 	}
 	r := Reminder{ID: id, Title: title, Status: "scheduled", ScheduledAt: scheduled, Timezone: timezone, CreatedAt: now()}
 	r.UpdatedAt = r.CreatedAt
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Reminder{}, err
+		return Reminder{}, false, err
 	}
 	defer tx.Rollback()
+	var saved Reminder
+	replay, err := replayReceipt(ctx, tx, "reminders.create", key, hash, &saved)
+	if err != nil {
+		return Reminder{}, false, err
+	}
+	if replay {
+		return saved, true, tx.Commit()
+	}
 	if taskID != "" {
 		var taskStatus string
 		err = tx.QueryRowContext(ctx, "SELECT title,status FROM tasks WHERE id=?", taskID).Scan(&r.TaskTitle, &taskStatus)
 		if errors.Is(err, sql.ErrNoRows) {
-			return Reminder{}, ErrNotFound
+			return Reminder{}, false, ErrNotFound
 		}
 		if err != nil {
-			return Reminder{}, err
+			return Reminder{}, false, err
 		}
 		if taskStatus != "open" {
-			return Reminder{}, ErrTaskReminderConflict
+			return Reminder{}, false, ErrTaskReminderConflict
 		}
 		r.TaskID = taskID
 	}
@@ -122,9 +135,12 @@ func (s *Store) CreateLinkedReminder(ctx context.Context, title, scheduled, time
 		err = reminderActivity(ctx, tx, id, "reminder.scheduled", r.CreatedAt)
 	}
 	if err == nil {
+		err = saveReceipt(ctx, tx, "reminders.create", key, hash, r)
+	}
+	if err == nil {
 		err = tx.Commit()
 	}
-	return r, err
+	return r, false, err
 }
 func (s *Store) Reminders(ctx context.Context) ([]Reminder, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,cancellation_reason FROM reminders ORDER BY scheduled_at,id")
@@ -217,29 +233,50 @@ func (s *Store) DismissReminder(ctx context.Context, id string) error {
 	return s.changeReminder(ctx, id, "dismissed", "")
 }
 func (s *Store) changeReminder(ctx context.Context, id, target, scheduled string) error {
+	_, err := s.ReminderMutation(ctx, id, target, scheduled)
+	return err
+}
+func (s *Store) ReminderMutation(ctx context.Context, id, target, scheduled string) (ReminderAction, error) {
+	if target != "scheduled" && target != "completed" && target != "dismissed" {
+		return ReminderAction{}, ErrReminderConflict
+	}
+	if target == "scheduled" {
+		v, e := reminderTime(scheduled)
+		if e != nil {
+			return ReminderAction{}, e
+		}
+		scheduled = v
+		if scheduled <= now() {
+			return ReminderAction{}, ErrSnoozeTime
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return ReminderAction{}, err
 	}
 	defer tx.Rollback()
 	var status string
 	err = tx.QueryRowContext(ctx, "SELECT status FROM reminders WHERE id=?", id).Scan(&status)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrReminderNotFound
+		return ReminderAction{}, ErrReminderNotFound
 	}
 	if err != nil {
-		return err
+		return ReminderAction{}, err
 	}
 	if status == target && target != "scheduled" {
-		return tx.Commit()
+		v, e := reminderAction(ctx, tx, id)
+		if e != nil {
+			return v, e
+		}
+		return v, tx.Commit()
 	}
 	if status == "completed" || (target == "dismissed" && status != "due") {
-		return ErrReminderConflict
+		return ReminderAction{}, ErrReminderConflict
 	}
 	timestamp := now()
 	_, err = tx.ExecContext(ctx, "UPDATE deliveries SET state=CASE WHEN state='queued' THEN 'cancelled' ELSE 'acknowledged' END WHERE reminder_id=? AND state IN ('queued','delivered')", id)
 	if err != nil {
-		return err
+		return ReminderAction{}, err
 	}
 	action := "reminder." + target
 	if target == "scheduled" {
@@ -254,10 +291,14 @@ func (s *Store) changeReminder(ctx context.Context, id, target, scheduled string
 	if err == nil {
 		err = reminderActivity(ctx, tx, id, action, timestamp)
 	}
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	v, err := reminderAction(ctx, tx, id)
 	if err == nil {
 		err = tx.Commit()
 	}
-	return err
+	return v, err
 }
 
 // Task changes and linked delivery cancellation share the caller's transaction.

@@ -18,7 +18,7 @@
 - [ ] iPhone text client proving the capture-to-reminder loop.
 - [ ] Validated request orchestration and opt-in Jev interpretation.
 
-The local task and fixed-time reminder subsystem is the first major milestone promoted from `development` to `main`. Natural-language capture, external notifications, recurrence, and task/reminder links remain future milestones.
+The local task and fixed-time reminder subsystem is the first major milestone promoted from `development` to `main`. Natural-language capture, external notifications, and recurrence remain future milestones. Task/reminder links and API contract revision 2 are integrated on development.
 
 ## Foundation API
 
@@ -27,15 +27,15 @@ All endpoints use `/api/v1`, except `GET /healthz`.
 | Method | Path | Result |
 | --- | --- | --- |
 | POST | /api/v1/tasks | Create from `{ "title": "Call Mom" }`; returns 201 and task |
-| PATCH | /api/v1/tasks/{id} | Update supplied `title` and/or `status` (`open` or `completed`); returns task |
-| DELETE | /api/v1/tasks/{id} | Permanently delete; returns 204; retains activity history |
+| PATCH | /api/v1/tasks/{id} | Update supplied `title` and/or `status` (`open` or `completed`); returns task state |
+| DELETE | /api/v1/tasks/{id} | Permanently delete; returns 200 task state; retains activity history |
 | GET | /api/v1/tasks | Tasks, newest first; empty result is `[]` |
-| POST | /api/v1/tasks/{id}/complete | Complete; returns 204, including repeated completion |
+| POST | /api/v1/tasks/{id}/complete | Complete; returns 200 task state, including repeated completion |
 | GET | /api/v1/activity | Latest 100 entries, newest first |
 
 IDs are random 128-bit hex strings. Timestamps are UTC RFC3339. Task titles are trimmed and limited to 500 Unicode code points. Invalid input returns 400, missing tasks 404, storage failures 500. JSON errors have an `error` field. Task writes and activity entries share one transaction. SQLite `user_version` tracks migrations; a newer database schema is rejected.
 
-Creation currently creates a new task on every call. Client request IDs and idempotent capture will be added with request orchestration. The responsive task interface is served at `/`. There is no reminder delivery, natural-language interpretation, authentication, PWA installation, or offline queue yet. The service binds to loopback by default; keep it local during this stage.
+Creation supports durable optional Idempotency-Key receipts; see [API.md](API.md) for the revision 2 contract and retry semantics. The responsive task interface is served at `/`. Durable webpage reminder delivery is implemented. Natural-language interpretation, authentication, PWA installation, and an offline queue are deferred. The service binds to loopback by default; keep it local during this stage.
 
 ## Task details and deadline contract
 
@@ -47,9 +47,9 @@ POST accepts optional `details` (up to 10,000 Unicode code points) and `due_at` 
 | --- | --- | --- |
 | POST | /api/v1/reminders | Create with `title`, `scheduled_at` (RFC3339 with offset), and `timezone` (IANA); returns 201 and reminder |
 | GET | /api/v1/reminders | All reminders ordered by scheduled time |
-| POST | /api/v1/reminders/{id}/snooze | Supply a future `scheduled_at`; returns 204 |
-| POST | /api/v1/reminders/{id}/dismiss | Acknowledge a due reminder; returns 204 |
-| POST | /api/v1/reminders/{id}/complete | Complete and cancel queued delivery; returns 204 |
+| POST | /api/v1/reminders/{id}/snooze | Supply a future `scheduled_at`; returns 200 reminder state |
+| POST | /api/v1/reminders/{id}/dismiss | Acknowledge a due reminder; returns 200 reminder state |
+| POST | /api/v1/reminders/{id}/complete | Complete and cancel queued delivery; returns 200 reminder state |
 | GET | /api/v1/deliveries | Latest 100 delivery records |
 
 Reminder states: scheduled → due → dismissed/completed. Snoozing a scheduled, due, or dismissed reminder returns it to scheduled with a new delivery; completed reminders cannot be snoozed. Dismissing acknowledges the inbox notification without marking the reminder completed; a dismissed reminder can still be rescheduled. Repeated completion and dismissal are idempotent. Reminders can be standalone or explicitly linked to an open task. Task completion/deletion cancels its active linked reminders; reminder completion does not complete its task.
@@ -63,3 +63,7 @@ The webpage polls every two seconds. The server must run for delivery; it catche
 `POST /api/v1/reminders` accepts an optional `task_id`; omitted or empty creates a standalone reminder. A nonexistent task returns 404, a completed task returns 409. GET reminders includes `task_id`, `task_title` (creation snapshot), and `cancellation_reason`. Schema version 4 adds these fields and an index, preserving standalone reminders and deliveries. Link IDs remain historical provenance after task deletion; they are deliberately not cascading foreign keys. Validation and task/reminder writes occur in one transaction.
 
 Both task completion paths (PATCH and POST complete) and deletion cancel all linked reminders whose status is not already completed. They remain `completed` with `cancellation_reason` equal to `task.completed` or `task.deleted`, making the cause explicit. Repeated completion adds no cancellation duplicates. Reopening never queues old occurrences. The scheduler requires linked tasks to exist and be open. Each task supports multiple independently scheduled reminders.
+
+## Structured API contracts
+
+[API.md](API.md) describes structured state responses, stable errors, strict validation, creation idempotency, and the webpage API testing panel. `/openapi.json` serves response and request schemas. Schema version 5 adds durable request receipts without changing existing tasks, reminders, or history.

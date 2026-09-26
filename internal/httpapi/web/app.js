@@ -16,10 +16,18 @@ function deadlineValue(value) {
  return date.toISOString();
 }
 function message(text, error = false) { $('message').textContent = text; $('message').className = error ? 'error' : ''; }
+const pendingCreationKeys = new Map();
 async function api(path, method = 'GET', body) {
-  const response = await fetch('/api/v1/' + path, {method, headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
-  if (!response.ok) { let detail; try { detail = (await response.json()).error; } catch {} throw new Error(detail || 'Atlas could not save this change. Try again.'); }
-  return response.status === 204 ? null : response.json();
+ const signature = path+' '+JSON.stringify(body);
+ const creation = method === 'POST' && (path === 'tasks' || path === 'reminders');
+ const headers = {'Content-Type':'application/json'};
+ if(creation){if(!pendingCreationKeys.has(signature))pendingCreationKeys.set(signature,crypto.randomUUID());headers['Idempotency-Key']=pendingCreationKeys.get(signature);}
+  const response = await fetch('/api/v1/' + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+  if (!response.ok) { let detail; try { const error = (await response.json()).error; detail = typeof error === 'string' ? error : error.message; } catch {} throw new Error(detail || 'Atlas could not save this change. Try again.'); }
+  const value = response.status === 204 ? null : await response.json();
+ if(creation)pendingCreationKeys.delete(signature);
+ if(method!=='GET' && $('api-response'))$('api-response').textContent=JSON.stringify({status:response.status,replayed:response.headers.get('Idempotency-Replayed'),body:value},null,2);
+ return value;
 }
 function button(label, action, style) { const b = document.createElement('button'); b.textContent = label; b.type = 'button'; if (style) b.className = style; b.onclick = action; b.disabled = busy; return b; }
 function render() {

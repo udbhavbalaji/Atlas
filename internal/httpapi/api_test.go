@@ -34,7 +34,7 @@ func TestTaskAPI(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/tasks/"+task.ID+"/complete", nil))
-	if w.Code != 204 {
+	if w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	w = httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestTaskLifecycleAcrossRestart(t *testing.T) {
 	if w = request("PATCH", url, `{"status":"open"}`); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
-	if w = request("DELETE", url, ""); w.Code != 204 {
+	if w = request("DELETE", url, ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	if w = request("DELETE", url, ""); w.Code != 404 {
@@ -144,7 +144,9 @@ func TestDeadlineAPI(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code)
 	}
-	json.Unmarshal(w.Body.Bytes(), &task)
+	var action store.TaskAction
+	json.Unmarshal(w.Body.Bytes(), &action)
+	task = *action.Task
 	if task.DueAt != "" || task.Details != "" {
 		t.Fatal(task)
 	}
