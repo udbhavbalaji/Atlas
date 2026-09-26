@@ -10,7 +10,24 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas is at the repository and architecture-definition stage. This README describes the intended product and system design; it is not a claim that every integration, model, or capability is currently implemented.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time reminders now deliver to a durable webpage inbox. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
+
+## Run locally
+
+Requires Go 1.27 or newer.
+
+```sh
+make run
+# Open http://127.0.0.1:8080 in your browser.
+# Or use the API in another terminal:
+curl -X POST http://127.0.0.1:8080/api/v1/tasks \
+  -H 'Content-Type: application/json' -d '{"title":"Call Mom"}'
+curl http://127.0.0.1:8080/api/v1/tasks
+curl http://127.0.0.1:8080/api/v1/activity
+make check
+```
+
+The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [DEVELOPMENT.md](DEVELOPMENT.md) for API contracts, current limits, and the feature → development → main branching workflow.
 
 Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
@@ -310,3 +327,30 @@ These features should extend the core contracts rather than bypassing validation
 - Avoid empty abstractions for future capabilities.
 - Verify behavior with restart, offline, ambiguity, duplicate-request, invalid-proposal, and timezone tests.
 - Keep the iPhone PWA thin so the Atlas API remains the durable product boundary.
+
+## Manual task test
+
+1. Run `make run` and open `http://127.0.0.1:8080`.
+2. Add a task and refresh the page. It should remain.
+3. Edit its title, complete it, switch to Completed, and reopen it.
+4. Stop the server with Ctrl+C and run `make run` again. The task and its state should remain.
+5. Delete a task and confirm the prompt. It should disappear, with an entry in Activity history.
+
+Tasks are stored in `data/atlas.db`, independent of browser storage. Deletion is permanent; activity history remains. This release is for local use on this computer.
+
+### Test details and deadlines
+
+Expand **Details and deadline (optional)** when adding a task, or use **Edit** on an existing task. Set a description and explicit date/time, save, and refresh. Confirm the deadline displays in the indicated browser timezone. A past deadline on an open task shows **Overdue** and appears in the Overdue filter; completing it removes it from that filter. Edit and use **Clear deadline**, then Save, to remove the deadline. Empty details clear the description. Restart Atlas to verify both fields persist.
+
+Deadlines do not trigger notifications. Standalone reminder delivery and snoozing are available below; recurrence remains deferred.
+
+### Test fixed-time reminders
+
+1. In the **Reminders** section, enter a title and click **Test in 5 seconds**.
+2. Watch it move from Upcoming reminders into the Reminder inbox automatically.
+3. Snooze it, then check Upcoming reminders and Delivery history. Use **Choose time** to set any future date/time.
+4. Complete an upcoming reminder. It should never appear in the inbox. Dismiss a due reminder to acknowledge it without completing it.
+5. For restart recovery, schedule a reminder, stop Atlas before its time, and restart after that time. It should appear once in the inbox, with one delivered record in Delivery history.
+6. Close and reopen the webpage; due inbox entries remain until you act on them.
+
+Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks and deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
