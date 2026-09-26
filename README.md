@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time reminders now deliver to a durable webpage inbox. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ curl http://127.0.0.1:8080/api/v1/activity
 make check
 ```
 
-The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [DEVELOPMENT.md](DEVELOPMENT.md) for API contracts, current limits, and the feature → development → main branching workflow.
+The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [API.md](API.md) for structured responses, creation retries, schemas, and the webpage API testing panel. [DEVELOPMENT.md](DEVELOPMENT.md) covers current limits and the feature → development → main branching workflow.
 
 Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
@@ -353,4 +353,17 @@ Deadlines do not trigger notifications. Standalone reminder delivery and snoozin
 5. For restart recovery, schedule a reminder, stop Atlas before its time, and restart after that time. It should appear once in the inbox, with one delivered record in Delivery history.
 6. Close and reopen the webpage; due inbox entries remain until you act on them.
 
-Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks and deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
+Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks; reminders added from a task are explicitly linked. Reminder times remain independent of deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
+
+### Test task-linked reminders
+
+1. Add an open task, click **Add reminder**, and choose a time or **Test linked reminder in 5 seconds**.
+2. Expand **Linked reminders** on the task to inspect and snooze its reminder. The reminder inbox/upcoming list shows the linked task and a **View task** button.
+3. Complete the task while its reminder is upcoming or due. The reminder leaves the active lists; history explains that it was cancelled because the task completed. Queued delivery becomes cancelled; already delivered entries become acknowledged.
+4. Reopen the task. Old reminders stay cancelled; you can add a new one.
+5. Delete a task with a pending reminder. Its reminder is cancelled; history retains the task title and marks it deleted.
+6. Completing only the reminder leaves the task open. Standalone reminders are unaffected by task changes.
+
+Task deadlines and reminder times remain separate; changing a deadline does not automatically reschedule a reminder.
+
+On linked reminders (including reminder history), **Complete task too** completes the linked open task and cancels its active reminders atomically. It is also available under the task’s Linked reminders. Completing only a reminder leaves the task open.
