@@ -12,13 +12,14 @@
 - [x] Foundation: local Go service, SQLite migration, task capture/list/completion, atomic activity history.
 - [x] Usable task subsystem: responsive browser interface, editing/deletion, completion/reopening.
 - [x] Task details and optional exact deadlines, editing/clearing, overdue view.
+- [x] Daily/weekly recurring reminders, occurrence acknowledgment, and repeat testing controls.
 - [ ] Notes and explicit record relations.
 - [x] Fixed-time reminders with durable webpage inbox delivery, restart recovery, snooze, dismissal, and completion.
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
 - [ ] iPhone text client proving the capture-to-reminder loop.
 - [ ] Validated request orchestration and opt-in Jev interpretation.
 
-The local task and fixed-time reminder subsystem is the first major milestone promoted from `development` to `main`. Natural-language capture, external notifications, and recurrence remain future milestones. Task/reminder links and API contract revision 2 are integrated on development.
+The first main milestone covers tasks and fixed-time reminders. The second verified milestone adds task links, structured API contracts, and daily/weekly reminder recurrence, promoted through development into main. Natural-language capture and external notifications remain future milestones.
 
 ## Foundation API
 
@@ -56,7 +57,7 @@ Reminder states: scheduled → due → dismissed/completed. Snoozing a scheduled
 
 Schema version 3 adds reminders, deliveries, and reminder references in activity history. Creation atomically writes reminder, queued delivery, and activity. The worker checks at startup and every second, processing up to 100 due deliveries per transaction. Delivery means publication into the durable webpage inbox, with a delivered timestamp and activity entry committed together. There is no external notification side effect. Failed transactions leave deliveries queued and are retried on the next tick. Snooze acknowledges delivered records, cancels queued ones, and creates a new queued delivery in one transaction. Completion acknowledges delivered records and cancels queued ones.
 
-The webpage polls every two seconds. The server must run for delivery; it catches up after downtime, and delivered inbox entries survive both browser closure and server restart. Push notifications, OS notifications, recurrence, and natural-language interpretation are deferred. Explicit timestamp offsets choose the intended instant during DST changes; the browser rejects nonexistent local times and uses the earlier occurrence for an ambiguous fall-back time. The API accepts explicit offsets for either occurrence.
+The webpage polls every two seconds. The server must run for delivery; it catches up after downtime, and delivered inbox entries survive both browser closure and server restart. Push notifications, OS notifications, and natural-language interpretation are deferred. Daily/weekly recurrence is implemented as described below. Explicit timestamp offsets choose the intended instant during DST changes; the browser rejects nonexistent local times and uses the earlier occurrence for an ambiguous fall-back time. The API accepts explicit offsets for either occurrence.
 
 ## Task links
 
@@ -67,3 +68,14 @@ Both task completion paths (PATCH and POST complete) and deletion cancel all lin
 ## Structured API contracts
 
 [API.md](API.md) describes structured state responses, stable errors, strict validation, creation idempotency, and the webpage API testing panel. `/openapi.json` serves response and request schemas. Schema version 5 adds durable request receipts without changing existing tasks, reminders, or history.
+
+## Test recurring reminders
+
+1. Enter a reminder title, choose **Daily** or **Weekly**, and click **Test in 5 seconds**.
+2. When it reaches the inbox, click **Complete occurrence**. It moves to Upcoming reminders with its next calendar time; inspect the response in the API testing panel.
+3. Replay that acknowledgment in the API panel using the original occurrence ID. It must not advance a second time.
+4. Snooze the upcoming repeat. Its visible delivery time changes; the repeat clock shown beneath it stays fixed.
+5. Click **Stop repeating**. The record moves to history and no new occurrence is queued.
+6. Add a weekly repeat from an open task’s **Add reminder** form. Complete the task and verify cancellation. Reopening must not restart it.
+
+Schema version 6 adds repeat rules, immutable clock anchors, and active occurrence IDs. Migration fills active IDs for existing one-time reminders and preserves records, deliveries, activity, and request receipts. Daily/weekly repeat semantics and limits are described in [API.md](API.md).

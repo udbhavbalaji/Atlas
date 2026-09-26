@@ -115,7 +115,7 @@ func Handler(s *store.Store) http.Handler {
 		}
 		respond(w, 200, v)
 	})
-	for path, methods := range map[string]string{"/api/v1/tasks": "GET, HEAD, POST", "/api/v1/tasks/{id}": "GET, HEAD, PATCH, DELETE", "/api/v1/tasks/{id}/complete": "POST", "/api/v1/activity": "GET, HEAD", "/api/v1/reminders": "GET, HEAD, POST", "/api/v1/reminders/{id}": "GET, HEAD", "/api/v1/deliveries": "GET, HEAD", "/api/v1/reminders/{id}/snooze": "POST", "/api/v1/reminders/{id}/dismiss": "POST", "/api/v1/reminders/{id}/complete": "POST"} {
+	for path, methods := range map[string]string{"/api/v1/reminders/{id}/occurrences/{occurrence}/acknowledge": "POST", "/api/v1/tasks": "GET, HEAD, POST", "/api/v1/tasks/{id}": "GET, HEAD, PATCH, DELETE", "/api/v1/tasks/{id}/complete": "POST", "/api/v1/activity": "GET, HEAD", "/api/v1/reminders": "GET, HEAD, POST", "/api/v1/reminders/{id}": "GET, HEAD", "/api/v1/deliveries": "GET, HEAD", "/api/v1/reminders/{id}/snooze": "POST", "/api/v1/reminders/{id}/dismiss": "POST", "/api/v1/reminders/{id}/complete": "POST"} {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", methods)
 			apiError(w, 405, "method_not_allowed", "Method is not supported for this endpoint.", false)

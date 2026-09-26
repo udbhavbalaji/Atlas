@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -1506,6 +1506,124 @@
           }
         }
       }
+    },
+    "/api/v1/reminders/{id}/occurrences/{occurrence}/acknowledge": {
+      "post": {
+        "summary": "Acknowledge a repeating reminder occurrence and queue the next future repeat",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "occurrence",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "complete",
+                      "dismiss"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Committed state; retrying an acknowledged occurrence returns current state without advancing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderAction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1603,6 +1721,22 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "repeat": {
+            "type": "string",
+            "enum": [
+              "",
+              "daily",
+              "weekly"
+            ]
+          },
+          "repeat_anchor": {
+            "type": "string",
+            "description": "Original UTC instant defining the local repeat clock. Empty for one-time reminders."
+          },
+          "occurrence_id": {
+            "type": "string",
+            "description": "Current queued or delivered occurrence ID; use in acknowledgement URL."
           }
         },
         "required": [
@@ -1615,7 +1749,10 @@
           "scheduled_at",
           "timezone",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "repeat",
+          "repeat_anchor",
+          "occurrence_id"
         ],
         "additionalProperties": false
       },
@@ -1761,7 +1898,9 @@
                   "invalid_json",
                   "duplicate_field",
                   "null_field",
-                  "invalid_fields"
+                  "invalid_fields",
+                  "invalid_repeat",
+                  "occurrence_state_conflict"
                 ]
               },
               "message": {
@@ -1859,6 +1998,16 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "repeat": {
+            "type": "string",
+            "enum": [
+              "",
+              "daily",
+              "weekly"
+            ],
+            "default": "",
+            "description": "Daily or weekly in the supplied IANA timezone."
           }
         },
         "required": [

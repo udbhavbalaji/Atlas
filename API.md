@@ -61,3 +61,24 @@ Open the **API testing panel** on the homepage. It uses real data on that server
 6. Send malformed input to inspect validation errors. Use **New request key** for a distinct creation.
 
 Normal webpage actions also display their latest mutation response in the panel. Use a separate test database when you want disposable data.
+
+## Daily and weekly reminders
+
+Reminder creation accepts `repeat: "daily"` or `"weekly"`; omitted or empty means one-time. Repeat records add `repeat`, `repeat_anchor` (the original UTC instant), and `occurrence_id` (current delivery ID). Existing creation receipts may predate these additive fields; GET reminder state for the current full record.
+
+Calendar repeats use the IANA timezone and original local clock, including seconds. Weekly repeats keep the original weekday. Nonexistent times during a timezone transition are skipped; ambiguous times use the earlier instant. The explicitly supplied first instant is honored as given. Monthly rules, custom intervals, end dates, changing a series rule, and recurring tasks are deferred.
+
+When due, acknowledge an occurrence with:
+
+```http
+POST /api/v1/reminders/{id}/occurrences/{occurrence_id}/acknowledge
+Content-Type: application/json
+
+{"action":"complete"}
+```
+
+`action` is `complete` or `dismiss`. Both acknowledge the inbox entry and queue the next future calendar occurrence atomically, returning `ReminderAction`. The occurrence ID makes retries safe: an already acknowledged delivery returns current state without advancing again. A stale acknowledged delivery (including one acknowledged by snooze or series cancellation) is also a harmless no-op. A missing, cancelled, queued, or noncurrent delivery returns 409 `occurrence_state_conflict`; invalid repeat rules return 400 `invalid_repeat`. No creation key is required for this endpoint.
+
+A due repeat stays in the inbox until acted on. There is at most one active delivery per reminder. After downtime, one overdue occurrence is surfaced; acknowledgment skips missed calendar occurrences and queues the next future one. Snooze/reschedule moves only the active occurrence, preserving the original clock anchor. Acknowledgment after a long snooze skips calendar times before that snoozed delivery.
+
+`POST /reminders/{id}/complete` ends the entire series and cancels future delivery. The older `/dismiss` action applies to one-time reminders; repeating reminders use the occurrence endpoint. Linked task completion/deletion stops the series; reopening a task never revives it. Neither occurrence completion nor stopping a series completes the linked task.

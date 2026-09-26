@@ -51,7 +51,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 5 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 6 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -82,6 +82,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 4 {
 		_, err = tx.Exec(requestMigration)
+		if err == nil {
+			version = 5
+		}
+	}
+	if err == nil && version == 5 {
+		_, err = tx.Exec(recurrenceMigration)
 	}
 	if err == nil {
 		err = tx.Commit()

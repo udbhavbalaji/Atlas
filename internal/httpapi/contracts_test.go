@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"atlas/internal/store"
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAPIIdempotencyAndStructuredActions(t *testing.T) {
@@ -161,4 +163,41 @@ func TestReminderWireStateAndSchemas(t *testing.T) {
 		}
 	}
 	checkRefs(document)
+}
+
+func TestRecurringReminderAPI(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	h := Handler(s)
+	request := func(path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		return w
+	}
+	w := request("/api/v1/reminders", `{"title":"Repeat","scheduled_at":"2020-01-01T09:00:00Z","timezone":"UTC","repeat":"monthly"}`)
+	assertErrorCode(t, w, 400, "invalid_repeat")
+	w = request("/api/v1/reminders", `{"title":"Repeat","scheduled_at":"2020-01-01T09:00:00Z","timezone":"UTC","repeat":"daily"}`)
+	var r store.Reminder
+	if e = json.Unmarshal(w.Body.Bytes(), &r); e != nil || w.Code != 201 || r.Repeat != "daily" || r.OccurrenceID == "" {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	if e = s.ProcessDue(context.Background(), time.Now()); e != nil {
+		t.Fatal(e)
+	}
+	path := "/api/v1/reminders/" + r.ID + "/occurrences/" + r.OccurrenceID + "/acknowledge"
+	w = request(path, `{"action":"complete"}`)
+	var state store.ReminderAction
+	if e = json.Unmarshal(w.Body.Bytes(), &state); e != nil || w.Code != 200 || state.Reminder.Status != "scheduled" || state.Reminder.OccurrenceID == r.OccurrenceID || len(state.Deliveries) != 2 {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	next := state.Reminder.OccurrenceID
+	w = request(path, `{"action":"complete"}`)
+	if e = json.Unmarshal(w.Body.Bytes(), &state); e != nil || w.Code != 200 || state.Reminder.OccurrenceID != next || len(state.Deliveries) != 2 {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	w = request("/api/v1/reminders/"+r.ID+"/dismiss", "")
+	assertErrorCode(t, w, 409, "occurrence_state_conflict")
 }

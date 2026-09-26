@@ -27,6 +27,9 @@ var ErrReminderConflict = errors.New("completed reminders cannot be rescheduled 
 var ErrSnoozeTime = errors.New("snooze time must be in the future")
 
 type Reminder struct {
+	Repeat             string `json:"repeat"`
+	RepeatAnchor       string `json:"repeat_anchor"`
+	OccurrenceID       string `json:"occurrence_id"`
 	ID                 string `json:"id"`
 	Title              string `json:"title"`
 	TaskID             string `json:"task_id"`
@@ -69,6 +72,9 @@ func queueDelivery(ctx context.Context, tx *sql.Tx, id, scheduled string) error 
 		return err
 	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO deliveries(id,reminder_id,scheduled_at,state) VALUES(?,?,?,'queued')", deliveryID, id, scheduled)
+	if err == nil {
+		_, err = tx.ExecContext(ctx, "UPDATE reminders SET occurrence_id=? WHERE id=?", deliveryID, id)
+	}
 	return err
 }
 func (s *Store) CreateReminder(ctx context.Context, title, scheduled, timezone string) (Reminder, error) {
@@ -79,7 +85,16 @@ func (s *Store) CreateLinkedReminder(ctx context.Context, title, scheduled, time
 	return r, err
 }
 func (s *Store) CreateReminderRequest(ctx context.Context, key, title, scheduled, timezone, taskID string) (Reminder, bool, error) {
+	return s.CreateRepeatingReminderRequest(ctx, key, title, scheduled, timezone, taskID, "")
+}
+func (s *Store) CreateRepeatingReminderRequest(ctx context.Context, key, title, scheduled, timezone, taskID, repeat string) (Reminder, bool, error) {
+	if repeat != "" && repeat != "daily" && repeat != "weekly" {
+		return Reminder{}, false, ErrInvalidRepeat
+	}
 	hash := fingerprint(title, scheduled, timezone, taskID)
+	if repeat != "" {
+		hash = fingerprint(title, scheduled, timezone, taskID, repeat)
+	}
 	title = strings.TrimSpace(title)
 	if len([]rune(title)) == 0 || len([]rune(title)) > 500 {
 		return Reminder{}, false, ErrInvalid
@@ -100,6 +115,10 @@ func (s *Store) CreateReminderRequest(ctx context.Context, key, title, scheduled
 	}
 	r := Reminder{ID: id, Title: title, Status: "scheduled", ScheduledAt: scheduled, Timezone: timezone, CreatedAt: now()}
 	r.UpdatedAt = r.CreatedAt
+	r.Repeat = repeat
+	if repeat != "" {
+		r.RepeatAnchor = scheduled
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Reminder{}, false, err
@@ -127,7 +146,7 @@ func (s *Store) CreateReminderRequest(ctx context.Context, key, title, scheduled
 		}
 		r.TaskID = taskID
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO reminders(id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title) VALUES(?,?,?,?,?,?,?,?,?)", r.ID, r.Title, r.Status, r.ScheduledAt, r.Timezone, r.CreatedAt, r.UpdatedAt, r.TaskID, r.TaskTitle)
+	_, err = tx.ExecContext(ctx, "INSERT INTO reminders(id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,repeat,repeat_anchor) VALUES(?,?,?,?,?,?,?,?,?,?,?)", r.ID, r.Title, r.Status, r.ScheduledAt, r.Timezone, r.CreatedAt, r.UpdatedAt, r.TaskID, r.TaskTitle, r.Repeat, r.RepeatAnchor)
 	if err == nil {
 		err = queueDelivery(ctx, tx, id, scheduled)
 	}
@@ -135,7 +154,10 @@ func (s *Store) CreateReminderRequest(ctx context.Context, key, title, scheduled
 		err = reminderActivity(ctx, tx, id, "reminder.scheduled", r.CreatedAt)
 	}
 	if err == nil {
-		err = saveReceipt(ctx, tx, "reminders.create", key, hash, r)
+		r, err = readReminder(ctx, tx, id)
+		if err == nil {
+			err = saveReceipt(ctx, tx, "reminders.create", key, hash, r)
+		}
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -143,7 +165,7 @@ func (s *Store) CreateReminderRequest(ctx context.Context, key, title, scheduled
 	return r, false, err
 }
 func (s *Store) Reminders(ctx context.Context) ([]Reminder, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,cancellation_reason FROM reminders ORDER BY scheduled_at,id")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+reminderColumns+" FROM reminders ORDER BY scheduled_at,id")
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +173,7 @@ func (s *Store) Reminders(ctx context.Context) ([]Reminder, error) {
 	result := []Reminder{}
 	for rows.Next() {
 		var r Reminder
-		if err = rows.Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason); err != nil {
+		if err = rows.Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason, &r.Repeat, &r.RepeatAnchor, &r.OccurrenceID); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -255,13 +277,16 @@ func (s *Store) ReminderMutation(ctx context.Context, id, target, scheduled stri
 		return ReminderAction{}, err
 	}
 	defer tx.Rollback()
-	var status string
-	err = tx.QueryRowContext(ctx, "SELECT status FROM reminders WHERE id=?", id).Scan(&status)
+	var status, repeat string
+	err = tx.QueryRowContext(ctx, "SELECT status,repeat FROM reminders WHERE id=?", id).Scan(&status, &repeat)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ReminderAction{}, ErrReminderNotFound
 	}
 	if err != nil {
 		return ReminderAction{}, err
+	}
+	if repeat != "" && target == "dismissed" {
+		return ReminderAction{}, ErrOccurrenceConflict
 	}
 	if status == target && target != "scheduled" {
 		v, e := reminderAction(ctx, tx, id)

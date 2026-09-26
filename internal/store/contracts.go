@@ -68,7 +68,7 @@ type ReminderAction struct {
 }
 
 const taskColumns = "id,title,status,created_at,updated_at,details,due_at"
-const reminderColumns = "id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,cancellation_reason"
+const reminderColumns = "id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,cancellation_reason,repeat,repeat_anchor,occurrence_id"
 
 func readTask(ctx context.Context, tx *sql.Tx, id string) (Task, error) {
 	var t Task
@@ -80,7 +80,7 @@ func readTask(ctx context.Context, tx *sql.Tx, id string) (Task, error) {
 }
 func readReminder(ctx context.Context, tx *sql.Tx, id string) (Reminder, error) {
 	var r Reminder
-	err := tx.QueryRowContext(ctx, "SELECT "+reminderColumns+" FROM reminders WHERE id=?", id).Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason)
+	err := tx.QueryRowContext(ctx, "SELECT "+reminderColumns+" FROM reminders WHERE id=?", id).Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason, &r.Repeat, &r.RepeatAnchor, &r.OccurrenceID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrReminderNotFound
 	}
@@ -117,7 +117,7 @@ func taskAction(ctx context.Context, tx *sql.Tx, id string, deleted bool) (TaskA
 	}
 	for rows.Next() {
 		var r Reminder
-		if err = rows.Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason); err != nil {
+		if err = rows.Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason, &r.Repeat, &r.RepeatAnchor, &r.OccurrenceID); err != nil {
 			rows.Close()
 			return result, err
 		}

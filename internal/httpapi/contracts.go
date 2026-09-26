@@ -29,6 +29,10 @@ func apiError(w http.ResponseWriter, status int, code, message string, retryable
 func failure(w http.ResponseWriter, e error) {
 	status, code, retryable := 500, "internal_error", false
 	switch {
+	case errors.Is(e, store.ErrInvalidRepeat):
+		status, code = 400, "invalid_repeat"
+	case errors.Is(e, store.ErrOccurrenceConflict):
+		status, code = 409, "occurrence_state_conflict"
 	case errors.Is(e, store.ErrInvalid):
 		status, code = 400, "invalid_title"
 	case errors.Is(e, store.ErrInvalidUpdate):

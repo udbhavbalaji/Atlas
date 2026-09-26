@@ -79,3 +79,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Task and reminder actions return canonical structured state captured inside the mutation transaction and returned after commit. Errors expose stable codes, readable messages, and a retryable flag. OpenAPI schemas document the wire contract. Task and reminder creation accept optional durable idempotency keys, with receipts committed alongside records and activity.
 
 **Consequences:** Contract revision 2 replaces empty action responses and string errors; clients must update parsing. Creation replay returns the original creation response even after later edits or deletion, so clients fetch current state separately. Keys are scoped per creation operation and retained without automatic expiry. Other mutations do not use receipts. The webpage provides endpoint selection, raw JSON input, response inspection, and exact request replay for manual testing. Recurrence follows this API strengthening pass.
+
+## Calendar recurrence and occurrence acknowledgment
+
+**Status:** Accepted
+
+**Decision:** Begin recurrence with daily and weekly reminders at the original local clock in an IANA timezone. Keep one active occurrence, awaiting user acknowledgment before queuing the next future repeat. Complete/dismiss occurrence is distinct from stopping the series. Occurrence IDs provide durable retry deduplication.
+
+**Consequences:** Downtime surfaces one overdue occurrence; acknowledgment skips missed repeats. Snooze preserves the series clock. Missing local times are skipped and ambiguous times choose the earlier instant. Explicit first timestamps are honored. Task completion/deletion stops linked repeats, and reopening does not revive them. Creation receipts include the repeat rule. The webpage includes repeat selection, five-second testing, occurrence actions, stop controls, visible repeat clocks, and API inspection. Monthly/custom rules, end dates, editing rules, and task recurrence remain deferred.
