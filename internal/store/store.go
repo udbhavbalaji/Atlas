@@ -51,7 +51,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 3 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 4 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -70,6 +70,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 2 {
 		_, err = tx.Exec(reminderMigration)
+		if err == nil {
+			version = 3
+		}
+	}
+	if err == nil && version == 3 {
+		_, err = tx.Exec(taskReminderMigration)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -148,6 +154,9 @@ func (s *Store) Complete(ctx context.Context, id string) error {
 	}
 	timestamp := now()
 	_, err = tx.ExecContext(ctx, "UPDATE tasks SET status='completed',updated_at=? WHERE id=?", timestamp, id)
+	if err == nil {
+		err = cancelTaskReminders(ctx, tx, id, "task.completed", timestamp)
+	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.completed", timestamp)
 	}
@@ -247,6 +256,9 @@ func (s *Store) Patch(ctx context.Context, id string, p TaskPatch) (Task, error)
 	if changed {
 		t.UpdatedAt = now()
 		_, err = tx.ExecContext(ctx, "UPDATE tasks SET title=?,status=?,updated_at=?,details=?,due_at=? WHERE id=?", t.Title, t.Status, t.UpdatedAt, t.Details, t.DueAt, id)
+		if err == nil && t.Status == "completed" {
+			err = cancelTaskReminders(ctx, tx, id, "task.completed", t.UpdatedAt)
+		}
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.updated", t.UpdatedAt)
 		}
@@ -276,7 +288,11 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	if count == 0 {
 		return ErrNotFound
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.deleted", now())
+	timestamp := now()
+	if err = cancelTaskReminders(ctx, tx, id, "task.deleted", timestamp); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.deleted", timestamp)
 	if err == nil {
 		err = tx.Commit()
 	}

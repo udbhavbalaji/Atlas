@@ -62,3 +62,48 @@ func TestReminderAPI(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestLinkedReminderAPI(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	h := Handler(s)
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+		return w
+	}
+	w := request("POST", "/api/v1/tasks", `{"title":"Linked task"}`)
+	var task store.Task
+	if e = json.Unmarshal(w.Body.Bytes(), &task); e != nil || w.Code != 201 {
+		t.Fatal(w.Code, e)
+	}
+	body := `{"title":"Linked reminder","scheduled_at":"2030-01-01T12:00:00Z","timezone":"UTC","task_id":"` + task.ID + `"}`
+	w = request("POST", "/api/v1/reminders", body)
+	var r store.Reminder
+	if e = json.Unmarshal(w.Body.Bytes(), &r); e != nil || w.Code != 201 || r.TaskID != task.ID {
+		t.Fatal(w.Code, r, e)
+	}
+	w = request("PATCH", "/api/v1/tasks/"+task.ID, `{"status":"completed"}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	w = request("POST", "/api/v1/reminders", body)
+	if w.Code != 409 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = request("GET", "/api/v1/reminders", "")
+	if !strings.Contains(w.Body.String(), `"cancellation_reason":"task.completed"`) {
+		t.Fatal(w.Body.String())
+	}
+	w = request("DELETE", "/api/v1/tasks/"+task.ID, "")
+	if w.Code != 204 {
+		t.Fatal(w.Code)
+	}
+	w = request("POST", "/api/v1/reminders", body)
+	if w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+}
