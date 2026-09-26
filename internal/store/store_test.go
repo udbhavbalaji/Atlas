@@ -109,3 +109,30 @@ func TestConcurrentCompletion(t *testing.T) {
 		t.Fatal(activity, e)
 	}
 }
+
+func TestUpdateAndDeleteRollback(t *testing.T) {
+	s, e := Open(filepath.Join(t.TempDir(), "atlas.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	task, e := s.Create(ctx, "Keep me")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Exec("DROP TABLE activity"); e != nil {
+		t.Fatal(e)
+	}
+	title := "Changed"
+	if _, e = s.Update(ctx, task.ID, &title, nil); e == nil {
+		t.Fatal("expected update failure")
+	}
+	if e = s.Delete(ctx, task.ID); e == nil {
+		t.Fatal("expected delete failure")
+	}
+	tasks, e := s.Tasks(ctx)
+	if e != nil || len(tasks) != 1 || tasks[0].Title != "Keep me" {
+		t.Fatal(tasks, e)
+	}
+}
