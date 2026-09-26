@@ -10,7 +10,23 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas is at the repository and architecture-definition stage. This README describes the intended product and system design; it is not a claim that every integration, model, or capability is currently implemented.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, listing, completion, and transactional activity history. The remaining sections describe the intended product and architecture; reminders, reasoning adapters, and the iPhone client are not implemented yet.
+
+## Run locally
+
+Requires Go 1.27 or newer.
+
+```sh
+make run
+# In another terminal:
+curl -X POST http://127.0.0.1:8080/api/v1/tasks \
+  -H 'Content-Type: application/json' -d '{"title":"Call Mom"}'
+curl http://127.0.0.1:8080/api/v1/tasks
+curl http://127.0.0.1:8080/api/v1/activity
+make check
+```
+
+The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [DEVELOPMENT.md](DEVELOPMENT.md) for API contracts, current limits, and the feature → development → main branching workflow.
 
 Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
