@@ -1,2 +1,5 @@
-# Added by code-review-graph
-.code-review-graph/
+/data/
+/atlas
+*.db
+*.db-shm
+*.db-wal
