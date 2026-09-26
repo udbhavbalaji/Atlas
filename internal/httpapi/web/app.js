@@ -41,7 +41,7 @@ function render() {
  row.append(title); if(t.details) row.append(description); row.append(due, meta, actions);
  const linked=reminders.filter(r=>r.task_id===t.id);
  if(linked.length){const section=document.createElement('details');section.className='linked-reminders';const summary=document.createElement('summary');summary.textContent='Linked reminders ('+linked.length+')';section.append(summary);
- for(const r of linked){const info=document.createElement('p');info.textContent=r.title+' · '+reminderStatus(r)+' · '+new Date(r.scheduled_at).toLocaleString();section.append(info);if(r.status!=='completed'){const controls=document.createElement('div');controls.className='actions';controls.append(button('Snooze linked reminder 5 min',()=>mutate(()=>api('reminders/'+r.id+'/snooze','POST',{scheduled_at:new Date(Date.now()+300000).toISOString()}),'Linked reminder snoozed.')),button('Complete linked reminder',()=>mutate(()=>api('reminders/'+r.id+'/complete','POST'),'Reminder completed. Task remains open.')));section.append(controls);}}
+ for(const r of linked){const info=document.createElement('p');info.textContent=r.title+' · '+reminderStatus(r)+' · '+new Date(r.scheduled_at).toLocaleString();section.append(info);if(r.status!=='completed'){const controls=document.createElement('div');controls.className='actions';controls.append(button('Snooze linked reminder 5 min',()=>mutate(()=>api('reminders/'+r.id+'/snooze','POST',{scheduled_at:new Date(Date.now()+300000).toISOString()}),'Linked reminder snoozed.')),button('Complete linked reminder',()=>mutate(()=>api('reminders/'+r.id+'/complete','POST'),'Reminder completed. Task remains open.')));section.append(controls);}if(t.status==='open')section.append(completeTaskToo(t));}
  row.append(section);}
  host.append(row);
   }
@@ -89,10 +89,10 @@ function renderReminders(deliveries) {
  if(r.status==='due') actions.append(button('Dismiss',()=>mutate(()=>api('reminders/'+r.id+'/dismiss','POST'),'Reminder dismissed.')));
  for(const minutes of [5,15,60]) actions.append(button('Snooze '+minutes+' min',()=>mutate(()=>api('reminders/'+r.id+'/snooze','POST',{scheduled_at:new Date(Date.now()+minutes*60000).toISOString()}),'Reminder snoozed.')));
  actions.append(button('Choose time',()=>rescheduleReminder(row,r)));
- actions.append(button('Complete reminder',()=>mutate(()=>api('reminders/'+r.id+'/complete','POST'),'Reminder completed.')));
+ actions.append(button('Complete reminder',()=>mutate(()=>api('reminders/'+r.id+'/complete','POST'),r.task_id?'Reminder completed. Linked task stays open.':'Reminder completed.')));
  }
  row.append(title,when);
- if(r.task_id){const task=tasks.find(t=>t.id===r.task_id);const info=document.createElement('p');info.className='meta';info.textContent='Linked task: '+(task?task.title:r.task_title+' (deleted)');row.append(info);if(task){row.append(button('View task',()=>{filter='all';document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.filter==='all')));render();document.getElementById('task-'+task.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}}
+ if(r.task_id){const task=tasks.find(t=>t.id===r.task_id);const info=document.createElement('p');info.className='meta';info.textContent='Linked task: '+(task?task.title:r.task_title+' (deleted)');row.append(info);if(task){if(task.status==='open')actions.append(completeTaskToo(task));row.append(button('View task',()=>{filter='all';document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.filter==='all')));render();document.getElementById('task-'+task.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}}
  row.append(actions);
  $(r.status==='due'?'reminder-inbox':r.status==='scheduled'?'reminder-upcoming':'reminder-history').append(row);
  }
@@ -134,3 +134,5 @@ function taskReminderForm(row,t){
  form.append(titleLabel,timeLabel,explanation,save,button('Test linked reminder in 5 seconds',()=>{if(title.reportValidity())schedule(true);}),button('Cancel',render));row.replaceChildren(form);title.focus();
  form.onsubmit=e=>{e.preventDefault();schedule(false);};
 }
+
+function completeTaskToo(task){return button('Complete task too',()=>mutate(()=>api('tasks/'+task.id+'/complete','POST'),'Task completed. Its active reminders were cancelled.'));}

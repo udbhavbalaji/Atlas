@@ -365,3 +365,5 @@ Delivery currently means the webpage inbox, not an OS or phone push notification
 6. Completing only the reminder leaves the task open. Standalone reminders are unaffected by task changes.
 
 Task deadlines and reminder times remain separate; changing a deadline does not automatically reschedule a reminder.
+
+On linked reminders (including reminder history), **Complete task too** completes the linked open task and cancels its active reminders atomically. It is also available under the task’s Linked reminders. Completing only a reminder leaves the task open.
