@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, listing, completion, and transactional activity history. The remaining sections describe the intended product and architecture; reminders, reasoning adapters, and the iPhone client are not implemented yet.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; reminders, reasoning adapters, and PWA installation/offline support are not implemented yet.
 
 ## Run locally
 
@@ -18,7 +18,8 @@ Requires Go 1.27 or newer.
 
 ```sh
 make run
-# In another terminal:
+# Open http://127.0.0.1:8080 in your browser.
+# Or use the API in another terminal:
 curl -X POST http://127.0.0.1:8080/api/v1/tasks \
   -H 'Content-Type: application/json' -d '{"title":"Call Mom"}'
 curl http://127.0.0.1:8080/api/v1/tasks
@@ -326,3 +327,13 @@ These features should extend the core contracts rather than bypassing validation
 - Avoid empty abstractions for future capabilities.
 - Verify behavior with restart, offline, ambiguity, duplicate-request, invalid-proposal, and timezone tests.
 - Keep the iPhone PWA thin so the Atlas API remains the durable product boundary.
+
+## Manual task test
+
+1. Run `make run` and open `http://127.0.0.1:8080`.
+2. Add a task and refresh the page. It should remain.
+3. Edit its title, complete it, switch to Completed, and reopen it.
+4. Stop the server with Ctrl+C and run `make run` again. The task and its state should remain.
+5. Delete a task and confirm the prompt. It should disappear, with an entry in Activity history.
+
+Tasks are stored in `data/atlas.db`, independent of browser storage. Deletion is permanent; activity history remains. This release is for local use on this computer.

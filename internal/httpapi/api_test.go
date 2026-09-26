@@ -48,3 +48,66 @@ func TestTaskAPI(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestTaskLifecycleAcrossRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "atlas.db")
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := Handler(s)
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+		return w
+	}
+	w := request("POST", "/api/v1/tasks", `{"title":"Original"}`)
+	if w.Code != 201 {
+		t.Fatal(w.Code)
+	}
+	var task store.Task
+	json.Unmarshal(w.Body.Bytes(), &task)
+	url := "/api/v1/tasks/" + task.ID
+	for _, body := range []string{`{}`, `{"status":"invalid"}`, `{"title":" "}`, `{"title":"x","extra":1}`, `null`} {
+		if w = request("PATCH", url, body); w.Code != 400 {
+			t.Fatal(body, w.Code)
+		}
+	}
+	w = request("PATCH", url, `{"title":"Edited","status":"completed"}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	s.Close()
+	s, err = store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h = Handler(s)
+	w = request("GET", "/api/v1/tasks", "")
+	if !strings.Contains(w.Body.String(), `"Edited"`) || !strings.Contains(w.Body.String(), `"completed"`) {
+		t.Fatal(w.Body.String())
+	}
+	if w = request("PATCH", url, `{"status":"open"}`); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if w = request("DELETE", url, ""); w.Code != 204 {
+		t.Fatal(w.Code)
+	}
+	if w = request("DELETE", url, ""); w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+	w = request("GET", "/api/v1/tasks", "")
+	if strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatal(w.Body.String())
+	}
+	w = request("GET", "/api/v1/activity", "")
+	if !strings.Contains(w.Body.String(), "task.deleted") {
+		t.Fatal(w.Body.String())
+	}
+	w = request("GET", "/", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Add task") {
+		t.Fatal("missing task interface")
+	}
+}

@@ -149,3 +149,79 @@ func (s *Store) Activity(ctx context.Context) ([]Activity, error) {
 	}
 	return result, rows.Err()
 }
+
+// Update changes only supplied fields and records one activity entry per actual change.
+func (s *Store) Update(ctx context.Context, id string, title, status *string) (Task, error) {
+	if title == nil && status == nil {
+		return Task{}, ErrInvalidUpdate
+	}
+	if title != nil {
+		v := strings.TrimSpace(*title)
+		if len([]rune(v)) == 0 || len([]rune(v)) > 500 {
+			return Task{}, ErrInvalid
+		}
+		title = &v
+	}
+	if status != nil && *status != "open" && *status != "completed" {
+		return Task{}, ErrInvalidUpdate
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Task{}, err
+	}
+	defer tx.Rollback()
+	var t Task
+	err = tx.QueryRowContext(ctx, "SELECT id,title,status,created_at,updated_at FROM tasks WHERE id=?", id).Scan(&t.ID, &t.Title, &t.Status, &t.CreatedAt, &t.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Task{}, ErrNotFound
+	}
+	if err != nil {
+		return Task{}, err
+	}
+	changed := false
+	if title != nil && t.Title != *title {
+		t.Title = *title
+		changed = true
+	}
+	if status != nil && t.Status != *status {
+		t.Status = *status
+		changed = true
+	}
+	if changed {
+		t.UpdatedAt = now()
+		_, err = tx.ExecContext(ctx, "UPDATE tasks SET title=?,status=?,updated_at=? WHERE id=?", t.Title, t.Status, t.UpdatedAt, id)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.updated", t.UpdatedAt)
+		}
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	return t, err
+}
+
+var ErrInvalidUpdate = errors.New("provide a title or status; status must be open or completed")
+
+func (s *Store) Delete(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, "DELETE FROM tasks WHERE id=?", id)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNotFound
+	}
+	_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.deleted", now())
+	if err == nil {
+		err = tx.Commit()
+	}
+	return err
+}
