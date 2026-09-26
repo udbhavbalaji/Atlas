@@ -24,10 +24,11 @@ type Task struct {
 	UpdatedAt string `json:"updated_at"`
 }
 type Activity struct {
-	ID        int64  `json:"id"`
-	TaskID    string `json:"task_id"`
-	Action    string `json:"action"`
-	Timestamp string `json:"timestamp"`
+	ID         int64  `json:"id"`
+	TaskID     string `json:"task_id"`
+	ReminderID string `json:"reminder_id"`
+	Action     string `json:"action"`
+	Timestamp  string `json:"timestamp"`
 }
 type Store struct{ db *sql.DB }
 
@@ -50,7 +51,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 2 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 3 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -63,6 +64,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 1 {
 		_, err = tx.Exec(`ALTER TABLE tasks ADD COLUMN details TEXT NOT NULL DEFAULT ''; ALTER TABLE tasks ADD COLUMN due_at TEXT NOT NULL DEFAULT ''; PRAGMA user_version=2;`)
+		if err == nil {
+			version = 2
+		}
+	}
+	if err == nil && version == 2 {
+		_, err = tx.Exec(reminderMigration)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -150,7 +157,7 @@ func (s *Store) Complete(ctx context.Context, id string) error {
 	return err
 }
 func (s *Store) Activity(ctx context.Context) ([]Activity, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,task_id,action,timestamp FROM activity ORDER BY id DESC LIMIT 100")
+	rows, err := s.db.QueryContext(ctx, "SELECT id,task_id,action,timestamp,reminder_id FROM activity ORDER BY id DESC LIMIT 100")
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +165,7 @@ func (s *Store) Activity(ctx context.Context) ([]Activity, error) {
 	result := []Activity{}
 	for rows.Next() {
 		var a Activity
-		if err = rows.Scan(&a.ID, &a.TaskID, &a.Action, &a.Timestamp); err != nil {
+		if err = rows.Scan(&a.ID, &a.TaskID, &a.Action, &a.Timestamp, &a.ReminderID); err != nil {
 			return nil, err
 		}
 		result = append(result, a)

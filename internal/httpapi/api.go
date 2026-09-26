@@ -15,6 +15,7 @@ var web embed.FS
 
 func Handler(s *store.Store) http.Handler {
 	mux := http.NewServeMux()
+	reminderRoutes(mux, s)
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := web.ReadFile("web/index.html")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -65,7 +66,7 @@ func Handler(s *store.Store) http.Handler {
 		d := json.NewDecoder(r.Body)
 		d.DisallowUnknownFields()
 		if err := d.Decode(&input); err != nil {
-			respond(w, 400, map[string]string{"error": "invalid task body"})
+			respond(w, 400, map[string]string{"error": "invalid request body"})
 			return
 		}
 		if err := d.Decode(new(any)); err != io.EOF {
@@ -104,12 +105,16 @@ func respond(w http.ResponseWriter, status int, v any) {
 func failure(w http.ResponseWriter, e error) {
 	status := 500
 	message := "internal server error"
-	if errors.Is(e, store.ErrInvalid) || errors.Is(e, store.ErrInvalidUpdate) || errors.Is(e, store.ErrInvalidFields) {
+	if errors.Is(e, store.ErrInvalid) || errors.Is(e, store.ErrInvalidUpdate) || errors.Is(e, store.ErrInvalidFields) || errors.Is(e, store.ErrInvalidReminder) || errors.Is(e, store.ErrSnoozeTime) {
 		status = 400
 		message = e.Error()
 	}
-	if errors.Is(e, store.ErrNotFound) {
+	if errors.Is(e, store.ErrNotFound) || errors.Is(e, store.ErrReminderNotFound) {
 		status = 404
+		message = e.Error()
+	}
+	if errors.Is(e, store.ErrReminderConflict) {
+		status = 409
 		message = e.Error()
 	}
 	if status == 500 {
@@ -123,7 +128,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if err := d.Decode(v); err != nil {
-		respond(w, 400, map[string]string{"error": "invalid task body"})
+		respond(w, 400, map[string]string{"error": "invalid request body"})
 		return false
 	}
 	if err := d.Decode(new(any)); err != io.EOF {
