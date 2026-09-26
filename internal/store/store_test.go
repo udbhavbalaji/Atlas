@@ -57,7 +57,7 @@ func TestNewerSchemaRejected(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("PRAGMA user_version=2"); e != nil {
+	if _, e = db.Exec("PRAGMA user_version=3"); e != nil {
 		t.Fatal(e)
 	}
 	db.Close()
@@ -134,5 +134,57 @@ func TestUpdateAndDeleteRollback(t *testing.T) {
 	tasks, e := s.Tasks(ctx)
 	if e != nil || len(tasks) != 1 || tasks[0].Title != "Keep me" {
 		t.Fatal(tasks, e)
+	}
+}
+
+func TestVersionOneMigrationAndDeadlinePersistence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v1.db")
+	db, e := sql.Open("sqlite", path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = db.Exec(`CREATE TABLE tasks(id TEXT PRIMARY KEY,title TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);CREATE TABLE activity(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT NOT NULL,action TEXT NOT NULL,timestamp TEXT NOT NULL);INSERT INTO tasks VALUES('old','Existing','open','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');PRAGMA user_version=1;`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	s, e := Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx := context.Background()
+	tasks, e := s.Tasks(ctx)
+	if e != nil || len(tasks) != 1 || tasks[0].Details != "" || tasks[0].DueAt != "" {
+		t.Fatal(tasks, e)
+	}
+	details, due := "Important context", "2026-10-01T18:00:00+05:30"
+	updated, e := s.Patch(ctx, "old", TaskPatch{Details: &details, DueAt: &due})
+	if e != nil || updated.DueAt != "2026-10-01T12:30:00.000000000Z" {
+		t.Fatal(updated, e)
+	}
+	s.Close()
+	s, e = Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	tasks, e = s.Tasks(ctx)
+	if e != nil || tasks[0].Details != details || tasks[0].DueAt != updated.DueAt {
+		t.Fatal(tasks, e)
+	}
+	title := "Renamed"
+	updated, e = s.Patch(ctx, "old", TaskPatch{Title: &title})
+	if e != nil || updated.DueAt != tasks[0].DueAt {
+		t.Fatal(updated, e)
+	}
+	empty := ""
+	updated, e = s.Patch(ctx, "old", TaskPatch{DueAt: &empty, Details: &empty})
+	if e != nil || updated.DueAt != "" || updated.Details != "" {
+		t.Fatal(updated, e)
+	}
+	for _, bad := range []string{"tomorrow", "2026-10-01", "2026-10-01T18:00:00", "2026-02-30T18:00:00Z"} {
+		if _, e = s.Patch(ctx, "old", TaskPatch{DueAt: &bad}); !errors.Is(e, ErrInvalidFields) {
+			t.Fatal(bad, e)
+		}
 	}
 }

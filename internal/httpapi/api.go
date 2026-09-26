@@ -28,14 +28,11 @@ func Handler(s *store.Store) http.Handler {
 		w.Write(b)
 	})
 	mux.HandleFunc("PATCH /api/v1/tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Title  *string `json:"title"`
-			Status *string `json:"status"`
-		}
+		var input store.TaskPatch
 		if !decode(w, r, &input) {
 			return
 		}
-		t, err := s.Update(r.Context(), r.PathValue("id"), input.Title, input.Status)
+		t, err := s.Patch(r.Context(), r.PathValue("id"), input)
 		if err != nil {
 			failure(w, err)
 			return
@@ -59,9 +56,11 @@ func Handler(s *store.Store) http.Handler {
 		respond(w, 200, v)
 	})
 	mux.HandleFunc("POST /api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 8192)
+		r.Body = http.MaxBytesReader(w, r.Body, 65536)
 		var input struct {
-			Title string `json:"title"`
+			Title   string `json:"title"`
+			Details string `json:"details"`
+			DueAt   string `json:"due_at"`
 		}
 		d := json.NewDecoder(r.Body)
 		d.DisallowUnknownFields()
@@ -73,7 +72,7 @@ func Handler(s *store.Store) http.Handler {
 			respond(w, 400, map[string]string{"error": "expected one JSON object"})
 			return
 		}
-		t, e := s.Create(r.Context(), input.Title)
+		t, e := s.CreateWithFields(r.Context(), input.Title, input.Details, input.DueAt)
 		if e != nil {
 			failure(w, e)
 			return
@@ -105,7 +104,7 @@ func respond(w http.ResponseWriter, status int, v any) {
 func failure(w http.ResponseWriter, e error) {
 	status := 500
 	message := "internal server error"
-	if errors.Is(e, store.ErrInvalid) || errors.Is(e, store.ErrInvalidUpdate) {
+	if errors.Is(e, store.ErrInvalid) || errors.Is(e, store.ErrInvalidUpdate) || errors.Is(e, store.ErrInvalidFields) {
 		status = 400
 		message = e.Error()
 	}
@@ -120,7 +119,7 @@ func failure(w http.ResponseWriter, e error) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 8192)
+	r.Body = http.MaxBytesReader(w, r.Body, 65536)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if err := d.Decode(v); err != nil {

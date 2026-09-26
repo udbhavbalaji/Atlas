@@ -111,3 +111,41 @@ func TestTaskLifecycleAcrossRestart(t *testing.T) {
 		t.Fatal("missing task interface")
 	}
 }
+
+func TestDeadlineAPI(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "atlas.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	h := Handler(s)
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+		return w
+	}
+	for _, body := range []string{`{"title":"Task","due_at":"2026-10-01"}`, `{"title":"Task","due_at":"bad"}`, `{"title":"Task","details":123}`} {
+		if w := request("POST", "/api/v1/tasks", body); w.Code != 400 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	w := request("POST", "/api/v1/tasks", `{"title":"Task","details":"Context","due_at":"2026-10-01T18:00:00+05:30"}`)
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var task store.Task
+	if e = json.Unmarshal(w.Body.Bytes(), &task); e != nil {
+		t.Fatal(e)
+	}
+	if task.Details != "Context" || task.DueAt != "2026-10-01T12:30:00.000000000Z" {
+		t.Fatal(task)
+	}
+	w = request("PATCH", "/api/v1/tasks/"+task.ID, `{"due_at":"","details":""}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	json.Unmarshal(w.Body.Bytes(), &task)
+	if task.DueAt != "" || task.Details != "" {
+		t.Fatal(task)
+	}
+}

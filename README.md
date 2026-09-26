@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; reminders, reasoning adapters, and PWA installation/offline support are not implemented yet.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; reminders, reasoning adapters, and PWA installation/offline support are not implemented yet.
 
 ## Run locally
 
@@ -337,3 +337,9 @@ These features should extend the core contracts rather than bypassing validation
 5. Delete a task and confirm the prompt. It should disappear, with an entry in Activity history.
 
 Tasks are stored in `data/atlas.db`, independent of browser storage. Deletion is permanent; activity history remains. This release is for local use on this computer.
+
+### Test details and deadlines
+
+Expand **Details and deadline (optional)** when adding a task, or use **Edit** on an existing task. Set a description and explicit date/time, save, and refresh. Confirm the deadline displays in the indicated browser timezone. A past deadline on an open task shows **Overdue** and appears in the Overdue filter; completing it removes it from that filter. Edit and use **Clear deadline**, then Save, to remove the deadline. Empty details clear the description. Restart Atlas to verify both fields persist.
+
+Deadlines do not trigger notifications. Reminder delivery, snoozing, and recurrence are planned next.
