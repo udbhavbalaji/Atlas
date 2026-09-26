@@ -51,7 +51,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 4 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 5 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -76,6 +76,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 3 {
 		_, err = tx.Exec(taskReminderMigration)
+		if err == nil {
+			version = 4
+		}
+	}
+	if err == nil && version == 4 {
+		_, err = tx.Exec(requestMigration)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -92,34 +98,50 @@ func (s *Store) Create(ctx context.Context, title string) (Task, error) {
 	return s.CreateWithFields(ctx, title, "", "")
 }
 func (s *Store) CreateWithFields(ctx context.Context, title, details, dueAt string) (Task, error) {
+	t, _, err := s.CreateTaskRequest(ctx, "", title, details, dueAt)
+	return t, err
+}
+func (s *Store) CreateTaskRequest(ctx context.Context, key, title, details, dueAt string) (Task, bool, error) {
+	hash := fingerprint(title, details, dueAt)
 	var err error
 	details, dueAt, err = validateFields(details, dueAt)
 	if err != nil {
-		return Task{}, err
+		return Task{}, false, err
 	}
 	title = strings.TrimSpace(title)
 	if len([]rune(title)) == 0 || len([]rune(title)) > 500 {
-		return Task{}, ErrInvalid
+		return Task{}, false, ErrInvalid
 	}
 	var bytes [16]byte
 	if _, err := rand.Read(bytes[:]); err != nil {
-		return Task{}, err
+		return Task{}, false, err
 	}
 	t := Task{ID: hex.EncodeToString(bytes[:]), Title: title, Status: "open", Details: details, DueAt: dueAt, CreatedAt: now()}
 	t.UpdatedAt = t.CreatedAt
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Task{}, err
+		return Task{}, false, err
 	}
 	defer tx.Rollback()
+	var saved Task
+	replay, err := replayReceipt(ctx, tx, "tasks.create", key, hash, &saved)
+	if err != nil {
+		return Task{}, false, err
+	}
+	if replay {
+		return saved, true, tx.Commit()
+	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO tasks(id,title,status,created_at,updated_at,details,due_at) VALUES(?,?,?,?,?,?,?)", t.ID, t.Title, t.Status, t.CreatedAt, t.UpdatedAt, t.Details, t.DueAt)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", t.ID, "task.created", t.CreatedAt)
 	}
 	if err == nil {
+		err = saveReceipt(ctx, tx, "tasks.create", key, hash, t)
+	}
+	if err == nil {
 		err = tx.Commit()
 	}
-	return t, err
+	return t, false, err
 }
 func (s *Store) Tasks(ctx context.Context) ([]Task, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id,title,status,created_at,updated_at,details,due_at FROM tasks ORDER BY created_at DESC,id")
@@ -138,19 +160,27 @@ func (s *Store) Tasks(ctx context.Context) ([]Task, error) {
 	return result, rows.Err()
 }
 func (s *Store) Complete(ctx context.Context, id string) error {
+	_, err := s.CompleteTaskState(ctx, id)
+	return err
+}
+func (s *Store) CompleteTaskState(ctx context.Context, id string) (TaskAction, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return TaskAction{}, err
 	}
 	defer tx.Rollback()
 	var status string
 	if err = tx.QueryRowContext(ctx, "SELECT status FROM tasks WHERE id=?", id).Scan(&status); errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return TaskAction{}, ErrNotFound
 	} else if err != nil {
-		return err
+		return TaskAction{}, err
 	}
 	if status == "completed" {
-		return tx.Commit()
+		v, e := taskAction(ctx, tx, id, false)
+		if e != nil {
+			return v, e
+		}
+		return v, tx.Commit()
 	}
 	timestamp := now()
 	_, err = tx.ExecContext(ctx, "UPDATE tasks SET status='completed',updated_at=? WHERE id=?", timestamp, id)
@@ -160,10 +190,14 @@ func (s *Store) Complete(ctx context.Context, id string) error {
 	if err == nil {
 		_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.completed", timestamp)
 	}
+	if err != nil {
+		return TaskAction{}, err
+	}
+	v, err := taskAction(ctx, tx, id, false)
 	if err == nil {
 		err = tx.Commit()
 	}
-	return err
+	return v, err
 }
 func (s *Store) Activity(ctx context.Context) ([]Activity, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id,task_id,action,timestamp,reminder_id FROM activity ORDER BY id DESC LIMIT 100")
@@ -195,46 +229,53 @@ type TaskPatch struct {
 }
 
 func (s *Store) Patch(ctx context.Context, id string, p TaskPatch) (Task, error) {
+	v, err := s.PatchTaskState(ctx, id, p)
+	if err != nil {
+		return Task{}, err
+	}
+	return *v.Task, nil
+}
+func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (TaskAction, error) {
 	title, status := p.Title, p.Status
 	if p.Details != nil {
 		v, _, err := validateFields(*p.Details, "")
 		if err != nil {
-			return Task{}, err
+			return TaskAction{}, err
 		}
 		p.Details = &v
 	}
 	if p.DueAt != nil {
 		_, v, err := validateFields("", *p.DueAt)
 		if err != nil {
-			return Task{}, err
+			return TaskAction{}, err
 		}
 		p.DueAt = &v
 	}
 	if title == nil && status == nil && p.Details == nil && p.DueAt == nil {
-		return Task{}, ErrInvalidUpdate
+		return TaskAction{}, ErrInvalidUpdate
 	}
 	if title != nil {
 		v := strings.TrimSpace(*title)
 		if len([]rune(v)) == 0 || len([]rune(v)) > 500 {
-			return Task{}, ErrInvalid
+			return TaskAction{}, ErrInvalid
 		}
 		title = &v
 	}
 	if status != nil && *status != "open" && *status != "completed" {
-		return Task{}, ErrInvalidUpdate
+		return TaskAction{}, ErrInvalidUpdate
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Task{}, err
+		return TaskAction{}, err
 	}
 	defer tx.Rollback()
 	var t Task
 	err = tx.QueryRowContext(ctx, "SELECT id,title,status,created_at,updated_at,details,due_at FROM tasks WHERE id=?", id).Scan(&t.ID, &t.Title, &t.Status, &t.CreatedAt, &t.UpdatedAt, &t.Details, &t.DueAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Task{}, ErrNotFound
+		return TaskAction{}, ErrNotFound
 	}
 	if err != nil {
-		return Task{}, err
+		return TaskAction{}, err
 	}
 	changed := false
 	if title != nil && t.Title != *title {
@@ -263,40 +304,52 @@ func (s *Store) Patch(ctx context.Context, id string, p TaskPatch) (Task, error)
 			_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.updated", t.UpdatedAt)
 		}
 	}
+	if err != nil {
+		return TaskAction{}, err
+	}
+	v, err := taskAction(ctx, tx, id, false)
 	if err == nil {
 		err = tx.Commit()
 	}
-	return t, err
+	return v, err
 }
 
 var ErrInvalidUpdate = errors.New("provide a task field; status must be open or completed")
 
 func (s *Store) Delete(ctx context.Context, id string) error {
+	_, err := s.DeleteTaskState(ctx, id)
+	return err
+}
+func (s *Store) DeleteTaskState(ctx context.Context, id string) (TaskAction, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return TaskAction{}, err
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, "DELETE FROM tasks WHERE id=?", id)
 	if err != nil {
-		return err
+		return TaskAction{}, err
 	}
 	count, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return TaskAction{}, err
 	}
 	if count == 0 {
-		return ErrNotFound
+		return TaskAction{}, ErrNotFound
 	}
 	timestamp := now()
 	if err = cancelTaskReminders(ctx, tx, id, "task.deleted", timestamp); err != nil {
-		return err
+		return TaskAction{}, err
 	}
 	_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,?,?)", id, "task.deleted", timestamp)
+	if err != nil {
+		return TaskAction{}, err
+	}
+	v, err := taskAction(ctx, tx, id, true)
 	if err == nil {
 		err = tx.Commit()
 	}
-	return err
+	return v, err
 }
 
 var ErrInvalidFields = errors.New("details must be at most 10000 characters; deadline must be RFC3339 with timezone or empty")

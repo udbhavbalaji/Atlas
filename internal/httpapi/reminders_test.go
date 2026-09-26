@@ -48,10 +48,10 @@ func TestReminderAPI(t *testing.T) {
 	if w = request("POST", url+"/snooze", `{"scheduled_at":"2020-01-01T12:00:00Z"}`); w.Code != 400 {
 		t.Fatal(w.Code)
 	}
-	if w = request("POST", url+"/dismiss", ""); w.Code != 204 {
+	if w = request("POST", url+"/dismiss", ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
-	if w = request("POST", url+"/complete", ""); w.Code != 204 {
+	if w = request("POST", url+"/complete", ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	future := time.Now().Add(time.Hour).Format(time.RFC3339)
@@ -99,7 +99,7 @@ func TestLinkedReminderAPI(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	w = request("DELETE", "/api/v1/tasks/"+task.ID, "")
-	if w.Code != 204 {
+	if w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	w = request("POST", "/api/v1/reminders", body)

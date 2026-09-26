@@ -27,7 +27,7 @@ curl http://127.0.0.1:8080/api/v1/activity
 make check
 ```
 
-The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [DEVELOPMENT.md](DEVELOPMENT.md) for API contracts, current limits, and the feature → development → main branching workflow.
+The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [API.md](API.md) for structured responses, creation retries, schemas, and the webpage API testing panel. [DEVELOPMENT.md](DEVELOPMENT.md) covers current limits and the feature → development → main branching workflow.
 
 Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
