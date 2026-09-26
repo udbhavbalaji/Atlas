@@ -63,3 +63,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Prove fixed-time scheduling through a durable webpage reminder inbox before introducing desktop or iPhone push providers. The scheduler publishes inbox state, delivery state, and activity atomically. Delivery records survive restart; an already delivered occurrence is not published again. Snooze creates a fresh occurrence. Failed transactions are retried on the next scheduler tick.
 
 **Consequences:** Atlas runs the scheduler while the service is running and catches up after downtime. The webpage displays due, upcoming, dismissed, and completed reminders, snooze/reschedule controls, delivery history, and a five-second test action. This milestone implements standalone one-time reminders; task links, recurrence, and external notification delivery come later. A future external provider will need its own attempt/error tracking, bounded retry policy, and deduplication contract.
+
+## Task-linked reminders
+
+**Status:** Accepted
+
+**Decision:** An open task may have multiple explicitly linked reminders, independent of its deadline. Task completion or deletion cancels active linked reminders and queued deliveries in the same transaction as the task change, acknowledges delivered inbox entries, and records the reason in activity history.
+
+**Consequences:** Completing a reminder does not complete its task. Reopening a task does not revive old reminders; the user can add new ones. Reminder records retain the task ID and a title snapshot after task deletion so delivery and cancellation history remain inspectable. Standalone reminders continue independently. Task links are validated against canonical task state when reminders are created. The scheduler also checks linked task state before delivering. The webpage includes per-task creation/testing controls, linked reminders with snooze/completion actions, and links from reminders back to their tasks.

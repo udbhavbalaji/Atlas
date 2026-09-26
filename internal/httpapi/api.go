@@ -113,7 +113,7 @@ func failure(w http.ResponseWriter, e error) {
 		status = 404
 		message = e.Error()
 	}
-	if errors.Is(e, store.ErrReminderConflict) {
+	if errors.Is(e, store.ErrReminderConflict) || errors.Is(e, store.ErrTaskReminderConflict) {
 		status = 409
 		message = e.Error()
 	}

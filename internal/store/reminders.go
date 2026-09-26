@@ -18,19 +18,25 @@ CREATE INDEX due_deliveries ON deliveries(state,scheduled_at);
 ALTER TABLE activity ADD COLUMN reminder_id TEXT NOT NULL DEFAULT '';
 PRAGMA user_version=3;`
 
+const taskReminderMigration = `ALTER TABLE reminders ADD COLUMN task_id TEXT NOT NULL DEFAULT ''; ALTER TABLE reminders ADD COLUMN task_title TEXT NOT NULL DEFAULT ''; ALTER TABLE reminders ADD COLUMN cancellation_reason TEXT NOT NULL DEFAULT ''; CREATE INDEX task_reminders ON reminders(task_id,status); PRAGMA user_version=4;`
+
+var ErrTaskReminderConflict = errors.New("reminders can only be linked to open tasks")
 var ErrInvalidReminder = errors.New("provide a title, an RFC3339 scheduled_at with timezone, and a valid IANA timezone")
 var ErrReminderNotFound = errors.New("reminder not found")
 var ErrReminderConflict = errors.New("completed reminders cannot be rescheduled or dismissed; only due reminders can be dismissed")
 var ErrSnoozeTime = errors.New("snooze time must be in the future")
 
 type Reminder struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Status      string `json:"status"`
-	ScheduledAt string `json:"scheduled_at"`
-	Timezone    string `json:"timezone"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID                 string `json:"id"`
+	Title              string `json:"title"`
+	TaskID             string `json:"task_id"`
+	TaskTitle          string `json:"task_title"`
+	CancellationReason string `json:"cancellation_reason"`
+	Status             string `json:"status"`
+	ScheduledAt        string `json:"scheduled_at"`
+	Timezone           string `json:"timezone"`
+	CreatedAt          string `json:"created_at"`
+	UpdatedAt          string `json:"updated_at"`
 }
 type Delivery struct {
 	ID          string `json:"id"`
@@ -66,6 +72,9 @@ func queueDelivery(ctx context.Context, tx *sql.Tx, id, scheduled string) error 
 	return err
 }
 func (s *Store) CreateReminder(ctx context.Context, title, scheduled, timezone string) (Reminder, error) {
+	return s.CreateLinkedReminder(ctx, title, scheduled, timezone, "")
+}
+func (s *Store) CreateLinkedReminder(ctx context.Context, title, scheduled, timezone, taskID string) (Reminder, error) {
 	title = strings.TrimSpace(title)
 	if len([]rune(title)) == 0 || len([]rune(title)) > 500 {
 		return Reminder{}, ErrInvalid
@@ -91,7 +100,21 @@ func (s *Store) CreateReminder(ctx context.Context, title, scheduled, timezone s
 		return Reminder{}, err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, "INSERT INTO reminders(id,title,status,scheduled_at,timezone,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", r.ID, r.Title, r.Status, r.ScheduledAt, r.Timezone, r.CreatedAt, r.UpdatedAt)
+	if taskID != "" {
+		var taskStatus string
+		err = tx.QueryRowContext(ctx, "SELECT title,status FROM tasks WHERE id=?", taskID).Scan(&r.TaskTitle, &taskStatus)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Reminder{}, ErrNotFound
+		}
+		if err != nil {
+			return Reminder{}, err
+		}
+		if taskStatus != "open" {
+			return Reminder{}, ErrTaskReminderConflict
+		}
+		r.TaskID = taskID
+	}
+	_, err = tx.ExecContext(ctx, "INSERT INTO reminders(id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title) VALUES(?,?,?,?,?,?,?,?,?)", r.ID, r.Title, r.Status, r.ScheduledAt, r.Timezone, r.CreatedAt, r.UpdatedAt, r.TaskID, r.TaskTitle)
 	if err == nil {
 		err = queueDelivery(ctx, tx, id, scheduled)
 	}
@@ -104,7 +127,7 @@ func (s *Store) CreateReminder(ctx context.Context, title, scheduled, timezone s
 	return r, err
 }
 func (s *Store) Reminders(ctx context.Context) ([]Reminder, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,title,status,scheduled_at,timezone,created_at,updated_at FROM reminders ORDER BY scheduled_at,id")
+	rows, err := s.db.QueryContext(ctx, "SELECT id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,cancellation_reason FROM reminders ORDER BY scheduled_at,id")
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +135,7 @@ func (s *Store) Reminders(ctx context.Context) ([]Reminder, error) {
 	result := []Reminder{}
 	for rows.Next() {
 		var r Reminder
-		if err = rows.Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err = rows.Scan(&r.ID, &r.Title, &r.Status, &r.ScheduledAt, &r.Timezone, &r.CreatedAt, &r.UpdatedAt, &r.TaskID, &r.TaskTitle, &r.CancellationReason); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -145,7 +168,7 @@ func (s *Store) ProcessDue(ctx context.Context, at time.Time) error {
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT d.id,d.reminder_id FROM deliveries d JOIN reminders r ON r.id=d.reminder_id WHERE d.state='queued' AND r.status='scheduled' AND r.scheduled_at=d.scheduled_at AND d.scheduled_at<=? ORDER BY d.scheduled_at LIMIT 100`, timestamp)
+	rows, err := tx.QueryContext(ctx, `SELECT d.id,d.reminder_id FROM deliveries d JOIN reminders r ON r.id=d.reminder_id WHERE d.state='queued' AND r.status='scheduled' AND r.scheduled_at=d.scheduled_at AND (r.task_id='' OR EXISTS(SELECT 1 FROM tasks t WHERE t.id=r.task_id AND t.status='open')) AND d.scheduled_at<=? ORDER BY d.scheduled_at LIMIT 100`, timestamp)
 	if err != nil {
 		return err
 	}
@@ -235,4 +258,42 @@ func (s *Store) changeReminder(ctx context.Context, id, target, scheduled string
 		err = tx.Commit()
 	}
 	return err
+}
+
+// Task changes and linked delivery cancellation share the caller's transaction.
+// Keep reminder records and task title snapshots for inspection after deletion.
+func cancelTaskReminders(ctx context.Context, tx *sql.Tx, taskID, reason, timestamp string) error {
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM reminders WHERE task_id=? AND status!='completed'", taskID)
+	if err != nil {
+		return err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		_, err = tx.ExecContext(ctx, "UPDATE deliveries SET state=CASE WHEN state='queued' THEN 'cancelled' ELSE 'acknowledged' END WHERE reminder_id=? AND state IN ('queued','delivered')", id)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, "UPDATE reminders SET status='completed',cancellation_reason=?,updated_at=? WHERE id=?", reason, timestamp, id)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,reminder_id,action,timestamp) VALUES(?,?,?,?)", taskID, id, "reminder.cancelled."+reason, timestamp)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

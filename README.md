@@ -353,4 +353,15 @@ Deadlines do not trigger notifications. Standalone reminder delivery and snoozin
 5. For restart recovery, schedule a reminder, stop Atlas before its time, and restart after that time. It should appear once in the inbox, with one delivered record in Delivery history.
 6. Close and reopen the webpage; due inbox entries remain until you act on them.
 
-Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks and deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
+Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks; reminders added from a task are explicitly linked. Reminder times remain independent of deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
+
+### Test task-linked reminders
+
+1. Add an open task, click **Add reminder**, and choose a time or **Test linked reminder in 5 seconds**.
+2. Expand **Linked reminders** on the task to inspect and snooze its reminder. The reminder inbox/upcoming list shows the linked task and a **View task** button.
+3. Complete the task while its reminder is upcoming or due. The reminder leaves the active lists; history explains that it was cancelled because the task completed. Queued delivery becomes cancelled; already delivered entries become acknowledged.
+4. Reopen the task. Old reminders stay cancelled; you can add a new one.
+5. Delete a task with a pending reminder. Its reminder is cancelled; history retains the task title and marks it deleted.
+6. Completing only the reminder leaves the task open. Standalone reminders are unaffected by task changes.
+
+Task deadlines and reminder times remain separate; changing a deadline does not automatically reschedule a reminder.

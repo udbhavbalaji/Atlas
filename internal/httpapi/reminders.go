@@ -25,13 +25,14 @@ func reminderRoutes(mux *http.ServeMux, s *store.Store) {
 	mux.HandleFunc("POST /api/v1/reminders", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Title       string `json:"title"`
+			TaskID      string `json:"task_id"`
 			ScheduledAt string `json:"scheduled_at"`
 			Timezone    string `json:"timezone"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		v, err := s.CreateReminder(r.Context(), input.Title, input.ScheduledAt, input.Timezone)
+		v, err := s.CreateLinkedReminder(r.Context(), input.Title, input.ScheduledAt, input.Timezone, input.TaskID)
 		if err != nil {
 			failure(w, err)
 			return
