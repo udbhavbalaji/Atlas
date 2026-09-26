@@ -33,3 +33,25 @@ Voice capture should follow the text workflow rather than precede it.
 ### Consequences
 
 The first version should avoid relying on native-only capabilities. Background execution, push notifications, and advanced voice behavior may be more limited in a PWA and should be validated with the first vertical slice. If those limitations become blocking, Atlas can add a thin native SwiftUI shell while retaining the existing API and domain logic.
+
+## Webpage interfaces for feature testing
+
+**Status:** Accepted
+
+**Decision:** Every Atlas feature must include a webpage interface through which the owner can manually test its behavior. Extend the existing task interface where appropriate, or add a focused testing page for capabilities that need their own controls.
+
+### Consequences
+
+- Include usable inputs, visible committed results, validation messages, and failure states with each feature.
+- Keep the webpage connected to the real Atlas API and persistence, so manual tests exercise actual functionality.
+- Document a short manual test flow and verify the interface before considering a feature complete.
+- Browser testing supplements automated tests for migrations, durability, scheduling, policy, and other core behavior.
+- Keep canonical business logic in the core; testing pages can evolve into the product interface.
+
+## Task deadlines and reminder times
+
+**Status:** Accepted
+
+**Decision:** Task details and optional deadlines are implemented before reminders. A task deadline and a notification time are separate values. Setting a deadline does not implicitly schedule a reminder.
+
+The first deadline interface takes an explicit local date and time, displays the browser timezone, and stores the corresponding UTC instant. Open tasks past that instant are overdue. Completed tasks are not overdue. Deadlines and details can be edited or cleared. Date-only deadlines, recurrence, notifications, and snoozing will be added in subsequent milestones with explicit scheduling semantics.
