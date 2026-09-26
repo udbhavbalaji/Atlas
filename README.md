@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; reminders, reasoning adapters, and PWA installation/offline support are not implemented yet.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time reminders now deliver to a durable webpage inbox. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
 
 ## Run locally
 
@@ -342,4 +342,15 @@ Tasks are stored in `data/atlas.db`, independent of browser storage. Deletion is
 
 Expand **Details and deadline (optional)** when adding a task, or use **Edit** on an existing task. Set a description and explicit date/time, save, and refresh. Confirm the deadline displays in the indicated browser timezone. A past deadline on an open task shows **Overdue** and appears in the Overdue filter; completing it removes it from that filter. Edit and use **Clear deadline**, then Save, to remove the deadline. Empty details clear the description. Restart Atlas to verify both fields persist.
 
-Deadlines do not trigger notifications. Reminder delivery, snoozing, and recurrence are planned next.
+Deadlines do not trigger notifications. Standalone reminder delivery and snoozing are available below; recurrence remains deferred.
+
+### Test fixed-time reminders
+
+1. In the **Reminders** section, enter a title and click **Test in 5 seconds**.
+2. Watch it move from Upcoming reminders into the Reminder inbox automatically.
+3. Snooze it, then check Upcoming reminders and Delivery history. Use **Choose time** to set any future date/time.
+4. Complete an upcoming reminder. It should never appear in the inbox. Dismiss a due reminder to acknowledge it without completing it.
+5. For restart recovery, schedule a reminder, stop Atlas before its time, and restart after that time. It should appear once in the inbox, with one delivered record in Delivery history.
+6. Close and reopen the webpage; due inbox entries remain until you act on them.
+
+Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks and deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.

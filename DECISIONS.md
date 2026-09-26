@@ -55,3 +55,11 @@ The first version should avoid relying on native-only capabilities. Background e
 **Decision:** Task details and optional deadlines are implemented before reminders. A task deadline and a notification time are separate values. Setting a deadline does not implicitly schedule a reminder.
 
 The first deadline interface takes an explicit local date and time, displays the browser timezone, and stores the corresponding UTC instant. Open tasks past that instant are overdue. Completed tasks are not overdue. Deadlines and details can be edited or cleared. Date-only deadlines, recurrence, notifications, and snoozing will be added in subsequent milestones with explicit scheduling semantics.
+
+## First reminder delivery channel
+
+**Status:** Accepted
+
+**Decision:** Prove fixed-time scheduling through a durable webpage reminder inbox before introducing desktop or iPhone push providers. The scheduler publishes inbox state, delivery state, and activity atomically. Delivery records survive restart; an already delivered occurrence is not published again. Snooze creates a fresh occurrence. Failed transactions are retried on the next scheduler tick.
+
+**Consequences:** Atlas runs the scheduler while the service is running and catches up after downtime. The webpage displays due, upcoming, dismissed, and completed reminders, snooze/reschedule controls, delivery history, and a five-second test action. This milestone implements standalone one-time reminders; task links, recurrence, and external notification delivery come later. A future external provider will need its own attempt/error tracking, bounded retry policy, and deduplication contract.
