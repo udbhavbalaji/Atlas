@@ -6,6 +6,20 @@ import (
 )
 
 func reminderRoutes(mux *http.ServeMux, s *store.Store) {
+	mux.HandleFunc("POST /api/v1/reminders/{id}/occurrences/{occurrence}/acknowledge", func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Action string `json:"action"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		v, e := s.FinishOccurrence(r.Context(), r.PathValue("id"), r.PathValue("occurrence"), input.Action)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		respond(w, 200, v)
+	})
 	mux.HandleFunc("GET /api/v1/reminders/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.ReminderState(r.Context(), r.PathValue("id"))
 		if e != nil {
@@ -33,6 +47,7 @@ func reminderRoutes(mux *http.ServeMux, s *store.Store) {
 	mux.HandleFunc("POST /api/v1/reminders", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Title       string `json:"title"`
+			Repeat      string `json:"repeat"`
 			TaskID      string `json:"task_id"`
 			ScheduledAt string `json:"scheduled_at"`
 			Timezone    string `json:"timezone"`
@@ -44,7 +59,7 @@ func reminderRoutes(mux *http.ServeMux, s *store.Store) {
 		if !ok {
 			return
 		}
-		v, replay, err := s.CreateReminderRequest(r.Context(), key, input.Title, input.ScheduledAt, input.Timezone, input.TaskID)
+		v, replay, err := s.CreateRepeatingReminderRequest(r.Context(), key, input.Title, input.ScheduledAt, input.Timezone, input.TaskID, input.Repeat)
 		if err != nil {
 			failure(w, err)
 			return
