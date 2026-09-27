@@ -14,13 +14,15 @@
 - [x] Task details and optional exact deadlines, editing/clearing, overdue view.
 - [x] Daily/weekly recurring reminders, occurrence acknowledgment, and repeat testing controls.
 - [x] Persistent notes with explicit task/reminder links.
-- [ ] Generic record relations and note search.
+- [x] Text search across tasks, reminders, and notes.
+- [ ] Generic record relations.
+- [x] Explicit unified capture with preview and atomic task/reminder confirmation.
 - [x] Fixed-time reminders with durable webpage inbox delivery, restart recovery, snooze, dismissal, and completion.
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
 - [ ] iPhone text client proving the capture-to-reminder loop.
 - [ ] Validated request orchestration and opt-in Jev interpretation.
 
-The first main milestone covers tasks and fixed-time reminders. The second verified milestone adds task links, structured API contracts, and daily/weekly reminder recurrence, promoted through development into main. Natural-language capture and external notifications remain future milestones.
+The first main milestone covers tasks and fixed-time reminders. The second verified milestone adds task links, structured API contracts, and daily/weekly reminder recurrence, promoted through development into main. The third verified milestone adds linked notes, focused testing tabs, text search, and explicit atomic capture, promoted through development into main. Natural-language capture and external notifications remain future milestones.
 
 ## Foundation API
 
@@ -99,7 +101,7 @@ The general reminder form includes **Link reminder to task (optional)**. Existin
 
 ## Feature testing interface
 
-Use the Tasks, Reminders, Notes, Search, Activity, and API lab tabs to work on one feature at a time. Each tab has a What you can test checklist. The selected tab is stored in the URL fragment and survives browser reload; unsaved form contents remain while switching tabs. A due count on Reminders stays visible from other tabs. Add note / View note / View task shortcuts open the appropriate tab. Use arrow keys, Home, and End on the feature tabs. The dark interface adapts to narrow screens. Refresh data reloads saved records; browser reload loads interface updates.
+Use the Capture, Tasks, Reminders, Notes, Search, Activity, and API lab tabs to work on one feature at a time. Each tab has a What you can test checklist. The selected tab is stored in the URL fragment and survives browser reload; unsaved form contents remain while switching tabs. A due count on Reminders stays visible from other tabs. Add note / View note / View task shortcuts open the appropriate tab. Use arrow keys, Home, and End on the feature tabs. The dark interface adapts to narrow screens. Refresh data reloads saved records; browser reload loads interface updates.
 
 ## Test search
 
@@ -111,3 +113,15 @@ Use the Tasks, Reminders, Notes, Search, Activity, and API lab tabs to work on o
 6. In API lab try missing `q`, duplicate `q`, or `type=note&status=completed`. Expect structured HTTP 400 `invalid_search`.
 
 Search introduces no database migration. It scans canonical records; index-backed search and semantic retrieval remain deferred.
+
+## Test unified capture
+
+1. Open **Capture**, enter a title/details and optional deadline, then enable **Add a linked reminder** and choose a time and repeat.
+2. Click **Preview capture**. Review the displayed times, timezone, repeat, and structured proposal. Switch to Tasks/Reminders to verify no records were created.
+3. Edit a field: the preview disappears and must be regenerated. Confirm the regenerated preview to save the task and reminder together.
+4. Open the saved task/reminder links. Verify the direct link, occurrence ID, and queued delivery in structured saved state. Complete the task and confirm its reminder is cancelled.
+5. Test a past deadline/reminder time: preview warns; confirmation preserves the explicit time and the worker delivers the reminder.
+6. In API lab select Preview capture, then copy response `input` into Confirm capture. Use a retry key; replay creates no duplicates. Change fields without regenerating preview to see `capture_preview_conflict`; regenerate and reuse the same committed key to see `idempotency_conflict`.
+7. In an isolated test server, stop Atlas after preview and click Confirm. Fields lock and Retry same confirmation appears. Restart Atlas, reload the same tab, and retry; one task/reminder is saved. Session storage preserves the body and key within that browser session.
+
+Atomic rollback, concurrent retry, receipt replay after restart/deletion, task-only capture, validation, and linked cancellation are covered by automated tests. Capture introduces no schema migration and does not interpret natural-language dates.

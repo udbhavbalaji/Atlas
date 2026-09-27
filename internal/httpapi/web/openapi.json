@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -2587,6 +2587,141 @@
           }
         }
       }
+    },
+    "/api/v1/capture/preview": {
+      "post": {
+        "description": "Explicit capture fields only. Preview validates and normalizes without saving. Confirm sends preview.input unchanged with a required Idempotency-Key. preview_id is a content identifier, not an authorization token. Past dates produce preview warnings.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated proposal without persistence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureProposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed/missing preview or conflicting retry key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Interrupted request or busy storage; retry unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/capture/commit": {
+      "post": {
+        "description": "Explicit capture fields only. Preview validates and normalizes without saving. Confirm sends preview.input unchanged with a required Idempotency-Key. preview_id is a content identifier, not an authorization token. Past dates produce preview warnings.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureCommitInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Atomic creation receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed/missing preview or conflicting retry key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Interrupted request or busy storage; retry unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Original creation receipt replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAction"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,128}$"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3293,6 +3428,91 @@
               "integer",
               "null"
             ]
+          }
+        }
+      },
+      "CaptureInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "details": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "due_at": {
+            "type": "string"
+          },
+          "reminder_at": {
+            "type": "string"
+          },
+          "reminder_title": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "string",
+            "enum": [
+              "",
+              "daily",
+              "weekly"
+            ]
+          },
+          "preview_id": {
+            "type": "string"
+          }
+        }
+      },
+      "CaptureCommitInput": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CaptureInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "preview_id"
+            ]
+          }
+        ]
+      },
+      "CaptureProposal": {
+        "type": "object",
+        "required": [
+          "input",
+          "effects",
+          "warnings"
+        ],
+        "properties": {
+          "input": {
+            "$ref": "#/components/schemas/CaptureCommitInput"
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "task.create",
+                "reminder.create",
+                "reminder.link_task",
+                "delivery.queue"
+              ]
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
