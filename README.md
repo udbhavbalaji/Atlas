@@ -375,3 +375,8 @@ Create “Interview at Ather” in Tasks, then enter “Print my resume before m
 ### Test record associations
 
 The Relations tab links any two tasks, reminders or notes with a symmetric “related to” association. Reverse or repeat a pair to verify deduplication; filter by either record, inspect state, open its page, and remove the association. Completion and scheduling are unaffected. Deleted endpoints retain provenance. Capture also exposes versioned typed clarification/continuation instructions for a future orchestrator under Structured interpretation and continuation.
+
+
+### Provider integration harness
+
+The Providers test tab exercises Atlas's internal provider contract with a labelled, fixture-driven mock. It supports bounded task context requests, optional reminder/note questions, core proposal validation, explicit capture confirmation, and invalid/unavailable scenarios. Jev remains unconnected while access and its actual API contract are pending. This harness does not interpret English or replace live Capture conversations. See API.md and DEVELOPMENT.md for payloads and test steps.

@@ -21,7 +21,9 @@
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
 - [ ] iPhone text client proving the capture-to-reminder loop.
 - [x] Validated capture orchestration and local English sentence interpretation.
-- [ ] Opt-in external reasoning-provider interpretation.
+- [x] Persistent capture conversations, typed replies, resume, and confirmation recovery.
+- [ ] Jev adapter for semantic decisions, bounded context requests, and validated proposals.
+- [ ] Optional reminder/note enrichment before task confirmation through Jev.
 
 The first main milestone covers tasks and fixed-time reminders. The second verified milestone adds task links, structured API contracts, and daily/weekly reminder recurrence, promoted through development into main. The third verified milestone adds linked notes, focused testing tabs, text search, and explicit atomic capture, promoted through development into main. The fourth verified milestone adds atomic note/standalone capture and local English sentence interpretation, promoted through development into main. External reasoning providers and external notifications remain future milestones.
 
@@ -161,3 +163,23 @@ Schema 10 adds capture session documents without changing existing action record
 ### Interview capture regression
 
 Start `I have an interview at Ather on Tuesday`; expect a task proposal waiting for a clock time. Reply `3pm`, verify both the task deadline and linked reminder are Tuesday at 3 PM, then confirm. Existing sessions created before this fix can reply `action` to recover. Generic unclear sentences also accept `action` as a synonym for `task`; the test UI offers Action / task, Reminder, and Note buttons for record-type clarification. Jev now owns the target architecture for semantic decisions; ongoing phrase-rule expansion is deferred in favor of its adapter.
+
+
+## Current readiness and next milestone
+
+Tasks, reminders, durable webpage inbox delivery, notes, links/relations, search, structured state APIs, and persistent capture sessions are implemented and testable locally. Automated validation includes race checks and confirmation/restart recovery; the testing webpage is the current client. This is a local core milestone, not the complete iPhone product.
+
+Next: verify Jev's actual integration contract, implement the bounded adapter and inspectable proposal/context payloads, then implement optional reminder/note enrichment in the conversation UI with task-only skip. Keep Atlas validation, explicit confirmation, and atomic persistence authoritative. Prove the flow on existing test UI before the iPhone PWA and real notification delivery work. Webpage inbox delivery requires the Atlas server to run; external push notifications, authentication, sync, PWA installation, and offline queues remain unimplemented.
+
+## Test provider foundation
+
+Open **Providers**. The screen must label everything as mock and mark Jev unavailable.
+
+1. Run the Task fixture with both additions set to Ask me. Inspect structured optional questions; verify no records appear in Tasks/Notes/Reminders.
+2. Choose Add reminder and Attach note, supply a time and note, and run another preview. Confirm once; inspect saved state for the direct reminder link and note links. Change a field before confirming: the prior proposal must disappear.
+3. Use **Save task only — preview first**. Review, then confirm; no reminder/note is created.
+4. Create a distinctive task, select the context fixture and query its title. Inspect both exchanges and the minimized context. Choose its returned ID; review the before relationship, then confirm. Over five matches must report truncation.
+5. Try invalid output and unavailable fixtures; inspect rejected/unavailable traces and verify no records are created.
+6. In an isolated server, interrupt confirmation, restart, reload the same tab, and retry the retained proposal/key. Existing receipt recovery returns one saved result.
+
+Provider foundation introduces no migration. Contract tests cover schema/status violations, unexpected/unseen references, context limits and repeated requests, malformed reminder fields, atomic additions, idempotent capture, and unavailable-provider behavior. It does not replace live Capture conversations yet; wire Jev and durable provider sessions after verifying its actual interface.

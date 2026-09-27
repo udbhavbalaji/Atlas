@@ -11,6 +11,7 @@
 <button id="tab-relations" role="tab" aria-controls="panel-relations" aria-selected="false" tabindex="-1" data-feature="relations">Relations</button>
 <button id="tab-search" role="tab" aria-controls="panel-search" aria-selected="false" tabindex="-1" data-feature="search">Search</button>
 <button id="tab-activity" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1" data-feature="activity">Activity</button>
+<button id="tab-providers" role="tab" aria-controls="panel-providers" aria-selected="false" tabindex="-1" data-feature="providers">Providers</button>
 <button id="tab-api" role="tab" aria-controls="panel-api" aria-selected="false" tabindex="-1" data-feature="api">API lab</button>
 </nav>
 <div id="message" role="status" aria-live="polite"></div>
@@ -67,6 +68,25 @@
 </section>
 <section id="panel-search" role="tabpanel" aria-labelledby="tab-search" tabindex="0" hidden><div class="feature-heading"><span class="eyebrow">04 / FIND</span><h2>Search</h2><p>Find text across tasks, reminders, and notes.</p></div><details class="test-guide"><summary>What you can test</summary><ul><li>Search a title, task detail, or phrase from a note.</li><li>Narrow by record type and status.</li><li>Open a match in its feature tab or inspect its JSON state.</li><li>Edit or delete a record, then search again to verify fresh results.</li></ul></details><form id="search-form" class="edit"><label>Search text<input id="search-query" required maxlength="200" placeholder="Find something you saved" autocomplete="off"></label><label>Record type<select id="search-type"><option value="">All records</option><option value="task">Tasks</option><option value="reminder">Reminders</option><option value="note">Notes</option></select></label><label>Status<select id="search-status"><option value="">Any status</option></select></label><button id="search-submit" class="primary">Search records</button></form><p class="meta">Literal text matching, ignoring case. Results are ordered by most recently updated.</p><p id="search-message" role="status" aria-live="polite">Enter text to begin.</p><section id="search-results" aria-label="Search results"></section><div id="search-pages" class="actions" hidden><button id="search-previous" disabled>Previous page</button><button id="search-next" disabled>Next page</button></div></section>
 <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" tabindex="0" hidden><div class="feature-heading"><span class="eyebrow">05 / HISTORY</span><h2>Activity</h2><p>Inspect what Atlas committed, newest first.</p></div><details class="test-guide"><summary>What you can test</summary><p>Create or change a record, then return here. Actual changes add activity; repeated no-op actions do not. The latest 100 entries are shown.</p></details><ul id="activity" class="activity-list"></ul></section>
+<section id="panel-providers" role="tabpanel" aria-labelledby="tab-providers" tabindex="0" hidden>
+<div class="feature-heading"><span class="eyebrow">MOCK / INTEGRATION TESTING</span><h2>Providers</h2><p>Jev is not connected. This mock uses explicit fixtures and answers; it does not interpret English.</p></div>
+<details class="test-guide"><summary>What you can test</summary><ul><li>Choose a fixture, inspect its structured questions, and add or skip reminders and notes.</li><li>Task context is read-only, limited to five open task titles, IDs, deadlines and updated timestamps. Other record content is excluded.</li><li>Preview never saves. Review, then explicitly confirm through Atlas capture validation.</li><li>Invalid output and unavailable-provider fixtures must create no records.</li></ul></details>
+<p id="provider-availability" class="meta"></p>
+<form id="provider-form" class="composer"><fieldset id="provider-fields">
+<label>Mock scenario<select id="provider-scenario"><option value="task">Task + optional additions</option><option value="context">Task before an existing task</option><option value="note">Standalone note</option><option value="invalid">Invalid provider output</option><option value="unavailable">Provider unavailable</option></select></label>
+<label>Demo input (used verbatim as title or note)<textarea id="provider-text" required maxlength="12000" rows="2">Provider demo task</textarea></label>
+<label>Mock context query<input id="provider-query" maxlength="200" placeholder="Interview"></label>
+<label>Selected context task ID<input id="provider-context" placeholder="Choose from returned context choices"></label>
+<label>Optional reminder<select id="provider-reminder"><option value="">Ask me</option><option value="add">Add reminder</option><option value="skip">Skip reminder</option></select></label>
+<label>Reminder time<input id="provider-at" type="datetime-local" step="1"></label>
+<label>Optional note<select id="provider-note"><option value="">Ask me</option><option value="add">Attach note</option><option value="skip">Skip note</option></select></label>
+<label>Note body<textarea id="provider-note-body" rows="2" maxlength="10000"></textarea></label>
+<p class="meta">Times use your browser timezone. These are mock controls, not Jev's API.</p></fieldset>
+<button id="provider-preview" type="submit">Run mock preview</button><button id="provider-task-only" type="button">Save task only — preview first</button></form>
+<p id="provider-status" role="status"></p><div id="provider-questions"></div><div id="provider-summary"></div>
+<button id="provider-confirm" class="primary" type="button" hidden>Confirm and save reviewed proposal</button>
+<details><summary>Requests, context, responses and validation</summary><pre id="provider-trace"></pre></details>
+</section>
 <section id="panel-api" role="tabpanel" aria-labelledby="tab-api" tabindex="0" hidden><div class="feature-heading"><span class="eyebrow">06 / CONTRACTS</span><h2>API lab</h2><p>Inspect structured responses, validation, and safe retries.</p></div><details class="test-guide"><summary>What you can test</summary><ul><li>Create a record, then Replay last request to verify creation deduplication.</li><li>Change the input while keeping the key to inspect a conflict.</li><li>Read task, reminder, or note state with linked records.</li><li>Send malformed JSON to inspect structured errors.</li></ul></details>
 <p>Inspect structured state and try retries. Requests here use your real Atlas data.</p>
 <label>Endpoint<select id="api-endpoint">
@@ -78,4 +98,4 @@
 <pre id="api-response" tabindex="0" aria-label="API response">Actions in other tabs also show their latest structured response here.</pre>
 </section>
 <footer><span class="status-dot"></span> Local storage · Changes persist across page reloads and server restarts.</footer>
-</main><script src="/navigation.js" defer></script><script src="/app.js" defer></script><script src="/notes.js" defer></script><script src="/search.js" defer></script><script src="/dependencies.js" defer></script><script src="/relations.js" defer></script><script src="/capture.js" defer></script><script src="/sessions.js" defer></script><script src="/api-test.js" defer></script></body></html>
+</main><script src="/navigation.js" defer></script><script src="/app.js" defer></script><script src="/notes.js" defer></script><script src="/search.js" defer></script><script src="/dependencies.js" defer></script><script src="/relations.js" defer></script><script src="/capture.js" defer></script><script src="/sessions.js" defer></script><script src="/providers.js" defer></script><script src="/api-test.js" defer></script></body></html>
