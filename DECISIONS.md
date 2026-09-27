@@ -213,3 +213,13 @@ Atlas owns canonical state, bounded context retrieval, versioned structured prop
 Jev owns interpretation of replies and selection of focused conversational questions. Atlas exposes versioned structured choices and validated draft fields for task/reminder/note enrichment. Session history retains answers and skipped options across reloads. Editing additions requires a refreshed proposal; one explicit confirmation atomically saves the chosen records and links. Existing-record edits or extra reminders are separate operations, never implicit effects of this offer.
 
 **Verification:** Add webpage conversation controls and tests for task-only skip, reminder timing, note attachment, already-supplied additions, resume, and duplicate-safe confirmation. This is a product-flow requirement, not a new rule-based English decision engine.
+
+## Provider-neutral foundation while Jev access is pending
+
+**Status:** Accepted; mock implemented, Jev transport pending.
+
+**Decision:** Define Atlas's own versioned provider interface and structured statuses (`needs_context`, `needs_clarification`, `ready`). A provider proposes capture fields or focused questions; Atlas validates the contract, resolves bounded context, validates canonical references and fields, and returns a reviewed proposal. It never commits from a provider response alone. The future Jev adapter translates its verified real API into this internal contract; no Jev transport, endpoint, SDK, credentials, or behavior is assumed.
+
+The mock is explicitly fixture-driven and does not interpret English. It exercises task-only skip, optional reminders/notes, context selection, malformed output, and unavailability. Context is limited to one round, one query, and five open tasks, exposing only ID, title, deadline, and updated_at. References outside supplied context are rejected. Provider calls receive a five-second deadline; adapters must honor cancellation. Provider failure never silently falls back to a different interpreter or creates records.
+
+**Consequences:** A Providers testing tab shows mock availability, requests/context/responses, validation errors, optional fields, preview, and explicit confirmation through existing capture commit and receipts. Mock questions/answers are stateless server-side and resubmitted explicitly; this is an integration harness, not the live Capture conversation's decision engine. Pending confirmation survives same-tab reload via session storage. Existing local Capture continues as the temporary bridge. Durable provider conversations and the actual Jev adapter remain next work once its interface is available. No database migration is introduced.

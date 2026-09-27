@@ -221,3 +221,21 @@ Before committing records, confirmation freezes the proposal durably as `confirm
 `interpretation.continuation` describes the underlying interpreter. Use session `next_request` for conversational orchestration. Terminal states suppress underlying continuation calls; `persisted` refers to action records, whereas session history is always durable. No model, external NLP service, session expiration, automatic date inference for an undated interview, or cross-session conversational memory is introduced. Sessions store local conversation text in SQLite (schema 10). Session creation itself is not an idempotent record-creation operation.
 
 Interim capture compatibility fix: `I have an interview at Ather on Tuesday` is a task with a missing-clock clarification. `action` and `an action` are accepted task-label replies. A clock-only reply such as `3pm` completes the original Tuesday date, including across reload/restart; it does not substitute the reply's current day. The interview time sets task `due_at` and, unless an explicit linked-reminder clause was supplied, a linked reminder at that time. These defaults are shown before confirmation. Existing sessions with that sentence can reply `action` to regenerate the corrected proposal. Jev is now the chosen target for semantic decisions; the rule interpreter remains an interim bridge (see DECISIONS.md).
+
+## Provider foundation (internal contract version 1)
+
+`GET /api/v1/providers` returns the internal contract version, available mock, unavailable Jev, context budgets, and `persists_on_preview: false`.
+
+`POST /api/v1/providers/mock/preview` accepts:
+
+```json
+{"version":"1","request_id":"client-request-1","text":"Demo task title","timezone":"Asia/Kolkata","scenario":"task","context_query":"","answers":{"context_task_id":"","reminder":"skip","reminder_at":"","note":"skip","note_body":""}}
+```
+
+Scenarios: `task`, `context`, `note`, `invalid`, `unavailable`. These select fixtures, not semantic interpretation. Task text is used verbatim as a title (core 500-character constraint); note text is used verbatim as note body. `context` requests open tasks matching `context_query`, limited to five, then asks for a supplied task ID. Empty reminder/note choices ask structured questions; `add` requires an explicit RFC3339 reminder_at or note_body; `skip` omits that addition. Already supplied additions are not asked again. Preview is read-only.
+
+The response includes `provider`, `mock`, `state`, `persisted: false`, `trace` (each input/output exchange), `response` (version, status, draft, questions, context_requests, explanation), and nullable `proposal`. Context payloads contain only ID, title, due_at, updated_at and truncation; no note bodies, task details, database credentials, or tool-execution instructions are supplied. One context round/query and at most five records are allowed. Unseen dependency IDs and provider-supplied preview/version fingerprints are rejected. A five-second deadline covers the provider flow; adapters must honor it.
+
+States: `awaiting_clarification`, `awaiting_confirmation`, `rejected`, `unavailable`. HTTP 400 `invalid_provider_request`, 422 `provider_proposal_rejected`, and 503 `provider_unavailable` include a typed `error` and inspectable `result` trace. Unexpected storage failures use the standard 500 response. No automatic fallback or persistence occurs on failure.
+
+Only after explicit user review, submit unchanged `proposal.input` to `POST /api/v1/capture/commit` with a stable Idempotency-Key. Standard capture transaction, context-version checks, links, and receipt replay apply. Mock preview requests/questions are stateless: resubmit explicit answers to continue. This contract is owned by Atlas and is not documentation of Jev's API. Jev has no callable endpoint or configured transport yet.
