@@ -176,3 +176,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Add an additive, versioned continuation envelope to interpretation APIs. Describe clarification IDs, answer value types, choices, request fields, preset values, follow-up calls, confirmation requirements and endpoint/body templates. Preserve legacy questions and existing capture validation.
 
 **Consequences:** Consumers need not parse English prompts to choose context or supply timing. Read-only interpretation/preview remain separate from confirmed mutations. Reference deadline edits explicitly require confirmation and re-interpretation. Templates do not grant authorization. Capture exposes the full interpretation/continuation JSON for testing; no migration or automatic dispatch is introduced.
+
+## Generic symmetric record associations
+
+**Status:** Accepted
+
+**Decision:** Add `related_to` associations between any two distinct tasks, reminders or notes. Canonicalize endpoint order and derive a deterministic resource ID so PUT/DELETE are idempotent across reversed pairs. Return committed endpoint snapshots and support record-scoped reads. Keep association semantics independent of reminder ownership, prerequisite ordering and note links.
+
+**Consequences:** Schema migration 9 adds association storage and relation activity IDs. Deleted endpoints retain title provenance with explicit missing status; associations can still be removed. No scheduling or lifecycle side effect is implied by association. Relation changes and activity commit together. A focused Relations testing tab supports creation, filtering, record navigation, removal, raw snapshots and mutation responses. Generic relation types beyond related_to and graph traversal remain deferred.
