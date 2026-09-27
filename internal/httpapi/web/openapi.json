@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -3881,7 +3881,8 @@
           "questions",
           "assumptions",
           "candidates",
-          "candidates_truncated"
+          "candidates_truncated",
+          "continuation"
         ],
         "properties": {
           "status": {
@@ -3950,6 +3951,9 @@
           },
           "candidates_truncated": {
             "type": "boolean"
+          },
+          "continuation": {
+            "$ref": "#/components/schemas/CaptureContinuation"
           }
         }
       },
@@ -4004,6 +4008,199 @@
           "satisfied",
           "created_at"
         ]
+      },
+      "ContinuationChoice": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/Task"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "ClarificationAnswer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "value_type": {
+            "type": "string",
+            "enum": [
+              "task_id",
+              "text",
+              "rfc3339_timestamp",
+              "none",
+              "integer",
+              "enum"
+            ]
+          },
+          "input_field": {
+            "type": "string"
+          },
+          "call_id": {
+            "type": "string"
+          },
+          "set_fields": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContinuationChoice"
+            }
+          },
+          "followup_call_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "value_type",
+          "input_field",
+          "call_id",
+          "set_fields",
+          "choices"
+        ],
+        "additionalProperties": false
+      },
+      "ClarificationRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "choices_truncated": {
+            "type": "boolean"
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarificationAnswer"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "field",
+          "prompt",
+          "required",
+          "choices_truncated",
+          "answers"
+        ],
+        "additionalProperties": false
+      },
+      "ContinuationCall": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST",
+              "PATCH"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "required_headers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requires_confirmation": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "method",
+          "path",
+          "body",
+          "required_headers",
+          "requires_confirmation"
+        ],
+        "additionalProperties": false
+      },
+      "CaptureContinuation": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "awaiting_clarification",
+              "awaiting_confirmation"
+            ]
+          },
+          "confirmation_required": {
+            "type": "boolean",
+            "const": true
+          },
+          "persisted": {
+            "type": "boolean",
+            "const": false
+          },
+          "clarifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarificationRequest"
+            }
+          },
+          "next_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContinuationCall"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "state",
+          "confirmation_required",
+          "persisted",
+          "clarifications",
+          "next_calls"
+        ],
+        "additionalProperties": false
       }
     }
   }
