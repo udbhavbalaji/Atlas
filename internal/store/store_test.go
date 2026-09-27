@@ -57,7 +57,7 @@ func TestNewerSchemaRejected(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = db.Exec("PRAGMA user_version=9"); e != nil {
+	if _, e = db.Exec("PRAGMA user_version=10"); e != nil {
 		t.Fatal(e)
 	}
 	db.Close()

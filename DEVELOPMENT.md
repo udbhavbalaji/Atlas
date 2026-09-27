@@ -15,7 +15,7 @@
 - [x] Daily/weekly recurring reminders, occurrence acknowledgment, and repeat testing controls.
 - [x] Persistent notes with explicit task/reminder links.
 - [x] Text search across tasks, reminders, and notes.
-- [ ] Generic record relations.
+- [x] Generic symmetric record associations with structured state and a Relations testing tab.
 - [x] Explicit unified capture with preview and atomic task/reminder confirmation.
 - [x] Fixed-time reminders with durable webpage inbox delivery, restart recovery, snooze, dismissal, and completion.
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
@@ -140,3 +140,7 @@ Atomic rollback, concurrent retry, receipt replay after restart/deletion, task-o
 8. Existing confirmation retry behavior remains: an interrupted confirmation preserves its exact request through same-tab reload. Note content participates in the fingerprint and receipt; changing it requires a new preview.
 
 The automated corpus covers supported phrasing, alternate word orders, Unicode content, AM/PM ambiguity, invalid dates, DST gaps/overlaps, calendar-day versus elapsed-hour intervals, and API interpretation-to-commit. Storage tests inject note-link failures and verify rollback of every record/link/activity/receipt. Browser tests use a separate database. This is a bounded local English interpreter, not unrestricted language understanding.
+
+## Latest capture and relation milestones
+
+Context selection, reviewed relative reminder timing, common time idioms and typed orchestrator continuations are implemented. Schema version 9 adds generic record associations and relation activity IDs, preserving notes, dependencies and capture receipts. The next client milestone remains an iPhone text client; external interpretation and external notifications remain separate future work.

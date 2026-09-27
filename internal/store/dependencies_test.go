@@ -168,7 +168,7 @@ func TestDependencyMigrationPreservesCapture(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.db.Exec("DROP TABLE task_dependencies; PRAGMA user_version=7;"); e != nil {
+	if _, e = s.db.Exec("DROP TABLE record_relations; ALTER TABLE activity DROP COLUMN relation_id; DROP TABLE task_dependencies; PRAGMA user_version=7;"); e != nil {
 		t.Fatal(e)
 	}
 	s.Close()
@@ -187,7 +187,7 @@ func TestDependencyMigrationPreservesCapture(t *testing.T) {
 	}
 	var version int
 	s.db.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != 8 {
+	if version != 9 {
 		t.Fatal(version)
 	}
 }
