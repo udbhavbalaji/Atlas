@@ -16,9 +16,10 @@ func Handler(s *store.Store) http.Handler {
 	noteRoutes(mux, s)
 	searchRoutes(mux, s)
 	captureRoutes(mux, s)
+	sessionRoutes(mux, s)
 	dependencyRoutes(mux, s)
 	relationRoutes(mux, s)
-	for path, file := range map[string]string{"/": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
+	for path, file := range map[string]string{"/": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
 		pattern := "GET " + path
 		if path == "/" {
 			pattern = "GET /{$}"

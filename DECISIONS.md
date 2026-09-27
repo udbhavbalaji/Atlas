@@ -184,3 +184,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Add `related_to` associations between any two distinct tasks, reminders or notes. Canonicalize endpoint order and derive a deterministic resource ID so PUT/DELETE are idempotent across reversed pairs. Return committed endpoint snapshots and support record-scoped reads. Keep association semantics independent of reminder ownership, prerequisite ordering and note links.
 
 **Consequences:** Schema migration 9 adds association storage and relation activity IDs. Deleted endpoints retain title provenance with explicit missing status; associations can still be removed. No scheduling or lifecycle side effect is implied by association. Relation changes and activity commit together. A focused Relations testing tab supports creation, filtering, record navigation, removal, raw snapshots and mutation responses. Generic relation types beyond related_to and graph traversal remain deferred.
+
+## Durable conversational capture (2026-09-28)
+
+Capture conversations wrap the existing bounded local interpreter with durable SQLite history and optimistic versions. Natural-language replies resolve task context and timing; unsupported/ambiguous replies preserve unresolved meaning. Original requests keep their reference time during context selection. An orchestrator can create, fetch, and reply through structured session endpoints. Each response carries canonical session state and the exact next request shape.
+
+Explicit confirmation freezes the reviewed draft before atomic capture commit. A stable session receipt key recovers interrupted confirmation without duplicate action records. Changed dependency versions require review and confirmation again. Conversation history is durable before confirmation; action records are not. No automatic edits to reference tasks or cross-session memory are inferred.
+
+The feature has a Conversation test section in Capture, visible history, proposal/assumption display, context choices, resume-by-ID, and structured JSON. The former capture tools remain available in a collapsed section. Every Atlas feature continues to require its own testable webpage interface.
