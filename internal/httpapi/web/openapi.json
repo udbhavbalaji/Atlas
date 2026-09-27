@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.15.0",
+    "version": "1.15.1",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -5811,6 +5811,10 @@
               "add",
               "skip"
             ]
+          },
+          "prefill": {
+            "type": "boolean",
+            "description": "Initial source-derived hints only; returns no proposal. Do not repeat for normal edits or clearing fields."
           }
         },
         "required": [
@@ -5899,7 +5903,10 @@
           },
           "extraction": {
             "type": "string",
-            "const": "explicit_fields"
+            "enum": [
+              "explicit_fields",
+              "local_prefill_review"
+            ]
           },
           "questions": {
             "type": "array",
@@ -5919,6 +5926,12 @@
           },
           "persisted": {
             "const": false
+          },
+          "input": {
+            "$ref": "#/components/schemas/RoutingState"
+          },
+          "prefill": {
+            "$ref": "#/components/schemas/RoutingChannelPrefill"
           }
         },
         "required": [
@@ -5929,7 +5942,8 @@
           "extraction",
           "questions",
           "proposal",
-          "persisted"
+          "persisted",
+          "input"
         ]
       },
       "RoutingRegistry": {
@@ -5996,6 +6010,48 @@
           "token_lifetime_seconds",
           "cache"
         ]
+      },
+      "RoutingChannelPrefill": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fields",
+          "reminder",
+          "note",
+          "provenance",
+          "warnings"
+        ],
+        "properties": {
+          "fields": {
+            "$ref": "#/components/schemas/RoutingFields"
+          },
+          "reminder": {
+            "type": "string",
+            "enum": [
+              "",
+              "add"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "enum": [
+              "",
+              "add"
+            ]
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   }

@@ -245,3 +245,11 @@ Jev is an evaluation model, not a free-form generator. It selects among supplied
 **Status:** Accepted (2026-09-27); supersedes autonomous milestone promotion.
 
 **Decision:** Branch new work from `development` onto feature branches and merge tested work back into `development`. Never merge into `main` autonomously. At a substantial milestone, present the completed scope, verification evidence and remaining risks/limitations and recommend whether to promote. Merge `development` into `main` only after the user explicitly approves that promotion. Prior general authorization to implement features does not authorize main promotion.
+
+## Carry routing context into channel preparation
+
+**Status:** Accepted (2026-09-27).
+
+**Decision:** Preserve the signed routing state through channel dispatch and expose it in channel responses and the secondary action form. The original sentence, timezone, frozen reference clock and supplied minimized task records are tool input, not discarded routing-only metadata.
+
+Offer editable initial field suggestions using the existing local parser as a temporary extraction helper; its intent never overrides the chosen route. This refines the initial explicit-only channel implementation without expanding language rules or adding model calls. Show provenance, assumptions and unresolved timing. Initial preparation cannot return a confirmable proposal; user review and a subsequent explicit preview remain required. Normal field edits/clears are never reseeded. Existing-record context is visible and can be explicitly copied into relevant controls or selected as a prerequisite target; do not silently inherit deadlines or create relationships merely because a search returned one record. Keep exact instants when round-tripping prefilled/copied dates.
