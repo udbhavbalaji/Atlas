@@ -29,6 +29,10 @@ func apiError(w http.ResponseWriter, status int, code, message string, retryable
 func failure(w http.ResponseWriter, e error) {
 	status, code, retryable := 500, "internal_error", false
 	switch {
+	case errors.Is(e, store.ErrSessionNotFound):
+		status, code = 404, "session_not_found"
+	case errors.Is(e, store.ErrSessionConflict):
+		status, code = 409, "session_version_conflict"
 	case errors.Is(e, store.ErrRelation):
 		status, code = 400, "invalid_relation"
 	case errors.Is(e, store.ErrDependencyCycle):

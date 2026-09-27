@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -3138,6 +3138,164 @@
           }
         }
       }
+    },
+    "/api/v1/capture/sessions": {
+      "post": {
+        "description": "Persistent capture conversation. Replies retain original context. Explicit yes/confirm/save it confirms a ready proposal; cancel closes without record creation. State confirming can be retried to recover the same committed receipt. Stale versions return 409. Session history is saved before confirmation; records are only created on confirmation. Unknown replies preserve unresolved meaning.",
+        "responses": {
+          "201": {
+            "description": "Durable conversation state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "409": {
+            "description": "Stale version, closed session, or unresolved clarification"
+          },
+          "500": {
+            "description": "Unexpected failure; resume the session before retrying"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "text",
+                  "timezone"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12000
+                  },
+                  "timezone": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/capture/sessions/{id}": {
+      "get": {
+        "description": "Persistent capture conversation. Replies retain original context. Explicit yes/confirm/save it confirms a ready proposal; cancel closes without record creation. State confirming can be retried to recover the same committed receipt. Stale versions return 409. Session history is saved before confirmation; records are only created on confirmation. Unknown replies preserve unresolved meaning.",
+        "responses": {
+          "200": {
+            "description": "Durable conversation state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "409": {
+            "description": "Stale version, closed session, or unresolved clarification"
+          },
+          "500": {
+            "description": "Unexpected failure; resume the session before retrying"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/capture/sessions/{id}/reply": {
+      "post": {
+        "description": "Persistent capture conversation. Replies retain original context. Explicit yes/confirm/save it confirms a ready proposal; cancel closes without record creation. State confirming can be retried to recover the same committed receipt. Stale versions return 409. Session history is saved before confirmation; records are only created on confirmation. Unknown replies preserve unresolved meaning.",
+        "responses": {
+          "200": {
+            "description": "Durable conversation state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "409": {
+            "description": "Stale version, closed session, or unresolved clarification"
+          },
+          "500": {
+            "description": "Unexpected failure; resume the session before retrying"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "version",
+                  "text"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4505,6 +4663,114 @@
           "deleted"
         ],
         "additionalProperties": false
+      },
+      "CaptureSession": {
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "state",
+          "updated_at",
+          "messages",
+          "interpretation",
+          "saved",
+          "next_request"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "enum": [
+              "awaiting_clarification",
+              "awaiting_confirmation",
+              "confirming",
+              "saved",
+              "cancelled"
+            ]
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "role",
+                "text"
+              ],
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "interpretation": {
+            "$ref": "#/components/schemas/InterpretResult"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_request": {
+            "type": "object",
+            "required": [
+              "method",
+              "path",
+              "body",
+              "confirmation_required",
+              "terminal"
+            ],
+            "properties": {
+              "method": {
+                "const": "POST"
+              },
+              "path": {
+                "type": "string"
+              },
+              "body": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "text"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              },
+              "confirmation_required": {
+                "type": "boolean"
+              },
+              "terminal": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
       }
     }
   }

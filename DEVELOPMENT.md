@@ -144,3 +144,16 @@ The automated corpus covers supported phrasing, alternate word orders, Unicode c
 ## Latest capture and relation milestones
 
 Context selection, reviewed relative reminder timing, common time idioms and typed orchestrator continuations are implemented. Schema version 9 adds generic record associations and relation activity IDs, preserving notes, dependencies and capture receipts. The next client milestone remains an iPhone text client; external interpretation and external notifications remain separate future work.
+
+## Test capture conversations
+
+1. In Tasks create two dated interviews with different company names. In Capture's **Conversation test**, start `Remind me to print my resume before that`. Check context clarification and no new action records.
+2. Reply `the Ather one`. Review the referenced interview and reminder one hour before it. Reply `one day before` to adjust; the original request and context stay intact.
+3. Reload the browser or restart Atlas. The last session resumes automatically; its ID also works in **Resume session**.
+4. Reply `yes`; inspect saved JSON for task, reminder, and dependency. Repeat `yes` through the API; the original receipt returns and no duplicates appear.
+5. Start `Remind me to call Mom`, then reply `tomorrow at 9am`. Confirm, or cancel and verify no new records. Try a note sentence or an action with `; note:`.
+6. An unknown reply must keep the question open. Two interviews matching the same reply must not auto-select. Use the visible context choice buttons or a more specific title.
+7. Change the reference task's deadline before confirming. Confirmation refreshes the proposal without saving; review the new timing and confirm again.
+8. API clients can GET by ID and POST replies using `next_request.body.version`. A stale version returns a structured 409. Reply `replace: Call Mom tomorrow at 6pm` to intentionally replace the original request.
+
+Schema 10 adds capture session documents without changing existing action records. The interpreter remains rule-based. Unrestricted conversational language, external notifications, and the iPhone client remain future work.
