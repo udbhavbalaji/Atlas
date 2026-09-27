@@ -1,5 +1,5 @@
 'use strict';
-let reminders = [], tasks = [], filter = 'open', busy = false;
+let notes=[], reminders = [], tasks = [], filter = 'open', busy = false;
 const $ = id => document.getElementById(id);
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 $('timezone').textContent = 'Deadline timezone: ' + zone;
@@ -19,7 +19,7 @@ function message(text, error = false) { $('message').textContent = text; $('mess
 const pendingCreationKeys = new Map();
 async function api(path, method = 'GET', body) {
  const signature = path+' '+JSON.stringify(body);
- const creation = method === 'POST' && (path === 'tasks' || path === 'reminders');
+ const creation = method === 'POST' && (path === 'tasks' || path === 'reminders' || path==='notes');
  const headers = {'Content-Type':'application/json'};
  if(creation){if(!pendingCreationKeys.has(signature))pendingCreationKeys.set(signature,crypto.randomUUID());headers['Idempotency-Key']=pendingCreationKeys.get(signature);}
   const response = await fetch('/api/v1/' + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -51,6 +51,7 @@ function render() {
  if(linked.length){const section=document.createElement('details');section.className='linked-reminders';const summary=document.createElement('summary');summary.textContent='Linked reminders ('+linked.length+')';section.append(summary);
  for(const r of linked){const info=document.createElement('p');info.textContent=r.title+' · '+reminderStatus(r)+' · '+new Date(r.scheduled_at).toLocaleString();if(r.repeat)info.textContent+=' · '+repeatDescription(r);section.append(info);if(r.repeat && r.status==='due')section.append(occurrenceButton(r,'complete'),occurrenceButton(r,'dismiss'));if(r.status!=='completed'){const controls=document.createElement('div');controls.className='actions';controls.append(button('Snooze linked reminder 5 min',()=>mutate(()=>api('reminders/'+r.id+'/snooze','POST',{scheduled_at:new Date(Date.now()+300000).toISOString()}),'Linked reminder snoozed.')),button(r.repeat?'Stop linked repeat':'Complete linked reminder',()=>mutate(()=>api('reminders/'+r.id+'/complete','POST'),'Reminder completed. Task remains open.')));section.append(controls);}if(t.status==='open')section.append(completeTaskToo(t));}
  row.append(section);}
+ if(typeof renderLinkedNotes==='function')renderLinkedNotes(row,'task',t.id);
  host.append(row);
   }
 }
@@ -66,9 +67,9 @@ function edit(row, t) {
   form.onsubmit = event => { event.preventDefault(); mutate(() => api('tasks/' + t.id, 'PATCH', {title: input.value, details: details.value, due_at: due.value === localDeadline(t.due_at) ? t.due_at : deadlineValue(due.value)}), 'Task updated.'); };
 }
 async function load(preserveEdits = false) {
-  const [next, activity, nextReminders, deliveries] = await Promise.all([api('tasks'), api('activity'), api('reminders'), api('deliveries')]); if(preserveEdits && (busy || document.querySelector('.task .edit')))return; reminders=nextReminders; tasks = next; renderReminders(deliveries); render(); $('activity').replaceChildren();
-  const names = {'task.created':'Task added', 'task.completed':'Task completed', 'task.updated':'Task changed', 'task.deleted':'Task deleted', 'reminder.scheduled':'Reminder scheduled', 'reminder.delivered':'Reminder delivered to inbox', 'reminder.snoozed':'Reminder snoozed', 'reminder.dismissed':'Reminder dismissed', 'reminder.occurrence.complete':'Repeat occurrence completed', 'reminder.occurrence.dismiss':'Repeat occurrence dismissed', 'reminder.completed':'Reminder completed', 'reminder.cancelled.task.completed':'Reminder cancelled because task completed', 'reminder.cancelled.task.deleted':'Reminder cancelled because task deleted'};
-  for (const a of activity) { const li = document.createElement('li'); const task = a.reminder_id ? reminders.find(r => r.id === a.reminder_id) : tasks.find(t => t.id === a.task_id); li.textContent = (names[a.action] || a.action) + (task ? ': ' + task.title : '') + ' · ' + new Date(a.timestamp).toLocaleString(); $('activity').append(li); }
+  const [next, activity, nextReminders, deliveries,nextNotes] = await Promise.all([api('tasks'), api('activity'), api('reminders'), api('deliveries'),api('notes')]); if(preserveEdits && (busy || document.querySelector('.task .edit')))return; reminders=nextReminders; tasks = next; notes=nextNotes; if(typeof renderNotes==='function')renderNotes();renderReminders(deliveries); render(); $('activity').replaceChildren();
+  const names = {'note.created':'Note added','note.updated':'Note changed','note.deleted':'Note deleted','note.linked':'Note linked','note.unlinked':'Note unlinked','task.created':'Task added', 'task.completed':'Task completed', 'task.updated':'Task changed', 'task.deleted':'Task deleted', 'reminder.scheduled':'Reminder scheduled', 'reminder.delivered':'Reminder delivered to inbox', 'reminder.snoozed':'Reminder snoozed', 'reminder.dismissed':'Reminder dismissed', 'reminder.occurrence.complete':'Repeat occurrence completed', 'reminder.occurrence.dismiss':'Repeat occurrence dismissed', 'reminder.completed':'Reminder completed', 'reminder.cancelled.task.completed':'Reminder cancelled because task completed', 'reminder.cancelled.task.deleted':'Reminder cancelled because task deleted'};
+  for (const a of activity) { const li = document.createElement('li'); const task = a.note_id ? notes.find(n=>n.id===a.note_id) : a.reminder_id ? reminders.find(r => r.id === a.reminder_id) : tasks.find(t => t.id === a.task_id); li.textContent = (names[a.action] || a.action) + (task ? ': ' + (task.title||'Note '+task.id.slice(0,8)) : '') + ' · ' + new Date(a.timestamp).toLocaleString(); $('activity').append(li); }
   if (!activity.length) { const li = document.createElement('li'); li.textContent = 'Your activity will appear here.'; $('activity').append(li); }
 }
 async function mutate(operation, success) {
@@ -103,7 +104,7 @@ function renderReminders(deliveries) {
  row.append(title,when);
  if(r.repeat){const repeat=document.createElement('p');repeat.className='meta';repeat.textContent=repeatDescription(r);row.append(repeat);}
  if(r.task_id){const task=tasks.find(t=>t.id===r.task_id);const info=document.createElement('p');info.className='meta';info.textContent='Linked task: '+(task?task.title:r.task_title+' (deleted)');row.append(info);if(task){if(task.status==='open')actions.append(completeTaskToo(task));row.append(button('View task',()=>{filter='all';document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.filter==='all')));render();document.getElementById('task-'+task.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}}
- row.append(actions);
+ row.append(actions);if(typeof renderLinkedNotes==='function')renderLinkedNotes(row,'reminder',r.id);
  $(r.status==='due'?'reminder-inbox':r.status==='scheduled'?'reminder-upcoming':'reminder-history').append(row);
  }
  for(const [id,text] of [['reminder-inbox','No reminders due.'],['reminder-upcoming','No upcoming reminders.'],['reminder-history','No dismissed or completed reminders.']]) if(!$(id).children.length){const p=document.createElement('p');p.textContent=text;$(id).append(p);}
