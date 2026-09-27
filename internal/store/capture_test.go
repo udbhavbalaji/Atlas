@@ -154,3 +154,79 @@ func TestCaptureValidationAndTaskOnly(t *testing.T) {
 		t.Fatal(past, e)
 	}
 }
+
+func TestCaptureNotesAndStandaloneKinds(t *testing.T) {
+	ctx := context.Background()
+	s, e := Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	input := captureFixture(t)
+	input.NoteBody = "Bring the final draft"
+	p, e := PreviewCapture(input)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Exec(`CREATE TRIGGER reject_note_link BEFORE INSERT ON note_links BEGIN SELECT RAISE(ABORT,'test'); END;`); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, e = s.CommitCapture(ctx, "notes", p.Input); e == nil {
+		t.Fatal("expected link failure")
+	}
+	for _, table := range []string{"tasks", "reminders", "notes", "note_links", "deliveries", "activity", "request_receipts"} {
+		var count int
+		if e = s.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); e != nil || count != 0 {
+			t.Fatal(table, count, e)
+		}
+	}
+	s.db.Exec("DROP TRIGGER reject_note_link")
+	v, replay, e := s.CommitCapture(ctx, "notes", p.Input)
+	if e != nil || replay || len(v.Notes) != 1 || len(v.Notes[0].Links) != 2 || v.Notes[0].Body != input.NoteBody {
+		t.Fatal(v, e)
+	}
+	saved, replay, e := s.CommitCapture(ctx, "notes", p.Input)
+	if e != nil || !replay || !reflect.DeepEqual(saved, v) {
+		t.Fatal(saved, e)
+	}
+	note, e := PreviewCapture(CaptureInput{Kind: "note", NoteBody: "Standalone context"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, _, e = s.CommitCapture(ctx, "note", note.Input)
+	if e != nil || v.Task != nil || v.TaskID != "" || len(v.Reminders) != 0 || len(v.Notes) != 1 || len(v.Notes[0].Links) != 0 {
+		t.Fatal(v, e)
+	}
+	reminder, e := PreviewCapture(CaptureInput{Kind: "reminder", Title: "Standalone reminder", ReminderAt: "2030-01-01T00:00:00Z", Timezone: "UTC", NoteBody: "Reminder context"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	v, _, e = s.CommitCapture(ctx, "reminder", reminder.Input)
+	if e != nil || v.Task != nil || v.TaskID != "" || v.Reminders[0].TaskID != "" || len(v.Notes[0].Links) != 1 || v.Notes[0].Links[0].TargetType != "reminder" {
+		t.Fatal(v, e)
+	}
+}
+
+func TestLegacyCapturePreviewAndNoteTampering(t *testing.T) {
+	ctx := context.Background()
+	s, e := Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	legacy := captureFixture(t)
+	legacy.Kind = ""
+	v, _, e := s.CommitCapture(ctx, "legacy", legacy)
+	if e != nil {
+		t.Fatal(e)
+	}
+	legacy.Kind = "task"
+	saved, replay, e := s.CommitCapture(ctx, "legacy", legacy)
+	if e != nil || !replay || saved.TaskID != v.TaskID {
+		t.Fatal(saved, replay, e)
+	}
+	legacy.NoteBody = "New context"
+	if _, _, e = s.CommitCapture(ctx, "changed", legacy); !errors.Is(e, ErrCapturePreview) {
+		t.Fatal(e)
+	}
+}

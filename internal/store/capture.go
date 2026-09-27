@@ -9,11 +9,14 @@ import (
 )
 
 var ErrCapturePreview = errors.New("capture fields changed or preview is missing; preview again before confirming")
+var ErrCaptureKind = errors.New("capture kind must be task, reminder, or note; fields must match that kind")
 var ErrCaptureKey = errors.New("capture confirmation requires an idempotency key")
 var ErrCaptureReminder = errors.New("reminder title, timezone, and repeat require reminder_at")
 
-// CaptureInput is intentionally explicit; no natural-language interpretation occurs.
+// CaptureInput is the validated boundary for explicit and interpreted proposals.
 type CaptureInput struct {
+	Kind          string `json:"kind"`
+	NoteBody      string `json:"note_body"`
 	Title         string `json:"title"`
 	Details       string `json:"details"`
 	DueAt         string `json:"due_at"`
@@ -30,9 +33,32 @@ type CaptureProposal struct {
 }
 
 func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
-	p := CaptureProposal{Effects: []string{"task.create"}, Warnings: []string{}}
+	p := CaptureProposal{Effects: []string{}, Warnings: []string{}}
+	if input.Kind == "" {
+		input.Kind = "task"
+	}
+	if input.Kind != "task" && input.Kind != "reminder" && input.Kind != "note" {
+		return p, ErrCaptureKind
+	}
+	if input.Kind != "task" && (input.Details != "" || input.DueAt != "") {
+		return p, ErrCaptureKind
+	}
+	if input.Kind == "note" && (input.Title != "" || input.ReminderAt != "" || input.ReminderTitle != "" || input.Timezone != "" || input.Repeat != "") {
+		return p, ErrCaptureKind
+	}
+	if input.Kind == "reminder" && input.ReminderAt == "" {
+		return p, ErrInvalidReminder
+	}
+	if input.NoteBody != "" || input.Kind == "note" {
+		if err := validateNote(input.NoteBody); err != nil {
+			return p, err
+		}
+	}
+	if input.Kind == "task" {
+		p.Effects = append(p.Effects, "task.create")
+	}
 	input.Title = strings.TrimSpace(input.Title)
-	if !utf8.ValidString(input.Title) || len([]rune(input.Title)) < 1 || len([]rune(input.Title)) > 500 {
+	if input.Kind != "note" && (!utf8.ValidString(input.Title) || len([]rune(input.Title)) < 1 || len([]rune(input.Title)) > 500) {
 		return p, ErrInvalid
 	}
 	if !utf8.ValidString(input.Details) {
@@ -68,7 +94,10 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 		if input.Repeat != "" && input.Repeat != "daily" && input.Repeat != "weekly" {
 			return p, ErrInvalidRepeat
 		}
-		p.Effects = append(p.Effects, "reminder.create", "reminder.link_task", "delivery.queue")
+		p.Effects = append(p.Effects, "reminder.create", "delivery.queue")
+		if input.Kind == "task" {
+			p.Effects = append(p.Effects, "reminder.link_task")
+		}
 		at, _ := time.Parse(time.RFC3339Nano, input.ReminderAt)
 		if !at.After(time.Now()) {
 			p.Warnings = append(p.Warnings, "Reminder time is in the past; Atlas will deliver it when the scheduler next runs.")
@@ -80,7 +109,19 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 			p.Warnings = append(p.Warnings, "The task deadline is in the past; this task will be overdue.")
 		}
 	}
+	if input.NoteBody != "" {
+		p.Effects = append(p.Effects, "note.create")
+		if input.Kind == "task" {
+			p.Effects = append(p.Effects, "note.link_task")
+		}
+		if input.ReminderAt != "" {
+			p.Effects = append(p.Effects, "note.link_reminder")
+		}
+	}
 	input.PreviewID = fingerprint("capture.v1", input.Title, input.Details, input.DueAt, input.ReminderAt, input.ReminderTitle, input.Timezone, input.Repeat)
+	if input.Kind != "task" || input.NoteBody != "" {
+		input.PreviewID = fingerprint("capture.v2", input.Kind, input.Title, input.Details, input.DueAt, input.ReminderAt, input.ReminderTitle, input.Timezone, input.Repeat, input.NoteBody)
+	}
 	p.Input = input
 	return p, nil
 }
@@ -115,24 +156,31 @@ func (s *Store) CommitCapture(ctx context.Context, key string, input CaptureInpu
 	if replay {
 		return saved, true, tx.Commit()
 	}
-	id, err := newID()
-	if err != nil {
-		return saved, false, err
-	}
+
+	taskID, reminderID := "", ""
 	timestamp := now()
-	_, err = tx.ExecContext(ctx, "INSERT INTO tasks(id,title,status,created_at,updated_at,details,due_at) VALUES(?,?,'open',?,?,?,?)", id, input.Title, timestamp, timestamp, input.Details, input.DueAt)
-	if err == nil {
-		_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,'task.created',?)", id, timestamp)
+	saved = TaskAction{Reminders: []Reminder{}, Deliveries: []Delivery{}, Notes: []Note{}}
+	if input.Kind == "task" {
+		taskID, err = newID()
+		if err == nil {
+			_, err = tx.ExecContext(ctx, "INSERT INTO tasks(id,title,status,created_at,updated_at,details,due_at) VALUES(?,?,'open',?,?,?,?)", taskID, input.Title, timestamp, timestamp, input.Details, input.DueAt)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,'task.created',?)", taskID, timestamp)
+		}
 	}
 	if err == nil && input.ReminderAt != "" {
-		var reminderID string
 		reminderID, err = newID()
 		anchor := ""
+		taskTitle := ""
+		if taskID != "" {
+			taskTitle = input.Title
+		}
 		if input.Repeat != "" {
 			anchor = input.ReminderAt
 		}
 		if err == nil {
-			_, err = tx.ExecContext(ctx, "INSERT INTO reminders(id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,repeat,repeat_anchor) VALUES(?,?,'scheduled',?,?,?,?,?,?,?,?)", reminderID, input.ReminderTitle, input.ReminderAt, input.Timezone, timestamp, timestamp, id, input.Title, input.Repeat, anchor)
+			_, err = tx.ExecContext(ctx, "INSERT INTO reminders(id,title,status,scheduled_at,timezone,created_at,updated_at,task_id,task_title,repeat,repeat_anchor) VALUES(?,?,'scheduled',?,?,?,?,?,?,?,?)", reminderID, input.ReminderTitle, input.ReminderAt, input.Timezone, timestamp, timestamp, taskID, taskTitle, input.Repeat, anchor)
 		}
 		if err == nil {
 			err = queueDelivery(ctx, tx, reminderID, input.ReminderAt)
@@ -141,8 +189,23 @@ func (s *Store) CommitCapture(ctx context.Context, key string, input CaptureInpu
 			err = reminderActivity(ctx, tx, reminderID, "reminder.scheduled", timestamp)
 		}
 	}
-	if err == nil {
-		saved, err = taskAction(ctx, tx, id, false)
+	if err == nil && input.NoteBody != "" {
+		var note Note
+		note, err = createNoteInTransaction(ctx, tx, input.NoteBody, taskID, reminderID, timestamp)
+		if err == nil {
+			saved.Notes = append(saved.Notes, note)
+		}
+	}
+	if err == nil && taskID != "" {
+		saved, err = taskAction(ctx, tx, taskID, false)
+	}
+	if err == nil && taskID == "" && reminderID != "" {
+		var reminder Reminder
+		reminder, err = readReminder(ctx, tx, reminderID)
+		if err == nil {
+			saved.Reminders = append(saved.Reminders, reminder)
+			saved.Deliveries, err = readDeliveries(ctx, tx, "reminder_id=?", reminderID)
+		}
 	}
 	if err == nil {
 		err = saveReceipt(ctx, tx, "capture.commit", key, input.PreviewID, saved)

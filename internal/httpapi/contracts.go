@@ -29,6 +29,8 @@ func apiError(w http.ResponseWriter, status int, code, message string, retryable
 func failure(w http.ResponseWriter, e error) {
 	status, code, retryable := 500, "internal_error", false
 	switch {
+	case errors.Is(e, store.ErrCaptureKind):
+		status, code = 400, "invalid_capture_kind"
 	case errors.Is(e, store.ErrCapturePreview):
 		status, code = 409, "capture_preview_conflict"
 	case errors.Is(e, store.ErrCaptureKey):

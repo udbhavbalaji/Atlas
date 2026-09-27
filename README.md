@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. Persistent plain-text notes now link explicitly to tasks and reminders. Search finds text across tasks, reminders, and notes with type/status filters and direct record links. Unified capture previews and atomically saves a task with an optional linked reminder. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. Persistent plain-text notes now link explicitly to tasks and reminders. Search finds text across tasks, reminders, and notes with type/status filters and direct record links. Capture interprets common English sentences into reviewed tasks, reminders, and notes, with explicit fields for correction and atomic saving. Ambiguous or unsupported wording asks for clarification. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
 
 ## Run locally
 
@@ -342,7 +342,7 @@ Tasks are stored in `data/atlas.db`, independent of browser storage. Deletion is
 
 Expand **Details and deadline (optional)** when adding a task, or use **Edit** on an existing task. Set a description and explicit date/time, save, and refresh. Confirm the deadline displays in the indicated browser timezone. A past deadline on an open task shows **Overdue** and appears in the Overdue filter; completing it removes it from that filter. Edit and use **Clear deadline**, then Save, to remove the deadline. Empty details clear the description. Restart Atlas to verify both fields persist.
 
-Deadlines do not trigger notifications. Standalone reminder delivery and snoozing are available below; recurrence remains deferred.
+Deadlines do not trigger notifications. Standalone reminder delivery, snoozing, and daily/weekly recurrence are available below.
 
 ### Test fixed-time reminders
 

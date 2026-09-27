@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -2590,7 +2590,7 @@
     },
     "/api/v1/capture/preview": {
       "post": {
-        "description": "Explicit capture fields only. Preview validates and normalizes without saving. Confirm sends preview.input unchanged with a required Idempotency-Key. preview_id is a content identifier, not an authorization token. Past dates produce preview warnings.",
+        "description": "Validate explicit capture fields: default task, standalone reminder, or standalone note. Optional note_body links to all new action records. Preview never saves. Confirm unchanged preview.input with a required Idempotency-Key. preview_id identifies normalized content, not authorization. Capture returns TaskAction shape: task may be null, task_id empty, arrays contain captured records.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2647,7 +2647,7 @@
     },
     "/api/v1/capture/commit": {
       "post": {
-        "description": "Explicit capture fields only. Preview validates and normalizes without saving. Confirm sends preview.input unchanged with a required Idempotency-Key. preview_id is a content identifier, not an authorization token. Past dates produce preview warnings.",
+        "description": "Validate explicit capture fields: default task, standalone reminder, or standalone note. Optional note_body links to all new action records. Preview never saves. Confirm unchanged preview.input with a required Idempotency-Key. preview_id identifies normalized content, not authorization. Capture returns TaskAction shape: task may be null, task_id empty, arrays contain captured records.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2721,6 +2721,43 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/capture/interpret": {
+      "post": {
+        "description": "Local English rule interpreter. Uses server reference time; never persists. Ready results include a validated capture proposal; unresolved wording returns questions and null proposal. Clients must display the proposal and obtain confirmation before commit. One task or standalone reminder or standalone note, with optional linked note and task reminder.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterpretRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ready proposal or clarification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterpretResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_interpretation or strict JSON validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -3434,13 +3471,11 @@
       "CaptureInput": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "title"
-        ],
+        "required": [],
         "properties": {
           "title": {
             "type": "string",
-            "minLength": 1,
+            "minLength": 0,
             "maxLength": 500
           },
           "details": {
@@ -3469,8 +3504,74 @@
           },
           "preview_id": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "",
+              "task",
+              "reminder",
+              "note"
+            ],
+            "default": "task"
+          },
+          "note_body": {
+            "type": "string",
+            "maxLength": 10000
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "note"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "note_body"
+              ],
+              "properties": {
+                "note_body": {
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "required": [
+                "title"
+              ],
+              "properties": {
+                "title": {
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "reminder"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "reminder_at",
+                "timezone"
+              ]
+            }
+          }
+        ]
       },
       "CaptureCommitInput": {
         "allOf": [
@@ -3504,11 +3605,113 @@
                 "task.create",
                 "reminder.create",
                 "reminder.link_task",
-                "delivery.queue"
+                "delivery.queue",
+                "note.create",
+                "note.link_task",
+                "note.link_reminder"
               ]
             }
           },
           "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "InterpretRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "timezone"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone used for calendar and clock interpretation"
+          }
+        }
+      },
+      "InterpretQuestion": {
+        "type": "object",
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "InterpretResult": {
+        "type": "object",
+        "required": [
+          "status",
+          "engine",
+          "source",
+          "timezone",
+          "reference_at",
+          "draft",
+          "proposal",
+          "questions",
+          "assumptions"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "needs_clarification"
+            ]
+          },
+          "engine": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "reference_at": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "object",
+            "description": "Partial capture fields; not valid for commit until revalidated. May lack required times or title."
+          },
+          "proposal": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CaptureProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InterpretQuestion"
+            }
+          },
+          "assumptions": {
             "type": "array",
             "items": {
               "type": "string"
