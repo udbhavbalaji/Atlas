@@ -51,7 +51,7 @@ Clients should branch on `error.code`, not message text. Validation errors retur
 
 ## Manual test
 
-Open the **API testing panel** on the homepage. It uses real data on that server.
+Open the **API lab tab** on the homepage. It uses real data on that server.
 
 1. Choose **Create task**, send the default body, and inspect 201, ID, and Location.
 2. Click **Replay last request**. Expect 200, `replayed: true`, the same ID, and one task.

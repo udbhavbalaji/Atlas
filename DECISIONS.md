@@ -103,3 +103,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Expose direct task selection in the general reminder creation form and allow active reminders to attach, change, or remove their task link. Keep Add reminder on task cards. Notes are independent context links and do not establish task-reminder lifecycle relationships.
 
 **Consequences:** Targets must be open tasks. Schedule, recurrence, deliveries, and note links remain intact during attachment changes. Completed/cancelled reminders retain their link provenance. Repeated identical changes create no duplicate activity; changed links record activity atomically. The webpage and API testing panel expose these controls.
+
+## Focused feature tabs for manual testing
+
+**Status:** Accepted
+
+**Decision:** Organize the testing webpage into Tasks, Reminders, Notes, Activity, and API lab tabs, with a dark minimalist theme. Each feature includes a concise testing checklist, and only its current panel is visible. API inputs are shown when relevant to the selected endpoint.
+
+**Consequences:** New features must fit an existing feature tab or add a focused tab and manual test guide. Preserve form drafts when switching tabs; URL fragments identify the active panel. Cross-record shortcuts switch panels before navigating. Due reminders remain discoverable through a navigation badge. Tabs support keyboard navigation and phone layouts. This changes presentation without changing API or persistence semantics.

@@ -4,6 +4,7 @@ $('api-key').value=crypto.randomUUID();
 $('api-new-key').onclick=()=>{$('api-key').value=crypto.randomUUID();};
 $('api-endpoint').onchange=()=>{
  const [method,path]=$('api-endpoint').value.split(' ');
+ updateAPIFields(method,path);
  let body='';
  if(method==='POST'&&path==='tasks')body=JSON.stringify({title:'API test task'},null,2);
  if(method==='POST'&&path==='reminders')body=JSON.stringify({title:'API test reminder',scheduled_at:new Date(Date.now()+60000).toISOString(),timezone:zone},null,2);
@@ -36,3 +37,6 @@ $('api-send').onclick=()=>{
  sendAPIRequest({method,path,body:method==='GET'?'':$('api-body').value,key:creation?$('api-key').value:''});
 };
 $('api-replay').onclick=()=>{if(lastAPIRequest){if(lastAPIRequest.method==='DELETE'&&!lastAPIRequest.path.includes('/links/')&&!confirm('Replay the deletion request?'))return;sendAPIRequest(lastAPIRequest);}};
+
+function updateAPIFields(method,path){const creation=method==='POST'&&['tasks','reminders','notes'].includes(path);for(const [id,visible] of [['api-id-field',path.includes('{id}')],['api-kind-field',path.includes('{kind}')],['api-target-field',path.includes('{target}')],['api-occurrence-field',path.includes('{occurrence}')],['api-key-field',creation],['api-new-key',creation],['api-retry-hint',creation],['api-body-field',!['GET','DELETE','PUT'].includes(method)]])$(id).hidden=!visible;}
+updateAPIFields(...$('api-endpoint').value.split(' '));

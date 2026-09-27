@@ -26,8 +26,8 @@ function editNote(row,n){
 }
 function renderLinkedNotes(host,kind,id){
  const linked=notes.filter(n=>n.links.some(link=>link.target_type===kind&&link.target_id===id));
- const actions=document.createElement('div');actions.className='actions';actions.append(button('Add note',()=>{$(kind==='task'?'note-task':'note-reminder').value=id;$('note-section').scrollIntoView({behavior:'smooth',block:'start'});$('note-body').focus();}));host.append(actions);
+ const actions=document.createElement('div');actions.className='actions';actions.append(button('Add note',()=>{showFeature('notes');$(kind==='task'?'note-task':'note-reminder').value=id;$('note-section').scrollIntoView({behavior:'smooth',block:'start'});$('note-body').focus();}));host.append(actions);
  if(!linked.length)return;const section=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Linked notes ('+linked.length+')';section.append(summary);
- for(const n of linked){const body=document.createElement('p');body.className='description';body.textContent=n.body;section.append(body,button('View note',()=>{$('note-'+n.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}host.append(section);
+ for(const n of linked){const body=document.createElement('p');body.className='description';body.textContent=n.body;section.append(body,button('View note',()=>{showFeature('notes');$('note-'+n.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}host.append(section);
 }
 $('note-form').onsubmit=e=>{e.preventDefault();mutate(async()=>{await api('notes','POST',{body:$('note-body').value,task_id:$('note-task').value,reminder_id:$('note-reminder').value});$('note-body').value='';$('note-task').value='';$('note-reminder').value='';},'Note saved.');};
