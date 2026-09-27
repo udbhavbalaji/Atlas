@@ -5,7 +5,7 @@
 1. Start each feature from `development`: `git switch development`, then `git switch -c codex/<feature>`.
 2. Implement and verify the feature. Run `make check` and update relevant documentation.
 3. Commit on the feature branch and merge with `git merge --no-ff codex/<feature>` on `development`.
-4. At a major verified milestone, merge `development` into `main` with `--no-ff`.
+4. At a major verified milestone, make the case for promoting `development` into `main`. Wait for explicit user approval before merging with `--no-ff`. Never promote autonomously.
 
 ## Milestones
 
@@ -183,3 +183,26 @@ Open **Providers**. The screen must label everything as mock and mark Jev unavai
 6. In an isolated server, interrupt confirmation, restart, reload the same tab, and retry the retained proposal/key. Existing receipt recovery returns one saved result.
 
 Provider foundation introduces no migration. Contract tests cover schema/status violations, unexpected/unseen references, context limits and repeated requests, malformed reminder fields, atomic additions, idempotent capture, and unavailable-provider behavior. It does not replace live Capture conversations yet; wire Jev and durable provider sessions after verifying its actual interface.
+
+## Routing milestone and Jev setup
+
+The routing layer is implemented separately from the interim Capture interpreter. Open **Routing** to inspect the registry, probabilities and channel handoff. Channel field extraction currently requires explicit review/input.
+
+For Gateway access, save only the key (no quotes or assignment) in `/home/udawg_00/Developer/atlas/data/ai-gateway.key`. This directory is ignored by Git. Restrict the file to mode 600. Atlas reads it at startup; `AI_GATEWAY_API_KEY` takes precedence. Override its path with `-gateway-key-file`, or use an empty flag to disable file loading. No npm setup command is required. Vercel returned HTTP 403 requiring a credit card for this account; included credits did not bypass verification. User declined a card, so further live evaluations are paused. Do not silently substitute another model.
+
+Manual tests:
+
+1. Select Mock, Task, and enter the interview sentence. Evaluate: inspect five action probabilities and task channel questions. No action records are created.
+2. Supply the reviewed title and deadline. Choose Skip reminder / Skip note and Dispatch / preview. Confirm; verify one task only.
+3. Repeat with Add reminder / Add note, supply timing and contents, preview and confirm. Inspect canonical task/reminder/note links.
+4. Use the Reminder or Note fixture and exercise their required fields. They must not create an accidental task.
+5. Use Ambiguous: evaluation must wait for your explicit channel selection and dispatch click. Unsupported/malformed/unavailable cases must offer no confirmation.
+6. Change source/provider/context: evaluation is invalidated. Change channel fields: preview is invalidated without another evaluation. A restored uncertain confirmation retries the same storage key through reload/restart.
+7. Optional context search is bounded to five open tasks; only supplied IDs can be selected as prerequisite targets. Changing canonical state still requires reviewing the refreshed preview.
+8. When actual Gateway access becomes available, explicitly choose Jev and evaluate a synthetic sentence once. A repeated unchanged evaluation should return `cache_hit:true`, `model_calls:0`. Inspect the originating token usage and cost. Changing relevant context must miss the cache.
+
+Automated routing tests simulate HTTP/authentication, malformed output, cancellation, redirects, uncertainty, bounded caching/concurrent reuse, channel questions, token tampering, cross-server receipts and atomic idempotent capture. They make no actual Jev calls. The next natural-language milestone is channel-owned extraction/decision handling and durable conversations using the routing boundary.
+
+## Branch promotion policy
+
+Use feature branches from `development`; tested work may merge into `development`. Never merge into `main` without explicit user approval. At a substantial milestone, make the case for promotion with scope, verification and limitations, then await approval. This supersedes earlier autonomous main promotion guidance.

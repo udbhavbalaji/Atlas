@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.14.0",
+    "version": "1.15.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -3438,6 +3438,161 @@
           }
         }
       }
+    },
+    "/api/v1/routing": {
+      "get": {
+        "summary": "Registry and routing availability without inference",
+        "responses": {
+          "200": {
+            "description": "Registry and configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingRegistry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/routing/{provider}/evaluate": {
+      "post": {
+        "summary": "Evaluate the primary channel once; unchanged Jev decisions can use the cache",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mock",
+                "jev"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read-only routing decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured routing error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured routing error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured routing error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured routing error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/routing/dispatch": {
+      "post": {
+        "summary": "Channel questions or validated preview; no model call or persistence",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingDispatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Channel-owned field collection or proposal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingChannelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured routing or field error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured routing or field error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured routing or field error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5237,6 +5392,609 @@
           "trace",
           "response",
           "proposal"
+        ]
+      },
+      "RoutingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000,
+            "description": "Maximum 12000 UTF-8 bytes; stricter than character count for non-ASCII input."
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "context_query": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "fixture": {
+            "type": "string",
+            "enum": [
+              "task",
+              "reminder",
+              "note",
+              "ambiguous",
+              "clarify",
+              "unsupported",
+              "invalid",
+              "unavailable"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "request_id",
+          "text",
+          "timezone"
+        ]
+      },
+      "RoutingAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "description"
+        ]
+      },
+      "RoutingPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "min_probability": {
+            "type": "number"
+          },
+          "min_margin": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "min_probability",
+          "min_margin"
+        ]
+      },
+      "RoutingContextRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "due_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "due_at",
+          "updated_at"
+        ]
+      },
+      "RoutingState": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "reference_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "context": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/RoutingContextRecord"
+            }
+          },
+          "context_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "timezone",
+          "reference_at",
+          "context",
+          "context_truncated"
+        ]
+      },
+      "RoutingChoice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "choice"
+          },
+          "choice": {
+            "type": "string",
+            "enum": [
+              "task",
+              "reminder",
+              "note",
+              "clarify",
+              "unsupported"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "probabilities": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reminder": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "note": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "clarify": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "unsupported": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "task",
+              "reminder",
+              "note",
+              "clarify",
+              "unsupported"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "choice",
+          "confidence",
+          "probabilities"
+        ]
+      },
+      "RoutingUsage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "string",
+            "description": "Originating evaluation cost, not an additional charge on cache hits."
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens"
+        ]
+      },
+      "RoutingEvaluation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/RoutingChoice"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/RoutingUsage"
+          },
+          "model": {
+            "type": "string"
+          },
+          "cache_hit": {
+            "type": "boolean"
+          },
+          "model_calls": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "evaluated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "decision",
+          "usage",
+          "model",
+          "cache_hit",
+          "model_calls"
+        ]
+      },
+      "RoutingResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1"
+          },
+          "registry_version": {
+            "type": "string",
+            "const": "1"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "jev"
+            ]
+          },
+          "mock": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "routed",
+              "needs_clarification",
+              "unsupported"
+            ]
+          },
+          "selected_channel": {
+            "type": "string",
+            "enum": [
+              "",
+              "tasks",
+              "reminders",
+              "notes"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RoutingState"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/RoutingEvaluation"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy"
+          },
+          "routing_token": {
+            "type": "string"
+          },
+          "persisted": {
+            "const": false
+          }
+        },
+        "required": [
+          "version",
+          "registry_version",
+          "request_id",
+          "provider",
+          "mock",
+          "state",
+          "selected_channel",
+          "input",
+          "evaluation",
+          "policy",
+          "routing_token",
+          "persisted"
+        ]
+      },
+      "RoutingFields": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "details": {
+            "type": "string"
+          },
+          "due_at": {
+            "type": "string"
+          },
+          "reminder_at": {
+            "type": "string"
+          },
+          "reminder_title": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "string",
+            "enum": [
+              "",
+              "daily",
+              "weekly"
+            ]
+          },
+          "note_body": {
+            "type": "string"
+          },
+          "before_task_id": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "RoutingDispatchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1"
+          },
+          "routing_token": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "tasks",
+              "reminders",
+              "notes"
+            ]
+          },
+          "reviewed_channel": {
+            "type": "boolean"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/RoutingFields"
+          },
+          "reminder": {
+            "type": "string",
+            "enum": [
+              "",
+              "add",
+              "skip"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "enum": [
+              "",
+              "add",
+              "skip"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "routing_token"
+        ]
+      },
+      "RoutingChannelQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "value_type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "choice",
+              "rfc3339"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "field",
+          "value_type",
+          "prompt",
+          "required",
+          "choices"
+        ]
+      },
+      "RoutingChannelResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "tasks",
+              "reminders",
+              "notes"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "needs_fields",
+              "awaiting_confirmation"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "extraction": {
+            "type": "string",
+            "const": "explicit_fields"
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingChannelQuestion"
+            }
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "persisted": {
+            "const": false
+          }
+        },
+        "required": [
+          "version",
+          "channel",
+          "state",
+          "source",
+          "extraction",
+          "questions",
+          "proposal",
+          "persisted"
+        ]
+      },
+      "RoutingRegistry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1"
+          },
+          "registry_version": {
+            "type": "string",
+            "const": "1"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingAction"
+            }
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy"
+          },
+          "context_budget": {
+            "type": "object"
+          },
+          "persists_on_evaluation": {
+            "type": "boolean"
+          },
+          "token_lifetime_seconds": {
+            "type": "integer"
+          },
+          "cache": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ttl_seconds": {
+                "type": "integer"
+              },
+              "max_entries": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "ttl_seconds",
+              "max_entries"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "registry_version",
+          "actions",
+          "providers",
+          "policy",
+          "context_budget",
+          "persists_on_evaluation",
+          "token_lifetime_seconds",
+          "cache"
         ]
       }
     }
