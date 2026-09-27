@@ -20,9 +20,10 @@
 - [x] Fixed-time reminders with durable webpage inbox delivery, restart recovery, snooze, dismissal, and completion.
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
 - [ ] iPhone text client proving the capture-to-reminder loop.
-- [ ] Validated request orchestration and opt-in Jev interpretation.
+- [x] Validated capture orchestration and local English sentence interpretation.
+- [ ] Opt-in external reasoning-provider interpretation.
 
-The first main milestone covers tasks and fixed-time reminders. The second verified milestone adds task links, structured API contracts, and daily/weekly reminder recurrence, promoted through development into main. The third verified milestone adds linked notes, focused testing tabs, text search, and explicit atomic capture, promoted through development into main. Natural-language capture and external notifications remain future milestones.
+The first main milestone covers tasks and fixed-time reminders. The second verified milestone adds task links, structured API contracts, and daily/weekly reminder recurrence, promoted through development into main. The third verified milestone adds linked notes, focused testing tabs, text search, and explicit atomic capture, promoted through development into main. The fourth verified milestone adds atomic note/standalone capture and local English sentence interpretation, promoted through development into main. External reasoning providers and external notifications remain future milestones.
 
 ## Foundation API
 
@@ -39,7 +40,7 @@ All endpoints use `/api/v1`, except `GET /healthz`.
 
 IDs are random 128-bit hex strings. Timestamps are UTC RFC3339. Task titles are trimmed and limited to 500 Unicode code points. Invalid input returns 400, missing tasks 404, storage failures 500. JSON errors have an `error` field. Task writes and activity entries share one transaction. SQLite `user_version` tracks migrations; a newer database schema is rejected.
 
-Creation supports durable optional Idempotency-Key receipts; see [API.md](API.md) for the revision 2 contract and retry semantics. The responsive task interface is served at `/`. Durable webpage reminder delivery is implemented. Natural-language interpretation, authentication, PWA installation, and an offline queue are deferred. The service binds to loopback by default; keep it local during this stage.
+Creation supports durable optional Idempotency-Key receipts; see [API.md](API.md) for the revision 2 contract and retry semantics. The responsive task interface is served at `/`. Durable webpage reminder delivery is implemented. Local English sentence interpretation is available in Capture; external reasoning providers, authentication, PWA installation, and an offline queue are deferred. The service binds to loopback by default; keep it local during this stage.
 
 ## Task details and deadline contract
 
@@ -60,7 +61,7 @@ Reminder states: scheduled → due → dismissed/completed. Snoozing a scheduled
 
 Schema version 3 adds reminders, deliveries, and reminder references in activity history. Creation atomically writes reminder, queued delivery, and activity. The worker checks at startup and every second, processing up to 100 due deliveries per transaction. Delivery means publication into the durable webpage inbox, with a delivered timestamp and activity entry committed together. There is no external notification side effect. Failed transactions leave deliveries queued and are retried on the next tick. Snooze acknowledges delivered records, cancels queued ones, and creates a new queued delivery in one transaction. Completion acknowledges delivered records and cancels queued ones.
 
-The webpage polls every two seconds. The server must run for delivery; it catches up after downtime, and delivered inbox entries survive both browser closure and server restart. Push notifications, OS notifications, and natural-language interpretation are deferred. Daily/weekly recurrence is implemented as described below. Explicit timestamp offsets choose the intended instant during DST changes; the browser rejects nonexistent local times and uses the earlier occurrence for an ambiguous fall-back time. The API accepts explicit offsets for either occurrence.
+The webpage polls every two seconds. The server must run for delivery; it catches up after downtime, and delivered inbox entries survive both browser closure and server restart. Push and OS notifications are deferred; local sentence interpretation is available in Capture. Daily/weekly recurrence is implemented as described below. Explicit timestamp offsets choose the intended instant during DST changes; the browser rejects nonexistent local times and uses the earlier occurrence for an ambiguous fall-back time. The API accepts explicit offsets for either occurrence.
 
 ## Task links
 
@@ -124,4 +125,18 @@ Search introduces no database migration. It scans canonical records; index-backe
 6. In API lab select Preview capture, then copy response `input` into Confirm capture. Use a retry key; replay creates no duplicates. Change fields without regenerating preview to see `capture_preview_conflict`; regenerate and reuse the same committed key to see `idempotency_conflict`.
 7. In an isolated test server, stop Atlas after preview and click Confirm. Fields lock and Retry same confirmation appears. Restart Atlas, reload the same tab, and retry; one task/reminder is saved. Session storage preserves the body and key within that browser session.
 
-Atomic rollback, concurrent retry, receipt replay after restart/deletion, task-only capture, validation, and linked cancellation are covered by automated tests. Capture introduces no schema migration and does not interpret natural-language dates.
+Atomic rollback, concurrent retry, receipt replay after restart/deletion, task-only capture, validation, and linked cancellation are covered by automated tests. Capture introduces no schema migration. Its explicit preview endpoint does not interpret text; sentence interpretation is available separately.
+
+
+## Test sentence capture and notes
+
+1. In Capture enter `Call Mom tomorrow at 6pm; note: ask about the trip`, then Interpret sentence. Check the local date/time, task title, linked reminder, note body, and note link targets. Nothing is saved yet.
+2. Confirm and open each saved record. The note links to both the task and reminder. Reload and use Search to verify persistence.
+3. Start a new capture with `Remind me to drink water every day at 9am`. Confirm and verify a standalone recurring reminder with no task.
+4. Enter `Remember that the gate code is 1234`. Confirm and verify just a standalone note, with no accidental task or reminder.
+5. Enter `Call Mom tomorrow at 6`. There must be an AM/PM clarification and no confirmation button. Rewrite to `6pm`, or set explicit fields and Preview capture.
+6. Try `Task: finish report by Friday at 5pm; remind me tomorrow at 9am; note: include sales figures`. The task deadline and reminder are separate times. Edit the note before previewing again and confirm.
+7. Try missing time, invalid dates, monthly recurrence, and unclear record type. Inspect field/code/message questions via API lab. Correct the fields before preview/confirmation.
+8. Existing confirmation retry behavior remains: an interrupted confirmation preserves its exact request through same-tab reload. Note content participates in the fingerprint and receipt; changing it requires a new preview.
+
+The automated corpus covers supported phrasing, alternate word orders, Unicode content, AM/PM ambiguity, invalid dates, DST gaps/overlaps, calendar-day versus elapsed-hour intervals, and API interpretation-to-commit. Storage tests inject note-link failures and verify rollback of every record/link/activity/receipt. Browser tests use a separate database. This is a bounded local English interpreter, not unrestricted language understanding.
