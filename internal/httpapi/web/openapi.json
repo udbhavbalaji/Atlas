@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.7.0",
+    "version": "1.10.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -2647,7 +2647,7 @@
     },
     "/api/v1/capture/commit": {
       "post": {
-        "description": "Validate explicit capture fields: default task, standalone reminder, or standalone note. Optional note_body links to all new action records. Preview never saves. Confirm unchanged preview.input with a required Idempotency-Key. preview_id identifies normalized content, not authorization. Capture returns TaskAction shape: task may be null, task_id empty, arrays contain captured records.",
+        "description": "Validate explicit capture fields: default task, standalone reminder, or standalone note. Optional note_body links to all new action records. Preview never saves. Confirm unchanged preview.input with a required Idempotency-Key. preview_id identifies normalized content, not authorization. Capture returns TaskAction shape: task may be null, task_id empty, arrays contain captured records. A fresh dependency commit rechecks referenced task version and open status; capture_context_changed requires preview again. Receipt replay precedes context checks.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2725,7 +2725,7 @@
     },
     "/api/v1/capture/interpret": {
       "post": {
-        "description": "Local English rule interpreter. Uses server reference time; never persists. Ready results include a validated capture proposal; unresolved wording returns questions and null proposal. Clients must display the proposal and obtain confirmation before commit. One task or standalone reminder or standalone note, with optional linked note and task reminder.",
+        "description": "Local English rule interpreter. Uses server reference time; never persists. Ready results include a validated capture proposal; unresolved wording returns questions and null proposal. Clients must display the proposal and obtain confirmation before commit. One task or standalone reminder or standalone note, with optional linked note and task reminder. Explicit before/ahead-of references resolve open task titles; ambiguous matches require selection. Context is visible user input. Ordering does not infer a delivery time. Reminder actions also suggest related open tasks by topic overlap and a small explicit vocabulary bridge. Matching context creates a prerequisite task with its linked reminder. Dated context supplies a reviewed lead time (default one hour); explicit time overrides it. Undated context and past derived times require clarification. Minutes/hours/day/week offsets before tasks are supported; saved delivery times are fixed snapshots. Common English timing includes end of day/week/month, close of business, named morning/afternoon/evening/night defaults, half/quarter hours and couple intervals. Defaults are returned as assumptions; passed fixed named times return named_time_passed. See the Capture phrase guide and API.md for exact clocks.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2749,6 +2749,174 @@
           },
           "400": {
             "description": "invalid_interpretation or strict JSON validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/task-dependencies": {
+      "get": {
+        "description": "All dependency edges with canonical existence, status, and satisfaction. Deleted endpoints retain title snapshots.",
+        "responses": {
+          "200": {
+            "description": "Committed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskDependency"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{id}/before/{target}": {
+      "put": {
+        "description": "Idempotently attach prerequisite ordering; cycles and completed targets are rejected.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Committed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "description": "Idempotently remove ordering. Returns source state, or target state when source was deleted.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Committed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2969,6 +3137,12 @@
             "items": {
               "$ref": "#/components/schemas/Note"
             }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskDependency"
+            }
           }
         },
         "required": [
@@ -2977,7 +3151,8 @@
           "deleted",
           "reminders",
           "deliveries",
-          "notes"
+          "notes",
+          "dependencies"
         ],
         "additionalProperties": false
       },
@@ -3518,6 +3693,14 @@
           "note_body": {
             "type": "string",
             "maxLength": 10000
+          },
+          "before_task_id": {
+            "type": "string",
+            "description": "Optional existing open task that this new task must precede."
+          },
+          "before_task_version": {
+            "type": "string",
+            "description": "Snapshot fingerprint supplied by preview; return unchanged on commit."
           }
         },
         "allOf": [
@@ -3608,7 +3791,8 @@
                 "delivery.queue",
                 "note.create",
                 "note.link_task",
-                "note.link_reminder"
+                "note.link_reminder",
+                "task.dependency_added"
               ]
             }
           },
@@ -3617,6 +3801,16 @@
             "items": {
               "type": "string"
             }
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Task"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -3636,6 +3830,22 @@
           "timezone": {
             "type": "string",
             "description": "IANA timezone used for calendar and clock interpretation"
+          },
+          "context_task_id": {
+            "type": "string",
+            "description": "Optional explicit context selection, used only for a matching before/ahead-of reference."
+          },
+          "reminder_lead_minutes": {
+            "type": "integer",
+            "enum": [
+              0,
+              15,
+              60,
+              180,
+              1440
+            ],
+            "default": 60,
+            "description": "Visible lead time when a reminder has dated task context but no explicit time. 0 means default 60. 1440 uses one local calendar day."
           }
         }
       },
@@ -3669,7 +3879,9 @@
           "draft",
           "proposal",
           "questions",
-          "assumptions"
+          "assumptions",
+          "candidates",
+          "candidates_truncated"
         ],
         "properties": {
           "status": {
@@ -3716,8 +3928,82 @@
             "items": {
               "type": "string"
             }
+          },
+          "reference_query": {
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Task"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "candidates_truncated": {
+            "type": "boolean"
           }
         }
+      },
+      "TaskDependency": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "before_task_id": {
+            "type": "string"
+          },
+          "after_task_id": {
+            "type": "string"
+          },
+          "before_title": {
+            "type": "string"
+          },
+          "after_title": {
+            "type": "string"
+          },
+          "before_status": {
+            "type": "string"
+          },
+          "after_status": {
+            "type": "string"
+          },
+          "before_exists": {
+            "type": "boolean"
+          },
+          "after_exists": {
+            "type": "boolean"
+          },
+          "after_due_at": {
+            "type": "string"
+          },
+          "satisfied": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "before_task_id",
+          "after_task_id",
+          "before_title",
+          "after_title",
+          "before_status",
+          "after_status",
+          "before_exists",
+          "after_exists",
+          "after_due_at",
+          "satisfied",
+          "created_at"
+        ]
       }
     }
   }

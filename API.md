@@ -163,3 +163,30 @@ Supported time forms include today/tomorrow/day after tomorrow with a clock; wee
 Ambiguous am/pm, incomplete dates/times, conflicting dates/rules, unsupported repeats, and missing/repeated local clocks return clarification. The webpage's explicit local-time fields use the earlier instant for DST overlap; API callers can supply an offset timestamp for either instant. Monthly/custom repeats, vague times such as tonight/later, timezone abbreviations in sentences, fractional/compound intervals, multilingual interpretation, general semantic inference, and model-provider integration remain unsupported. Some unrecognized wording may need manual type/title corrections: confirmation always shows what will be created. No external model call or network transmission occurs.
 
 Capture note/kind proposals use a new fingerprint version; legacy task-only proposals and pending retry receipts continue to work. No database migration is required.
+
+### Task context and dependencies
+
+`POST /api/v1/capture/interpret` accepts optional `context_task_id`. Explicit `before`/`ahead of` references match open task title tokens. A unique match produces a proposal; multiple matches return `ambiguous_context`, candidates (at most 20), and no proposal. `before that` uses visible selected context, or requires disambiguation when multiple tasks are open. Notes keep their wording literal.
+
+Capture preview accepts `before_task_id` for task captures and supplies `before_task_version` plus `reference`. Commit must return normalized preview input unchanged. Changed, completed or deleted references produce 409 `capture_context_changed`, with no partial records. Preview again; an existing successful receipt still replays its original snapshot. Ordering alone copies no deadline and creates no reminder. Explicit reminder times and linked notes can coexist. Reminder requests and explicit relative offsets can derive timing from a dated context task; see contextual reminder timing below.
+
+- `GET /api/v1/task-dependencies`: array of directed edges with endpoint titles/status/existence, referenced deadline and `satisfied` (existing prerequisite is completed).
+- `PUT /api/v1/tasks/{id}/before/{target}`: attach ordering; source precedes target. Empty body or `{}`. Returns `TaskAction`.
+- `DELETE /api/v1/tasks/{id}/before/{target}`: remove ordering; returns source state, or surviving target state if source was deleted.
+
+TaskAction includes `dependencies: []` for both directions. Cycles return 409 `dependency_cycle`; invalid input or completed target returns 400 `invalid_dependency`; missing resources return 404. Duplicate attach/remove does not duplicate activity. Deletion preserves historical edge titles until unlinking; completion is informational and is not blocked by prerequisites.
+
+
+### Contextual reminder timing
+
+Interpretation accepts `reminder_lead_minutes` (0/default=60, or 15/60/180/1440). Reminder actions suggest open tasks through meaningful shared title tokens, with a small resume/interview vocabulary bridge. This is local heuristic matching, not general semantic understanding. Multiple matches require selection; `context_task_id` can explicitly select any open task for an implicit context request. Notes and ordinary task-only sentences do not infer ordering from topical similarity.
+
+Matched reminder actions become a new prerequisite task with a reminder directly linked to that new task. The reference and assumptions are always shown. An explicit reminder time wins; otherwise a dated reference supplies the selected lead time, default one hour. “One day before my interview” and numeric/word offsets of 1–365 minutes, hours, days or weeks resolve against the reference deadline. Days/weeks preserve local clock time and require clarification at DST gaps/overlaps. Unsupported month offsets, competing delivery times, undated references and past derived times require clarification. `context_missing_deadline` distinguishes successful context lookup from missing timing.
+
+Preview/commit snapshot checks apply to the reference; no new persistence schema is required. Once saved, delivery time is fixed: changing the reference deadline later does not reschedule it. Exact time, reference and assumptions must be reviewed before confirmation.
+
+### Common English time phrases
+
+End of day / EOD resolves to today 23:59 in the supplied timezone; end of tomorrow to tomorrow 23:59. End of week / EOW means this Sunday 23:59, including the current Sunday; end of month / EOM means the last calendar day 23:59. Close of business / COB / end of work day means 17:00 on the stated day, without a holiday calendar. Named periods without a clock use visible defaults: morning 09:00, afternoon 15:00, evening 18:00, tonight/night 20:00. “This” names today; “next morning” means tomorrow morning. An explicit clock is respected and conflicting periods require clarification.
+
+“In/after half an hour” resolves to 30 elapsed minutes, a quarter hour to 15 minutes, and a couple of units to two units. Existing day/week calendar and DST rules apply. Named fixed times that already passed return `named_time_passed`; they never silently move to tomorrow. Phrases with conflicting suffixes remain unresolved. All defaults appear as assumptions. For reminder requests “by” resolves delivery timing, while task requests use it for deadlines. Existing topical context can coexist with explicit end-of-day timing even when that context task has no deadline.

@@ -19,15 +19,19 @@ type Question struct {
 	Message string `json:"message"`
 }
 type Result struct {
-	Status      string                 `json:"status"`
-	Engine      string                 `json:"engine"`
-	Source      string                 `json:"source"`
-	Timezone    string                 `json:"timezone"`
-	ReferenceAt string                 `json:"reference_at"`
-	Draft       store.CaptureInput     `json:"draft"`
-	Proposal    *store.CaptureProposal `json:"proposal"`
-	Questions   []Question             `json:"questions"`
-	Assumptions []string               `json:"assumptions"`
+	ReferenceQuery      string                 `json:"reference_query"`
+	Reference           *store.Task            `json:"reference"`
+	Candidates          []store.Task           `json:"candidates"`
+	CandidatesTruncated bool                   `json:"candidates_truncated"`
+	Status              string                 `json:"status"`
+	Engine              string                 `json:"engine"`
+	Source              string                 `json:"source"`
+	Timezone            string                 `json:"timezone"`
+	ReferenceAt         string                 `json:"reference_at"`
+	Draft               store.CaptureInput     `json:"draft"`
+	Proposal            *store.CaptureProposal `json:"proposal"`
+	Questions           []Question             `json:"questions"`
+	Assumptions         []string               `json:"assumptions"`
 }
 
 var notePrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:note\s*:|note that\s+|take a note\s*:?|make a note(?: that)?\s*:?|save a note(?: that)?\s*:?|(?:i need to |i want to )?remember that\s+)\s*`)
@@ -38,11 +42,11 @@ var linkedClause = regexp.MustCompile(`(?i)(?:[;,]\s*|\s+and\s+)(?:remind me(?: 
 
 var imperative = regexp.MustCompile(`(?i)^(?:please\s+)?(?:call|buy|pay|email|send|finish|submit|review|book|schedule|take|walk|water|pick up|collect|check|read|write|prepare|do|clean|visit|meet|bring|order|renew|cancel|follow up|plan|test|update|build|fix|make|get|go|learn|practice|exercise|drink|return|ask|contact|wash|feed|pack|file|complete|charge|print)\b`)
 var unsupportedAction = regexp.MustCompile(`(?i)\b(?:and|then|also) (?:call|buy|pay|email|send|finish|submit|book|create|add|remind)\b|^(?:don't|do not|never)\b|[;\n]|\.\s+(?:call|buy|pay|email|send|finish|submit|book|create|add|remind)\b`)
-var timingStart = regexp.MustCompile(`(?i)\b(?:by\s+|due\s+|day after tomorrow\b|tomorrow\b|today\b|tonight\b|every\b|daily\b|weekly\b|monthly\b|weekdays\b|weekends\b|yearly\b|annually\b|biweekly\b|once a month\b|(?:next\s+|on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{4}-\d{2}-\d{2}\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d|in\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\b|\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\d{1,2}:\d{2}\b|at\s+(?:\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|noon\b|midnight\b)|later\b|next week\b|next month\b|after lunch\b|this (?:morning|evening|afternoon)\b|on\s+\d)`)
+var timingStart = regexp.MustCompile(`(?i)\b(?:by\s+|due\s+|(?:the )?end of (?:the |this )?(?:day|today|tomorrow|week|month|business day|work day|workday)\b|(?:eod|eow|eom|cob)\b|close of business\b|day after tomorrow\b|tomorrow\b|today\b|tonight\b|every\b|daily\b|weekly\b|monthly\b|weekdays\b|weekends\b|yearly\b|annually\b|biweekly\b|once a month\b|(?:next\s+|on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{4}-\d{2}-\d{2}\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d|(?:in|after)\s+(?:half (?:an? )?hour|a half hour|a quarter (?:of an? )?hour|quarter of an? hour|(?:a )?couple(?: of)? (?:seconds?|minutes?|hours?|days?|weeks?))\b|(?:in|after)\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\b|\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\d{1,2}:\d{2}\b|at\s+(?:\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|noon\b|midnight\b)|later\b|next week\b|next month\b|after lunch\b|(?:this|next) (?:morning|evening|afternoon|night)\b|on\s+\d)`)
 
 func Interpret(text, zone string, reference time.Time) (Result, error) {
 	text = strings.TrimSpace(text)
-	r := Result{Engine: "local-english-v1", Source: text, Timezone: zone, ReferenceAt: reference.UTC().Format(time.RFC3339Nano), Questions: []Question{}, Assumptions: []string{}}
+	r := Result{Engine: "local-english-v1", Source: text, Timezone: zone, ReferenceAt: reference.UTC().Format(time.RFC3339Nano), Candidates: []store.Task{}, Questions: []Question{}, Assumptions: []string{}}
 	if !utf8.ValidString(text) || len([]rune(text)) == 0 || len([]rune(text)) > 12000 || zone == "" || zone == "Local" {
 		return r, ErrInput
 	}

@@ -116,3 +116,94 @@ func TestSentenceToAtomicRecords(t *testing.T) {
 	w = request("interpret", map[string]string{"text": "Buy milk", "timezone": "unknown"}, "")
 	assertErrorCode(t, w, 400, "invalid_interpretation")
 }
+
+func TestContextCaptureAPI(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	target, e := s.Create(t.Context(), "Interview at Ather")
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := Handler(s)
+	send := func(method, path string, value any, key string) *httptest.ResponseRecorder {
+		b, _ := json.Marshal(value)
+		r := httptest.NewRequest(method, "/api/v1/"+path, bytes.NewReader(b))
+		if key != "" {
+			r.Header.Set("Idempotency-Key", key)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	w := send("POST", "capture/interpret", map[string]string{"text": "Print resume before interview at Ather", "timezone": "UTC"}, "")
+	var r struct {
+		Status   string                 `json:"status"`
+		Proposal *store.CaptureProposal `json:"proposal"`
+	}
+	if e = json.Unmarshal(w.Body.Bytes(), &r); e != nil || w.Code != 200 || r.Status != "ready" || r.Proposal == nil || r.Proposal.Reference.ID != target.ID {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	w = send("POST", "capture/commit", r.Proposal.Input, "context-key")
+	var action store.TaskAction
+	if e = json.Unmarshal(w.Body.Bytes(), &action); e != nil || w.Code != 201 || len(action.Dependencies) != 1 || action.Dependencies[0].AfterTaskID != target.ID {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	w = send("PUT", "tasks/"+target.ID+"/before/"+action.TaskID, struct{}{}, "")
+	assertErrorCode(t, w, 409, "dependency_cycle")
+	w = send("GET", "task-dependencies", nil, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"satisfied":false`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w = send("GET", "tasks/"+action.TaskID+"/before/"+target.ID, nil, "")
+	assertErrorCode(t, w, 405, "method_not_allowed")
+	p, e := s.CapturePreview(t.Context(), store.CaptureInput{Title: "Another prerequisite", BeforeTaskID: target.ID})
+	if e != nil {
+		t.Fatal(e)
+	}
+	s.Complete(t.Context(), target.ID)
+	w = send("POST", "capture/commit", p.Input, "stale-context")
+	assertErrorCode(t, w, 409, "capture_context_changed")
+	tasks, _ := s.Tasks(t.Context())
+	if len(tasks) != 2 {
+		t.Fatal(tasks)
+	}
+	w = send("POST", "capture/commit", r.Proposal.Input, "context-key")
+	if w.Code != 200 || w.Header().Get("Idempotency-Replayed") != "true" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestContextReminderLeadAPI(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	target, e := s.CreateWithFields(t.Context(), "Movie with mummy", "", "2090-01-03T18:00:00Z")
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := Handler(s)
+	send := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/capture/interpret", strings.NewReader(body)))
+		return w
+	}
+	w := send(`{"text":"Remind me to book movie tickets","timezone":"UTC","reminder_lead_minutes":180}`)
+	var r struct {
+		Status   string                 `json:"status"`
+		Proposal *store.CaptureProposal `json:"proposal"`
+	}
+	if e = json.Unmarshal(w.Body.Bytes(), &r); e != nil || w.Code != 200 || r.Status != "ready" || r.Proposal == nil || r.Proposal.Input.BeforeTaskID != target.ID || r.Proposal.Input.ReminderAt != "2090-01-03T15:00:00.000000000Z" {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	for _, body := range []string{`{"text":"Remind me to book movie tickets","timezone":"UTC","reminder_lead_minutes":7}`, `{"text":"Remind me to book movie tickets","timezone":"UTC","reminder_lead_minutes":null}`} {
+		w = send(body)
+		if w.Code != 400 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+}

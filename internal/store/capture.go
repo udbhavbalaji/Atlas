@@ -15,21 +15,24 @@ var ErrCaptureReminder = errors.New("reminder title, timezone, and repeat requir
 
 // CaptureInput is the validated boundary for explicit and interpreted proposals.
 type CaptureInput struct {
-	Kind          string `json:"kind"`
-	NoteBody      string `json:"note_body"`
-	Title         string `json:"title"`
-	Details       string `json:"details"`
-	DueAt         string `json:"due_at"`
-	ReminderAt    string `json:"reminder_at"`
-	ReminderTitle string `json:"reminder_title"`
-	Timezone      string `json:"timezone"`
-	Repeat        string `json:"repeat"`
-	PreviewID     string `json:"preview_id,omitempty"`
+	BeforeTaskID      string `json:"before_task_id"`
+	BeforeTaskVersion string `json:"before_task_version"`
+	Kind              string `json:"kind"`
+	NoteBody          string `json:"note_body"`
+	Title             string `json:"title"`
+	Details           string `json:"details"`
+	DueAt             string `json:"due_at"`
+	ReminderAt        string `json:"reminder_at"`
+	ReminderTitle     string `json:"reminder_title"`
+	Timezone          string `json:"timezone"`
+	Repeat            string `json:"repeat"`
+	PreviewID         string `json:"preview_id,omitempty"`
 }
 type CaptureProposal struct {
-	Input    CaptureInput `json:"input"`
-	Effects  []string     `json:"effects"`
-	Warnings []string     `json:"warnings"`
+	Reference *Task        `json:"reference"`
+	Input     CaptureInput `json:"input"`
+	Effects   []string     `json:"effects"`
+	Warnings  []string     `json:"warnings"`
 }
 
 func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
@@ -39,6 +42,12 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 	}
 	if input.Kind != "task" && input.Kind != "reminder" && input.Kind != "note" {
 		return p, ErrCaptureKind
+	}
+	if (input.BeforeTaskID != "" || input.BeforeTaskVersion != "") && (input.Kind != "task" || !taskIDPattern.MatchString(input.BeforeTaskID) || !versionPattern.MatchString(input.BeforeTaskVersion)) {
+		return p, ErrDependency
+	}
+	if input.BeforeTaskID != "" {
+		p.Effects = append(p.Effects, "task.dependency_added")
 	}
 	if input.Kind != "task" && (input.Details != "" || input.DueAt != "") {
 		return p, ErrCaptureKind
@@ -122,6 +131,9 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 	if input.Kind != "task" || input.NoteBody != "" {
 		input.PreviewID = fingerprint("capture.v2", input.Kind, input.Title, input.Details, input.DueAt, input.ReminderAt, input.ReminderTitle, input.Timezone, input.Repeat, input.NoteBody)
 	}
+	if input.BeforeTaskID != "" {
+		input.PreviewID = fingerprint("capture.v3", input.Kind, input.Title, input.Details, input.DueAt, input.ReminderAt, input.ReminderTitle, input.Timezone, input.Repeat, input.NoteBody, input.BeforeTaskID, input.BeforeTaskVersion)
+	}
 	p.Input = input
 	return p, nil
 }
@@ -154,12 +166,27 @@ func (s *Store) CommitCapture(ctx context.Context, key string, input CaptureInpu
 		return saved, false, err
 	}
 	if replay {
+		if saved.Dependencies == nil {
+			saved.Dependencies = []TaskDependency{}
+		}
 		return saved, true, tx.Commit()
 	}
 
+	if input.BeforeTaskID != "" {
+		target, e := readTask(ctx, tx, input.BeforeTaskID)
+		if errors.Is(e, ErrNotFound) {
+			return saved, false, ErrCaptureContext
+		}
+		if e != nil {
+			return saved, false, e
+		}
+		if target.Status != "open" || taskVersion(target) != input.BeforeTaskVersion {
+			return saved, false, ErrCaptureContext
+		}
+	}
 	taskID, reminderID := "", ""
 	timestamp := now()
-	saved = TaskAction{Reminders: []Reminder{}, Deliveries: []Delivery{}, Notes: []Note{}}
+	saved = TaskAction{Dependencies: []TaskDependency{}, Reminders: []Reminder{}, Deliveries: []Delivery{}, Notes: []Note{}}
 	if input.Kind == "task" {
 		taskID, err = newID()
 		if err == nil {
@@ -168,6 +195,9 @@ func (s *Store) CommitCapture(ctx context.Context, key string, input CaptureInpu
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "INSERT INTO activity(task_id,action,timestamp) VALUES(?,'task.created',?)", taskID, timestamp)
 		}
+	}
+	if err == nil && input.BeforeTaskID != "" {
+		err = addDependency(ctx, tx, taskID, input.BeforeTaskID)
 	}
 	if err == nil && input.ReminderAt != "" {
 		reminderID, err = newID()

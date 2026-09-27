@@ -367,3 +367,7 @@ Delivery currently means the webpage inbox, not an OS or phone push notification
 Task deadlines and reminder times remain separate; changing a deadline does not automatically reschedule a reminder.
 
 On linked reminders (including reminder history), **Complete task too** completes the linked open task and cancels its active reminders atomically. It is also available under the task’s Linked reminders. Completing only a reminder leaves the task open.
+
+### Test contextual capture
+
+Create “Interview at Ather” in Tasks, then enter “Print my resume before my interview at Ather” in Capture. Review and confirm the named relationship; no date is needed. For “before that,” choose the interview in Context task when more than one task is open. Expand Task dependencies on either task to inspect ordering, view the related record or remove the link. Completing the prerequisite shows it as satisfied. Existing tasks can also be connected with Add dependency. Reminder requests can use a dated context deadline and a visible lead time, or a phrase such as “one day before my interview.” Undated context still needs a reminder time.
