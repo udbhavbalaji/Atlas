@@ -6,6 +6,8 @@ $('api-endpoint').onchange=()=>{
  const [method,path]=$('api-endpoint').value.split(' ');
  updateAPIFields(method,path);
  let body='';
+ if(path==='capture/preview')body=JSON.stringify({title:'API capture task'},null,2);
+ if(path==='capture/commit')body=JSON.stringify({title:'API capture task',preview_id:'Copy preview.input here before confirming'},null,2);
  if(method==='POST'&&path==='tasks')body=JSON.stringify({title:'API test task'},null,2);
  if(method==='POST'&&path==='reminders')body=JSON.stringify({title:'API test reminder',scheduled_at:new Date(Date.now()+60000).toISOString(),timezone:zone},null,2);
  if(path.endsWith('/acknowledge'))body=JSON.stringify({action:'complete'},null,2);
@@ -33,10 +35,10 @@ $('api-send').onclick=()=>{
  if(method==='DELETE'&&!template.includes('/links/')&&!confirm(template.startsWith('notes/')?'Permanently delete this note?':'Permanently delete this task and cancel its linked reminders?'))return;
  if(template.includes('{occurrence}')&&!$('api-occurrence-id').value.trim()){$('api-response').textContent='Enter an occurrence ID from reminder state.';return;}
  if(template.includes('{target}')&&!$('api-link-target').value.trim()){$('api-response').textContent='Enter a link target ID.';return;}
- let path=template.replace('{id}',encodeURIComponent(id)).replace('{occurrence}',encodeURIComponent($('api-occurrence-id').value.trim())).replace('{kind}',$('api-link-kind').value).replace('{target}',encodeURIComponent($('api-link-target').value.trim()));if(path==='search')path+='?'+$('api-search-query').value;const creation=method==='POST'&&(path==='tasks'||path==='reminders'||path==='notes');
+ let path=template.replace('{id}',encodeURIComponent(id)).replace('{occurrence}',encodeURIComponent($('api-occurrence-id').value.trim())).replace('{kind}',$('api-link-kind').value).replace('{target}',encodeURIComponent($('api-link-target').value.trim()));if(path==='search')path+='?'+$('api-search-query').value;const creation=method==='POST'&&(path==='tasks'||path==='reminders'||path==='notes'||path==='capture/commit');
  sendAPIRequest({method,path,body:method==='GET'?'':$('api-body').value,key:creation?$('api-key').value:''});
 };
 $('api-replay').onclick=()=>{if(lastAPIRequest){if(lastAPIRequest.method==='DELETE'&&!lastAPIRequest.path.includes('/links/')&&!confirm('Replay the deletion request?'))return;sendAPIRequest(lastAPIRequest);}};
 
-function updateAPIFields(method,path){const creation=method==='POST'&&['tasks','reminders','notes'].includes(path);for(const [id,visible] of [['api-search-field',path==='search'],['api-id-field',path.includes('{id}')],['api-kind-field',path.includes('{kind}')],['api-target-field',path.includes('{target}')],['api-occurrence-field',path.includes('{occurrence}')],['api-key-field',creation],['api-new-key',creation],['api-retry-hint',creation],['api-body-field',!['GET','DELETE','PUT'].includes(method)]])$(id).hidden=!visible;}
+function updateAPIFields(method,path){const creation=method==='POST'&&['tasks','reminders','notes','capture/commit'].includes(path);for(const [id,visible] of [['api-search-field',path==='search'],['api-id-field',path.includes('{id}')],['api-kind-field',path.includes('{kind}')],['api-target-field',path.includes('{target}')],['api-occurrence-field',path.includes('{occurrence}')],['api-key-field',creation],['api-new-key',creation],['api-retry-hint',creation],['api-body-field',!['GET','DELETE','PUT'].includes(method)]])$(id).hidden=!visible;}
 updateAPIFields(...$('api-endpoint').value.split(' '));

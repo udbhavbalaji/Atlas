@@ -1,5 +1,5 @@
 'use strict';
-const featureNames=['tasks','reminders','notes','search','activity','api'];
+const featureNames=['capture','tasks','reminders','notes','search','activity','api'];
 function showFeature(name,{focus=false,updateURL=true}={}){
  name=name.split('/')[0];
  if(!featureNames.includes(name))name='tasks';

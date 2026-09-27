@@ -119,3 +119,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Search task titles/details, reminder titles, and note bodies with literal Unicode lowercase substring matching. Read canonical tables in one SQLite snapshot; return bounded pages of structured results with matched fields, snippets, and webpage/API record links. Add a dedicated Search testing tab and API lab endpoint.
 
 **Consequences:** No migration or duplicate index state is required. Type/status filters and strict query validation keep API behavior explicit. Results are newest first; pages may shift between requests after writes. The initial scan targets personal datasets. Indexed full-text search, ranking, stemming, and semantic search are deferred. Record links reveal completed tasks and reminder history and survive reloads.
+
+## Explicit unified capture with atomic confirmation
+
+**Status:** Accepted
+
+**Decision:** Add a Capture testing tab and preview/commit APIs for one task and an optional directly linked reminder. Start with explicit validated fields. Preview has no persistence effects, exposes normalized input, planned effects, and warnings, and identifies content with a versioned fingerprint. Confirmation requires unchanged content and a durable retry key; records, delivery, activity, and receipt commit together.
+
+**Consequences:** Browser edits invalidate preview. Uncertain confirmation preserves its exact request in session storage and locks editing until retry succeeds. A fingerprint identifies content and does not enforce authorization; clients own user confirmation. Existing lifecycle cancellation, recurrence, and receipt semantics apply. No migration is required. Natural-language interpretation, saved drafts, note capture, and multi-step general orchestration remain future work.
