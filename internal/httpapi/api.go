@@ -14,7 +14,8 @@ func Handler(s *store.Store) http.Handler {
 	mux := http.NewServeMux()
 	reminderRoutes(mux, s)
 	noteRoutes(mux, s)
-	for path, file := range map[string]string{"/": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
+	searchRoutes(mux, s)
+	for path, file := range map[string]string{"/": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
 		pattern := "GET " + path
 		if path == "/" {
 			pattern = "GET /{$}"

@@ -70,6 +70,7 @@ async function load(preserveEdits = false) {
   const [next, activity, nextReminders, deliveries,nextNotes] = await Promise.all([api('tasks'), api('activity'), api('reminders'), api('deliveries'),api('notes')]); if(preserveEdits && (busy || document.querySelector('.task .edit')))return; reminders=nextReminders; tasks = next; notes=nextNotes; if(typeof renderNotes==='function')renderNotes();renderReminders(deliveries); render(); $('activity').replaceChildren();
   const names = {'note.created':'Note added','note.updated':'Note changed','note.deleted':'Note deleted','note.linked':'Note linked','note.unlinked':'Note unlinked','task.created':'Task added', 'task.completed':'Task completed', 'task.updated':'Task changed', 'task.deleted':'Task deleted', 'reminder.task_linked':'Reminder linked to task','reminder.task_unlinked':'Reminder task link removed','reminder.scheduled':'Reminder scheduled', 'reminder.delivered':'Reminder delivered to inbox', 'reminder.snoozed':'Reminder snoozed', 'reminder.dismissed':'Reminder dismissed', 'reminder.occurrence.complete':'Repeat occurrence completed', 'reminder.occurrence.dismiss':'Repeat occurrence dismissed', 'reminder.completed':'Reminder completed', 'reminder.cancelled.task.completed':'Reminder cancelled because task completed', 'reminder.cancelled.task.deleted':'Reminder cancelled because task deleted'};
   for (const a of activity) { const li = document.createElement('li'); const task = a.note_id ? notes.find(n=>n.id===a.note_id) : a.reminder_id ? reminders.find(r => r.id === a.reminder_id) : tasks.find(t => t.id === a.task_id); li.textContent = (names[a.action] || a.action) + (task ? ': ' + (task.title||'Note '+task.id.slice(0,8)) : '') + ' · ' + new Date(a.timestamp).toLocaleString(); $('activity').append(li); }
+  if(typeof revealURLRecord==='function')revealURLRecord();
   if (!activity.length) { const li = document.createElement('li'); li.textContent = 'Your activity will appear here.'; $('activity').append(li); }
 }
 async function mutate(operation, success) {
@@ -92,7 +93,7 @@ function renderReminders(deliveries) {
  for(const id of ['reminder-inbox','reminder-upcoming','reminder-history','delivery-history']) $(id).replaceChildren();
  $('inbox-heading').textContent = 'Reminder inbox (' + reminders.filter(r => r.status === 'due').length + ')';
  for(const r of reminders) {
- const row=document.createElement('article');row.className='task'+(r.status==='due'?' reminder-due':'');
+ const row=document.createElement('article');row.id='reminder-'+r.id;row.className='task'+(r.status==='due'?' reminder-due':'');
  const title=document.createElement('h2');title.className='title';title.textContent=r.title;
  const when=document.createElement('p');when.className='meta';when.textContent=reminderStatus(r)+' · '+new Date(r.scheduled_at).toLocaleString()+' ('+zone+')';
  const actions=document.createElement('div');actions.className='actions';
