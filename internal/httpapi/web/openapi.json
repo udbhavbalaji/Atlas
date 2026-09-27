@@ -4327,6 +4327,10 @@
           },
           "continuation": {
             "$ref": "#/components/schemas/CaptureContinuation"
+          },
+          "event": {
+            "type": "boolean",
+            "description": "Interim interpreter recognized an event statement. Its time sets task due_at and, absent an explicit reminder clause, a linked reminder."
           }
         }
       },
