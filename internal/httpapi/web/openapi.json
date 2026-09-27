@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.13.0",
+    "version": "1.14.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -3296,6 +3296,148 @@
           }
         ]
       }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "description": "Availability manifest. Jev is not connected. Only fixture-driven mock is available.",
+        "responses": {
+          "200": {
+            "description": "Manifest and fixed context budgets"
+          }
+        }
+      }
+    },
+    "/api/v1/providers/mock/preview": {
+      "post": {
+        "description": "Read-only Atlas provider harness. This is not Jev transport. Continue by resubmitting explicit answers. Review before capture/commit.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MockProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clarifications or validated preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or context budget",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/ProviderFailureResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Provider proposal rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/ProviderFailureResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Provider unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message",
+                        "retryable"
+                      ]
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/ProviderFailureResult"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4775,6 +4917,327 @@
             }
           }
         }
+      },
+      "ProviderAnswers": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "context_task_id": {
+            "type": "string"
+          },
+          "reminder": {
+            "type": "string"
+          },
+          "reminder_at": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "note_body": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "MockProviderRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "scenario": {
+            "enum": [
+              "task",
+              "context",
+              "note",
+              "invalid",
+              "unavailable"
+            ]
+          },
+          "context_query": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "answers": {
+            "$ref": "#/components/schemas/ProviderAnswers"
+          }
+        },
+        "required": [
+          "version",
+          "request_id",
+          "text",
+          "timezone",
+          "scenario"
+        ]
+      },
+      "ProviderContextRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          }
+        },
+        "required": [
+          "query",
+          "limit"
+        ]
+      },
+      "ProviderQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "context_task_id",
+              "reminder",
+              "reminder_at",
+              "note",
+              "note_body"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "choices": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "field",
+          "prompt",
+          "required",
+          "choices"
+        ]
+      },
+      "ProviderResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "const": "1"
+          },
+          "status": {
+            "enum": [
+              "needs_context",
+              "needs_clarification",
+              "ready"
+            ]
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderQuestion"
+            }
+          },
+          "context_requests": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ProviderContextRequest"
+            }
+          },
+          "explanation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "status",
+          "draft",
+          "questions",
+          "context_requests",
+          "explanation"
+        ]
+      },
+      "ProviderResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "mock": {
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "awaiting_clarification",
+              "awaiting_confirmation",
+              "rejected",
+              "unavailable"
+            ]
+          },
+          "persisted": {
+            "const": false
+          },
+          "trace": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "description": "Internal envelope: version, request_id, text, timezone, reference_at, answers, bounded context, mock_scenario and mock_context_query."
+                },
+                "response": {
+                  "$ref": "#/components/schemas/ProviderResponse"
+                }
+              },
+              "required": [
+                "request",
+                "response"
+              ]
+            }
+          },
+          "response": {
+            "$ref": "#/components/schemas/ProviderResponse"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "mock",
+          "state",
+          "persisted",
+          "trace",
+          "response",
+          "proposal"
+        ]
+      },
+      "ProviderFailureResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "mock": {
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "awaiting_clarification",
+              "awaiting_confirmation",
+              "rejected",
+              "unavailable"
+            ]
+          },
+          "persisted": {
+            "const": false
+          },
+          "trace": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "description": "Internal envelope: version, request_id, text, timezone, reference_at, answers, bounded context, mock_scenario and mock_context_query."
+                },
+                "response": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "request",
+                "response"
+              ]
+            }
+          },
+          "response": {
+            "type": "object",
+            "description": "Untrusted or empty provider output, retained for diagnostics; may violate the provider contract."
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaptureProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "mock",
+          "state",
+          "persisted",
+          "trace",
+          "response",
+          "proposal"
+        ]
       }
     }
   }
