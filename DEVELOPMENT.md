@@ -157,3 +157,7 @@ Context selection, reviewed relative reminder timing, common time idioms and typ
 8. API clients can GET by ID and POST replies using `next_request.body.version`. A stale version returns a structured 409. Reply `replace: Call Mom tomorrow at 6pm` to intentionally replace the original request.
 
 Schema 10 adds capture session documents without changing existing action records. The interpreter remains rule-based. Unrestricted conversational language, external notifications, and the iPhone client remain future work.
+
+### Interview capture regression
+
+Start `I have an interview at Ather on Tuesday`; expect a task proposal waiting for a clock time. Reply `3pm`, verify both the task deadline and linked reminder are Tuesday at 3 PM, then confirm. Existing sessions created before this fix can reply `action` to recover. Generic unclear sentences also accept `action` as a synonym for `task`; the test UI offers Action / task, Reminder, and Note buttons for record-type clarification. Jev now owns the target architecture for semantic decisions; ongoing phrase-rule expansion is deferred in favor of its adapter.

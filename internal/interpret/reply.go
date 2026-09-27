@@ -3,6 +3,7 @@ package interpret
 import (
 	"atlas/internal/store"
 	"context"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -24,6 +25,15 @@ func Reply(ctx context.Context, s *store.Store, r Result, selected string, lead 
 	if strings.HasPrefix(strings.ToLower(text), "replace: ") {
 		n, e := InterpretWithContextLead(ctx, s, strings.TrimSpace(text[9:]), r.Timezone, "", at, lead)
 		return n, "", lead, "", e
+	}
+	switch answer {
+	case "action", "an action", "it's an action", "it is an action", "this is an action", "this is a task", "add it as a task", "task and reminder":
+		answer = "task"
+	}
+	// Upgrade an existing conversation that predated event recognition.
+	if answer == "task" && !r.Event && eventPrefix.MatchString(r.Source) {
+		n, e := InterpretWithContextLead(ctx, s, r.Source, r.Timezone, selected, reference, lead)
+		return n, selected, lead, "", e
 	}
 	query := strings.TrimSuffix(strings.TrimPrefix(answer, "the "), " one")
 	matches := []store.Task{}
@@ -82,11 +92,38 @@ func Reply(ctx context.Context, s *store.Store, r Result, selected string, lead 
 			return r, selected, lead, "", e
 		}
 		timing := strings.TrimPrefix(answer, "at ")
-		value, repeat, assumptions, questions := parseTime(timing, at.In(loc), loc, field)
+		timeReference := at.In(loc)
+		// A clock-only reply fills the original day, using its original reference.
+		clockOnly := regexp.MustCompile(`(?i)^(?:at\s+)?(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)?|noon|midnight)$`).MatchString(answer)
+		if clockOnly {
+			for _, q := range r.Questions {
+				if q.Field == field && q.Code == "missing_clock" {
+					source := r.Source
+					if field == "due_at" {
+						if m := linkedClause.FindStringIndex(source); m != nil {
+							source = source[:m[0]]
+						}
+					}
+					if m := noteClause.FindStringIndex(source); m != nil {
+						source = source[:m[0]]
+					}
+					if m := timingStart.FindStringIndex(source); m != nil {
+						timing = source[m[0]:] + " at " + timing
+						timeReference = reference.In(loc)
+					}
+				}
+			}
+		}
+		value, repeat, assumptions, questions := parseTime(timing, timeReference, loc, field)
 		if value != "" && len(questions) == 0 {
 			handled[field] = true
 			if field == "due_at" {
 				draft.DueAt = value
+				if r.Event && draft.ReminderAt == "" && !linkedClause.MatchString(r.Source) {
+					draft.ReminderAt = value
+					draft.Timezone = r.Timezone
+					r.Assumptions = append(r.Assumptions, "The event time sets the task deadline and a linked reminder at that time. Review before saving.")
+				}
 			} else {
 				draft.ReminderAt = value
 				draft.Timezone = r.Timezone

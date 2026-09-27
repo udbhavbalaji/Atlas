@@ -133,7 +133,7 @@ The core treats model output as an untrusted proposal. Jev and Hermes must never
 
 ### Jev adapter
 
-Jev is the semantic reasoning service. It may:
+Jev is the chosen decision layer for interpreting user input. Intent, context selection, and semantic clarification belong in Jev rather than an expanding set of programmatic English rules. The current local interpreter is a temporary compatibility bridge. Jev may:
 
 - Interpret ambiguous language
 - Request bounded additional context
@@ -238,7 +238,7 @@ Every request should follow a controlled sequence:
 
 1. Accept an input envelope containing request ID, source, text, user timezone, timestamp, and client capabilities.
 2. Retrieve a small initial context using structured queries.
-3. Use a deterministic parser for simple explicit commands or ask Jev for a versioned structured proposal.
+3. Ask Jev for a versioned structured proposal from natural-language user input. Explicit structured commands can go directly to deterministic validation. The existing rule interpreter remains a temporary bridge until the Jev adapter is connected.
 4. Validate the proposal against a schema and allowlisted operations.
 5. Resolve references to canonical IDs and check dates, duplicates, permissions, and available context.
 6. Ask one focused clarification question when required information is missing or references are ambiguous.
