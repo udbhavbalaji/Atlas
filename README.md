@@ -371,3 +371,7 @@ On linked reminders (including reminder history), **Complete task too** complete
 ### Test contextual capture
 
 Create “Interview at Ather” in Tasks, then enter “Print my resume before my interview at Ather” in Capture. Review and confirm the named relationship; no date is needed. For “before that,” choose the interview in Context task when more than one task is open. Expand Task dependencies on either task to inspect ordering, view the related record or remove the link. Completing the prerequisite shows it as satisfied. Existing tasks can also be connected with Add dependency. Reminder requests can use a dated context deadline and a visible lead time, or a phrase such as “one day before my interview.” Undated context still needs a reminder time.
+
+### Test record associations
+
+The Relations tab links any two tasks, reminders or notes with a symmetric “related to” association. Reverse or repeat a pair to verify deduplication; filter by either record, inspect state, open its page, and remove the association. Completion and scheduling are unaffected. Deleted endpoints retain provenance. Capture also exposes versioned typed clarification/continuation instructions for a future orchestrator under Structured interpretation and continuation.

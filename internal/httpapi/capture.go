@@ -27,7 +27,7 @@ func captureRoutes(mux *http.ServeMux, s *store.Store) {
 			}
 			return
 		}
-		respond(w, 200, result)
+		respond(w, 200, interpret.WithContinuation(result, input.ContextTaskID, input.ReminderLeadMinutes))
 	})
 	mux.HandleFunc("POST /api/v1/capture/preview", func(w http.ResponseWriter, r *http.Request) {
 		var input store.CaptureInput
