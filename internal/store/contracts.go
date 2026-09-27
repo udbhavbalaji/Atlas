@@ -55,12 +55,13 @@ func saveReceipt(ctx context.Context, tx *sql.Tx, operation, key, hash string, v
 }
 
 type TaskAction struct {
-	Notes      []Note     `json:"notes"`
-	TaskID     string     `json:"task_id"`
-	Task       *Task      `json:"task"`
-	Deleted    bool       `json:"deleted"`
-	Reminders  []Reminder `json:"reminders"`
-	Deliveries []Delivery `json:"deliveries"`
+	Dependencies []TaskDependency `json:"dependencies"`
+	Notes        []Note           `json:"notes"`
+	TaskID       string           `json:"task_id"`
+	Task         *Task            `json:"task"`
+	Deleted      bool             `json:"deleted"`
+	Reminders    []Reminder       `json:"reminders"`
+	Deliveries   []Delivery       `json:"deliveries"`
 }
 type ReminderAction struct {
 	Notes      []Note     `json:"notes"`
@@ -133,6 +134,9 @@ func taskAction(ctx context.Context, tx *sql.Tx, id string, deleted bool) (TaskA
 	result.Deliveries, err = readDeliveries(ctx, tx, "reminder_id IN (SELECT id FROM reminders WHERE task_id=?)", id)
 	if err == nil {
 		result.Notes, err = notesInTransaction(ctx, tx, "task", id)
+	}
+	if err == nil {
+		result.Dependencies, err = readDependencies(ctx, tx, id)
 	}
 	return result, err
 }

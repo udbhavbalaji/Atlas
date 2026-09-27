@@ -19,15 +19,19 @@ type Question struct {
 	Message string `json:"message"`
 }
 type Result struct {
-	Status      string                 `json:"status"`
-	Engine      string                 `json:"engine"`
-	Source      string                 `json:"source"`
-	Timezone    string                 `json:"timezone"`
-	ReferenceAt string                 `json:"reference_at"`
-	Draft       store.CaptureInput     `json:"draft"`
-	Proposal    *store.CaptureProposal `json:"proposal"`
-	Questions   []Question             `json:"questions"`
-	Assumptions []string               `json:"assumptions"`
+	ReferenceQuery      string                 `json:"reference_query"`
+	Reference           *store.Task            `json:"reference"`
+	Candidates          []store.Task           `json:"candidates"`
+	CandidatesTruncated bool                   `json:"candidates_truncated"`
+	Status              string                 `json:"status"`
+	Engine              string                 `json:"engine"`
+	Source              string                 `json:"source"`
+	Timezone            string                 `json:"timezone"`
+	ReferenceAt         string                 `json:"reference_at"`
+	Draft               store.CaptureInput     `json:"draft"`
+	Proposal            *store.CaptureProposal `json:"proposal"`
+	Questions           []Question             `json:"questions"`
+	Assumptions         []string               `json:"assumptions"`
 }
 
 var notePrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:note\s*:|note that\s+|take a note\s*:?|make a note(?: that)?\s*:?|save a note(?: that)?\s*:?|(?:i need to |i want to )?remember that\s+)\s*`)
@@ -42,7 +46,7 @@ var timingStart = regexp.MustCompile(`(?i)\b(?:by\s+|due\s+|day after tomorrow\b
 
 func Interpret(text, zone string, reference time.Time) (Result, error) {
 	text = strings.TrimSpace(text)
-	r := Result{Engine: "local-english-v1", Source: text, Timezone: zone, ReferenceAt: reference.UTC().Format(time.RFC3339Nano), Questions: []Question{}, Assumptions: []string{}}
+	r := Result{Engine: "local-english-v1", Source: text, Timezone: zone, ReferenceAt: reference.UTC().Format(time.RFC3339Nano), Candidates: []store.Task{}, Questions: []Question{}, Assumptions: []string{}}
 	if !utf8.ValidString(text) || len([]rune(text)) == 0 || len([]rune(text)) > 12000 || zone == "" || zone == "Local" {
 		return r, ErrInput
 	}

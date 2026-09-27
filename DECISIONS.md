@@ -144,3 +144,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Add a local English rule interpreter ahead of capture validation. Supported sentences yield explicit proposals; ambiguous or unsupported timing yields structured clarification questions and an editable draft. Require user review and the existing atomic confirmation flow. Never save from interpretation alone.
 
 **Consequences:** Relative times resolve once against server reference time and the browser's IANA timezone. Assumptions, exact dates, recurrence, and note targets are visible. DST gaps and overlaps require clarification rather than normalization. Known English capture forms work offline from external reasoning services; generic semantic understanding, multilingual input, batches, existing-record commands, and opt-in model adapters are deferred. The Capture tab and API lab expose sentence input, example phrases, questions, editable fields, and persisted results for manual testing.
+
+## Explicit task context and prerequisite ordering
+
+**Status:** Accepted
+
+**Decision:** Resolve before/ahead-of clauses against open task titles using local token matching. Expose candidate tasks and a visible context selector for pronouns such as “before that.” Save directed prerequisite edges independently of notes or reminders. Preview binds the referenced task snapshot; atomic confirmation rechecks its version and open status. Existing creation receipts remain replayable after context changes or deletion.
+
+**Consequences:** Schema migration 8 adds durable dependency edges. Cycles are rejected; duplicate attach/remove operations are idempotent. Task snapshots expose both directions, current statuses, existence and satisfaction; deleted endpoints retain title provenance. Ordering is informational and does not block completion or invent deadlines/delivery times. Relative offsets from another task and conversational memory remain deferred. Capture, Tasks and API lab provide testing controls for lookup, selection, direct linking, unlinking, completion state and raw structured responses.
