@@ -170,38 +170,11 @@ func (s *Store) CreateNoteRequest(ctx context.Context, key, body, taskID, remind
 	if replay {
 		return saved, true, tx.Commit()
 	}
-	id, e := newID()
+	n, e := createNoteInTransaction(ctx, tx, body, taskID, reminderID, now())
 	if e != nil {
 		return saved, false, e
 	}
-	at := now()
-	_, e = tx.ExecContext(ctx, "INSERT INTO notes VALUES(?,?,?,?)", id, body, at, at)
-	if e != nil {
-		return saved, false, e
-	}
-	for _, target := range []struct{ kind, id string }{{"task", taskID}, {"reminder", reminderID}} {
-		if target.id != "" {
-			title, err := noteTarget(ctx, tx, target.kind, target.id)
-			if err != nil {
-				return saved, false, err
-			}
-			_, e = tx.ExecContext(ctx, "INSERT INTO note_links VALUES(?,?,?,?)", id, target.kind, target.id, title)
-			if e == nil {
-				e = noteActivity(ctx, tx, id, target.kind, target.id, "note.linked", at)
-			}
-			if e != nil {
-				return saved, false, e
-			}
-		}
-	}
-	if e = noteActivity(ctx, tx, id, "", "", "note.created", at); e != nil {
-		return saved, false, e
-	}
-	n, e := readNote(ctx, tx, id)
-	if e != nil {
-		return saved, false, e
-	}
-	v := NoteAction{NoteID: id, Note: &n}
+	v := NoteAction{NoteID: n.ID, Note: &n}
 	if e = saveReceipt(ctx, tx, "notes.create", key, hash, v); e == nil {
 		e = tx.Commit()
 	}
@@ -302,4 +275,35 @@ func (s *Store) SetNoteLink(ctx context.Context, id, kind, target string, attach
 		e = tx.Commit()
 	}
 	return v, e
+}
+
+// createNoteInTransaction keeps note content, explicit links, and activity atomic.
+func createNoteInTransaction(ctx context.Context, tx *sql.Tx, body, taskID, reminderID, at string) (Note, error) {
+	id, e := newID()
+	if e != nil {
+		return Note{}, e
+	}
+	_, e = tx.ExecContext(ctx, "INSERT INTO notes VALUES(?,?,?,?)", id, body, at, at)
+	if e != nil {
+		return Note{}, e
+	}
+	for _, target := range []struct{ kind, id string }{{"task", taskID}, {"reminder", reminderID}} {
+		if target.id != "" {
+			title, err := noteTarget(ctx, tx, target.kind, target.id)
+			if err != nil {
+				return Note{}, err
+			}
+			_, e = tx.ExecContext(ctx, "INSERT INTO note_links VALUES(?,?,?,?)", id, target.kind, target.id, title)
+			if e == nil {
+				e = noteActivity(ctx, tx, id, target.kind, target.id, "note.linked", at)
+			}
+			if e != nil {
+				return Note{}, e
+			}
+		}
+	}
+	if e = noteActivity(ctx, tx, id, "", "", "note.created", at); e != nil {
+		return Note{}, e
+	}
+	return readNote(ctx, tx, id)
 }

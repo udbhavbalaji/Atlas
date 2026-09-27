@@ -127,3 +127,20 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Add a Capture testing tab and preview/commit APIs for one task and an optional directly linked reminder. Start with explicit validated fields. Preview has no persistence effects, exposes normalized input, planned effects, and warnings, and identifies content with a versioned fingerprint. Confirmation requires unchanged content and a durable retry key; records, delivery, activity, and receipt commit together.
 
 **Consequences:** Browser edits invalidate preview. Uncertain confirmation preserves its exact request in session storage and locks editing until retry succeeds. A fingerprint identifies content and does not enforce authorization; clients own user confirmation. Existing lifecycle cancellation, recurrence, and receipt semantics apply. No migration is required. Natural-language interpretation, saved drafts, note capture, and multi-step general orchestration remain future work.
+
+
+## Notes and standalone kinds in atomic capture
+
+**Status:** Accepted
+
+**Decision:** Extend capture with kind (task/reminder/note) and note_body. Notes in action captures explicitly link to all newly created task/reminder records. Reuse transactional note creation and commit records, links, activity, queued delivery, and receipt together. Preserve the existing capture response shape, with null task/empty task_id for standalone kinds.
+
+**Consequences:** Note changes invalidate the content fingerprint. Legacy task-only previews/receipts remain compatible. Capture exposes note/type fields, raw proposal/state, and links to every created record. No migration is needed.
+
+## Local sentence interpretation as a proposal step
+
+**Status:** Accepted
+
+**Decision:** Add a local English rule interpreter ahead of capture validation. Supported sentences yield explicit proposals; ambiguous or unsupported timing yields structured clarification questions and an editable draft. Require user review and the existing atomic confirmation flow. Never save from interpretation alone.
+
+**Consequences:** Relative times resolve once against server reference time and the browser's IANA timezone. Assumptions, exact dates, recurrence, and note targets are visible. DST gaps and overlaps require clarification rather than normalization. Known English capture forms work offline from external reasoning services; generic semantic understanding, multilingual input, batches, existing-record commands, and opt-in model adapters are deferred. The Capture tab and API lab expose sentence input, example phrases, questions, editable fields, and persisted results for manual testing.

@@ -6,6 +6,7 @@ $('api-endpoint').onchange=()=>{
  const [method,path]=$('api-endpoint').value.split(' ');
  updateAPIFields(method,path);
  let body='';
+ if(path==='capture/interpret')body=JSON.stringify({text:'Call Mom tomorrow at 6pm; note: ask about the trip',timezone:zone},null,2);
  if(path==='capture/preview')body=JSON.stringify({title:'API capture task'},null,2);
  if(path==='capture/commit')body=JSON.stringify({title:'API capture task',preview_id:'Copy preview.input here before confirming'},null,2);
  if(method==='POST'&&path==='tasks')body=JSON.stringify({title:'API test task'},null,2);
