@@ -206,3 +206,11 @@ Automated routing tests simulate HTTP/authentication, malformed output, cancella
 ## Branch promotion policy
 
 Use feature branches from `development`; tested work may merge into `development`. Never merge into `main` without explicit user approval. At a substantial milestone, make the case for promotion with scope, verification and limitations, then await approval. This supersedes earlier autonomous main promotion guidance.
+
+### Routing source and context prefill test
+
+1. In Routing, use Mock / Task and `I have an interview at Ather on Tuesday at 3pm; note: bring portfolio`. Evaluate: the secondary form shows the source, fills title/deadline/reminder/note, and explains local-parser suggestions. It must not offer confirmation until Dispatch / preview.
+2. Use `I have an interview at Ather on Tuesday` instead: title fills, timing remains blank with a missing-clock warning. No arbitrary date/time is invented.
+3. Enter a context search for an existing dated interview. The channel form displays supplied records and explicit Copy context title/deadline and prerequisite buttons. Copy values, edit them, preview; source and context remain in the structured channel response. Searching by itself must not copy or link a record.
+4. Edit or clear a seeded field after preparation. Normal Dispatch / preview must preserve that change. Skip reminder/note must remove those effects. Unchanged suggested/copied date controls must retain their original instant.
+5. Reminder fixtures can seed reminder title/time/repeat; Note fixtures can seed parsed note contents or retain the sentence verbatim. Mock routing remains fixture-driven; prefill is a separate local helper and makes no Jev calls.

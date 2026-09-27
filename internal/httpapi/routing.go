@@ -198,6 +198,7 @@ type dispatchRequest struct {
 	Fields          store.CaptureInput `json:"fields"`
 	Reminder        string             `json:"reminder"`
 	Note            string             `json:"note"`
+	Prefill         bool               `json:"prefill"`
 }
 type channelQuestion struct {
 	ID        string            `json:"id"`
@@ -212,6 +213,8 @@ type channelResponse struct {
 	Channel    string                 `json:"channel"`
 	State      string                 `json:"state"`
 	Source     string                 `json:"source"`
+	Input      routing.State          `json:"input"`
+	Prefill    *channelPrefill        `json:"prefill,omitempty"`
 	Extraction string                 `json:"extraction"`
 	Questions  []channelQuestion      `json:"questions"`
 	Proposal   *store.CaptureProposal `json:"proposal"`
@@ -243,10 +246,16 @@ func noteChannel(ctx context.Context, s *store.Store, r routing.Result, in dispa
 	return captureChannel(ctx, s, r, in, "notes", "note")
 }
 
-// The first channel implementation collects explicit fields. It neither calls
-// the temporary English interpreter nor claims that Jev extracts free text.
+// Channels collect reviewed fields. Initial preparation can offer source-derived
+// hints without rerouting or making a model call; subsequent edits are explicit.
 func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest, channel, kind string) (channelResponse, error) {
-	out := channelResponse{Version: routing.Version, Channel: channel, State: "needs_fields", Source: r.Input.Text, Extraction: "explicit_fields", Questions: []channelQuestion{}}
+	out := channelResponse{Version: routing.Version, Channel: channel, State: "needs_fields", Source: r.Input.Text, Input: r.Input, Extraction: "explicit_fields", Questions: []channelQuestion{}}
+	if in.Prefill {
+		seed := prepareChannel(r.Input, kind)
+		out.Prefill = &seed
+		in = applyChannelPrefill(in, *out.Prefill)
+		out.Extraction = "local_prefill_review"
+	}
 	draft := in.Fields
 	draft.Kind = kind
 	if kind == "task" && in.Reminder == "" && draft.ReminderAt != "" {
@@ -311,6 +320,9 @@ func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in di
 		}
 	}
 	if len(out.Questions) > 0 {
+		return out, nil
+	}
+	if in.Prefill {
 		return out, nil
 	}
 	if draft.ReminderAt != "" {
