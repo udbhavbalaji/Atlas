@@ -33,6 +33,12 @@ func failure(w http.ResponseWriter, e error) {
 		status, code = 400, "invalid_repeat"
 	case errors.Is(e, store.ErrOccurrenceConflict):
 		status, code = 409, "occurrence_state_conflict"
+	case errors.Is(e, store.ErrInvalidNote):
+		status, code = 400, "invalid_note"
+	case errors.Is(e, store.ErrInvalidNoteLink):
+		status, code = 400, "invalid_note_link"
+	case errors.Is(e, store.ErrNoteNotFound):
+		status, code = 404, "note_not_found"
 	case errors.Is(e, store.ErrInvalid):
 		status, code = 400, "invalid_title"
 	case errors.Is(e, store.ErrInvalidUpdate):

@@ -55,6 +55,7 @@ func saveReceipt(ctx context.Context, tx *sql.Tx, operation, key, hash string, v
 }
 
 type TaskAction struct {
+	Notes      []Note     `json:"notes"`
 	TaskID     string     `json:"task_id"`
 	Task       *Task      `json:"task"`
 	Deleted    bool       `json:"deleted"`
@@ -62,6 +63,7 @@ type TaskAction struct {
 	Deliveries []Delivery `json:"deliveries"`
 }
 type ReminderAction struct {
+	Notes      []Note     `json:"notes"`
 	Reminder   Reminder   `json:"reminder"`
 	Task       *Task      `json:"task"`
 	Deliveries []Delivery `json:"deliveries"`
@@ -129,6 +131,9 @@ func taskAction(ctx context.Context, tx *sql.Tx, id string, deleted bool) (TaskA
 		return result, err
 	}
 	result.Deliveries, err = readDeliveries(ctx, tx, "reminder_id IN (SELECT id FROM reminders WHERE task_id=?)", id)
+	if err == nil {
+		result.Notes, err = notesInTransaction(ctx, tx, "task", id)
+	}
 	return result, err
 }
 func reminderAction(ctx context.Context, tx *sql.Tx, id string) (ReminderAction, error) {
@@ -146,6 +151,9 @@ func reminderAction(ctx context.Context, tx *sql.Tx, id string) (ReminderAction,
 		}
 	}
 	result.Deliveries, err = readDeliveries(ctx, tx, "reminder_id=?", id)
+	if err == nil {
+		result.Notes, err = notesInTransaction(ctx, tx, "reminder", id)
+	}
 	return result, err
 }
 func (s *Store) TaskState(ctx context.Context, id string) (TaskAction, error) {

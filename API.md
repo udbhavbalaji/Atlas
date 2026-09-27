@@ -82,3 +82,25 @@ Content-Type: application/json
 A due repeat stays in the inbox until acted on. There is at most one active delivery per reminder. After downtime, one overdue occurrence is surfaced; acknowledgment skips missed calendar occurrences and queues the next future one. Snooze/reschedule moves only the active occurrence, preserving the original clock anchor. Acknowledgment after a long snooze skips calendar times before that snoozed delivery.
 
 `POST /reminders/{id}/complete` ends the entire series and cancels future delivery. The older `/dismiss` action applies to one-time reminders; repeating reminders use the occurrence endpoint. Linked task completion/deletion stops the series; reopening a task never revives it. Neither occurrence completion nor stopping a series completes the linked task.
+
+## Notes and explicit links
+
+| Method | Path (relative to `/api/v1`) | Result |
+| --- | --- | --- |
+| POST | /notes | 201 NoteAction; keyed replay 200 original NoteAction |
+| GET | /notes | 200 Note array, newest updated first; empty `[]` |
+| GET | /notes/{id} | 200 NoteAction |
+| PATCH | /notes/{id} | 200 NoteAction after replacing body |
+| DELETE | /notes/{id} | 200 NoteAction with `deleted: true`, `note: null` |
+| PUT | /notes/{id}/links/{kind}/{target} | 200 NoteAction after attaching a target |
+| DELETE | /notes/{id}/links/{kind}/{target} | 200 NoteAction after unlinking |
+
+Create accepts `body` and optional `task_id` and `reminder_id`, attaching both links atomically if supplied. PATCH requires `body`; links remain unchanged. Body is plain text, preserved exactly, must include non-whitespace content, and is limited to 10,000 Unicode code points. The existing strict JSON validation applies. `Idempotency-Key` is supported for creation, independently scoped to `notes.create`, with the same durable receipt semantics as tasks/reminders.
+
+NoteAction contains `note_id`, `note` (or null after deletion), and `deleted`. Note contains `id`, `body`, timestamps, and `links` (always an array). Each link contains `target_type` (`task` or `reminder`), `target_id`, `target_title`, and `target_exists`. The target title resolves to the current title when available; after task deletion it falls back to the title snapshot captured when linked. Links are explicit and can connect one note to multiple tasks and reminders, including completed records. A duplicate attachment or removal of an absent link is a no-op, with no duplicate activity.
+
+Link mutation requests accept an empty body or `{}`. Attaching requires the target to exist and returns the corresponding resource's 404 error otherwise. Unlinking still works after target deletion. Invalid bodies return `invalid_note`; invalid link kinds return `invalid_note_link`; missing notes return `note_not_found`. Both edits and link changes update the note timestamp only when something changes.
+
+Deleting a task preserves notes and historical links; the link becomes `target_exists: false`. Deleting a note removes its links while retaining activity and creation receipts. Replaying creation after deletion returns the original creation response and never restores the note. TaskAction and ReminderAction now include `notes: []` or their linked notes. Activity adds `note_id` and records note creation, edits, deletion, attachment, and removal without copying note text into the log.
+
+There is no rich text, note search, attachments, note-to-note linking, revision history, or generic relation graph in this slice. Plain text is displayed as text, including line breaks. This is a local service with the existing loopback/authentication limits.

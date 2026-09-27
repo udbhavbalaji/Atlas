@@ -13,7 +13,8 @@
 - [x] Usable task subsystem: responsive browser interface, editing/deletion, completion/reopening.
 - [x] Task details and optional exact deadlines, editing/clearing, overdue view.
 - [x] Daily/weekly recurring reminders, occurrence acknowledgment, and repeat testing controls.
-- [ ] Notes and explicit record relations.
+- [x] Persistent notes with explicit task/reminder links.
+- [ ] Generic record relations and note search.
 - [x] Fixed-time reminders with durable webpage inbox delivery, restart recovery, snooze, dismissal, and completion.
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
 - [ ] iPhone text client proving the capture-to-reminder loop.
@@ -79,3 +80,15 @@ Both task completion paths (PATCH and POST complete) and deletion cancel all lin
 6. Add a weekly repeat from an open task’s **Add reminder** form. Complete the task and verify cancellation. Reopening must not restart it.
 
 Schema version 6 adds repeat rules, immutable clock anchors, and active occurrence IDs. Migration fills active IDs for existing one-time reminders and preserves records, deliveries, activity, and request receipts. Daily/weekly repeat semantics and limits are described in [API.md](API.md).
+
+## Test persistent linked notes
+
+1. Create a task and click **Add note** on its card. Enter multiline context and save.
+2. Expand **Linked notes** on the task. The saved note should also appear in the Notes section.
+3. Edit the note; its linked display updates too. Refresh the browser or restart Atlas and confirm persistence.
+4. On a note card, choose task/reminder and a target, then **Add link**. Repeating the same attachment must not duplicate the link or activity. Use **Unlink task/reminder** to remove it.
+5. Inspect **Task state**, **Reminder state**, and **Note state** in the API testing panel. Linked notes and their explicit target metadata are returned in JSON.
+6. Create a note via the API panel and click **Replay last request**. Confirm one note and the same ID.
+7. Delete a disposable linked task. Its note stays, with the task labelled `(deleted)`. Deleting the note removes its links but retains activity history.
+
+Schema version 7 adds notes, explicit note links, and note references in activity. Existing tasks, repeats, deliveries, and request receipts are retained. Generic relations and note search remain future work.
