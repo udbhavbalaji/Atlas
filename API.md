@@ -239,3 +239,31 @@ The response includes `provider`, `mock`, `state`, `persisted: false`, `trace` (
 States: `awaiting_clarification`, `awaiting_confirmation`, `rejected`, `unavailable`. HTTP 400 `invalid_provider_request`, 422 `provider_proposal_rejected`, and 503 `provider_unavailable` include a typed `error` and inspectable `result` trace. Unexpected storage failures use the standard 500 response. No automatic fallback or persistence occurs on failure.
 
 Only after explicit user review, submit unchanged `proposal.input` to `POST /api/v1/capture/commit` with a stable Idempotency-Key. Standard capture transaction, context-version checks, links, and receipt replay apply. Mock preview requests/questions are stateless: resubmit explicit answers to continue. This contract is owned by Atlas and is not documentation of Jev's API. Jev has no callable endpoint or configured transport yet.
+
+## Input routing and channel handoff
+
+`GET /api/v1/routing` returns contract/registry version `1`, implemented actions, provider configuration (not proof of access), provisional policy, context/cache budgets and receipt lifetime. Actions are `task`, `reminder`, `note`, `clarify`, `unsupported`; executable channels are `tasks`, `reminders`, `notes`.
+
+`POST /api/v1/routing/{provider}/evaluate`, with provider `mock` or `jev`:
+
+```json
+{"version":"1","request_id":"client-generated-id","text":"I have an interview at Ather on Tuesday","timezone":"Asia/Kolkata","context_query":"","fixture":"task"}
+```
+
+Omit `fixture` for Jev; any fixture control in Jev mode is rejected. Mock fixture IDs: task, reminder, note, ambiguous, clarify, unsupported, invalid, unavailable. Mock does not interpret text. Text is limited to 12,000 UTF-8 bytes, request ID to 128 bytes, and optional context query to 200 characters. A nonblank query fetches at most five matching open tasks (ID, title, deadline, updated_at); blank sends no stored records. Context truncation is explicit. The response includes the exact minimized input, evaluation, complete primary-action probabilities, confidence, usage, policy, selected channel, state (`routed`, `needs_clarification`, `unsupported`) and signed routing token. `persisted` is false.
+
+Only Jev evaluations use the five-minute bounded cache. `evaluation.model_calls` is 1 for a fresh successful model request and 0 for cache reuse or a mock fixture. `cache_hit` identifies reuse. `evaluated_at`, token usage and `cost_usd` describe the originating model evaluation; cached requests do not incur that cost again. Unsuccessful calls may consume upstream quota, but are never retried automatically. There is one Choice question for the primary route, not one HTTP request per possible entity.
+
+`POST /api/v1/routing/dispatch`:
+
+```json
+{"version":"1","routing_token":"TOKEN_FROM_EVALUATION","fields":{"title":"Interview at Ather","due_at":"2030-10-01T10:00:00+05:30"},"reminder":"skip","note":"skip"}
+```
+
+The verified token chooses the channel. For an unresolved route only, the user may additionally supply `channel` and `reviewed_channel:true`. Unsupported input cannot be forced through dispatch. Tampered/expired tokens, and tokens from a prior server instance, return 409 `routing_receipt_invalid`; evaluate again. Tokens last 30 minutes and are not authorization to persist records.
+
+The channel returns `needs_fields` with typed question IDs, dotted request fields, value types (`string`, `choice`, `rfc3339`), prompts and choices; or `awaiting_confirmation` with a validated capture proposal. Field collection is explicitly marked `extraction:explicit_fields`; it is not a natural-language extractor. Keep the token and resubmit explicit answers with the same dispatch endpoint; no model call occurs. Task channels offer reminder and note add/skip choices. Reminder channels require timing and offer note enrichment. Note channels require note contents. Already supplied addition fields count as requesting those additions. Do not supply `kind`, `timezone`, `preview_id` or `before_task_version`: Atlas sets or binds them. A prerequisite `before_task_id` must have appeared in the supplied context; preview refreshes its canonical snapshot.
+
+To save, explicitly confirm `proposal.input` through `POST /api/v1/capture/commit` with a stable `Idempotency-Key`. Existing atomic links, state validation and replay semantics apply. Evaluation/dispatch never creates tasks, reminders, notes, sessions or delivery records. Routing requires no migration and is separate from the existing rule-based Capture conversation.
+
+Failure codes include 400 `invalid_routing_request` / `invalid_channel_fields` / `invalid_channel_selection`, 404 `routing_provider_not_found`, 409 `routing_receipt_invalid`, 422 `routing_unresolved` / `routing_evaluation_rejected`, and 503 `routing_unavailable`. Upstream errors expose only HTTP status, not upstream bodies or secrets. Authentication/verification errors are not retryable; rate limits and server/network failures can be manually retried. No implicit fallback is enabled.

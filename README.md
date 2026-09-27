@@ -380,3 +380,7 @@ The Relations tab links any two tasks, reminders or notes with a symmetric “re
 ### Provider integration harness
 
 The Providers test tab exercises Atlas's internal provider contract with a labelled, fixture-driven mock. It supports bounded task context requests, optional reminder/note questions, core proposal validation, explicit capture confirmation, and invalid/unavailable scenarios. Jev remains unconnected while access and its actual API contract are pending. This harness does not interpret English or replace live Capture conversations. See API.md and DEVELOPMENT.md for payloads and test steps.
+
+### Routing test interface
+
+Open the **Routing** tab to inspect primary action probabilities and dispatch to task, reminder or note workflows. Mock fixtures work offline. Jev uses Vercel Gateway when `AI_GATEWAY_API_KEY` or the ignored `data/ai-gateway.key` file is configured; restart after adding the key. Vercel account verification may still block inference. Routing does not extract free-form titles/dates yet: channel fields are reviewed explicitly. Dispatch and confirmation reuse the routing result; successful unchanged Jev evaluations are cached for five minutes. See `API.md` and `DEVELOPMENT.md` for contracts and test steps.

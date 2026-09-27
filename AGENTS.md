@@ -43,3 +43,15 @@ gives you structural context (callers, dependents, test coverage) that file sear
 3. Use `get_affected_flows_tool` to understand impact.
 4. Use `query_graph_tool` pattern="tests_for" to check coverage.
 <!-- /code-review-graph MCP tools -->
+
+## Branch workflow
+
+- Start feature branches from `development` and merge tested work into `development`.
+- Never merge into `main` without explicit user approval for that promotion.
+- At a substantial milestone, present the scope, verification and remaining limitations, recommend whether to promote, and wait for approval.
+
+## Reasoning calls and feature testing
+
+- Minimize actual Jev calls in tests: use fixtures and simulated HTTP; live checks must be small and explicit.
+- Minimize runtime inference: reuse routing results during channel workflows, cache matching decisions, and avoid automatic retries or silent model fallbacks.
+- Every implemented feature needs a focused testing webpage interface.
