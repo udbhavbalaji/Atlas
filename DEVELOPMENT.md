@@ -68,12 +68,12 @@ Both task completion paths (PATCH and POST complete) and deletion cancel all lin
 
 ## Structured API contracts
 
-[API.md](API.md) describes structured state responses, stable errors, strict validation, creation idempotency, and the webpage API testing panel. `/openapi.json` serves response and request schemas. Schema version 5 adds durable request receipts without changing existing tasks, reminders, or history.
+[API.md](API.md) describes structured state responses, stable errors, strict validation, creation idempotency, and the webpage API lab tab. `/openapi.json` serves response and request schemas. Schema version 5 adds durable request receipts without changing existing tasks, reminders, or history.
 
 ## Test recurring reminders
 
 1. Enter a reminder title, choose **Daily** or **Weekly**, and click **Test in 5 seconds**.
-2. When it reaches the inbox, click **Complete occurrence**. It moves to Upcoming reminders with its next calendar time; inspect the response in the API testing panel.
+2. When it reaches the inbox, click **Complete occurrence**. It moves to Upcoming reminders with its next calendar time; inspect the response in the API lab tab.
 3. Replay that acknowledgment in the API panel using the original occurrence ID. It must not advance a second time.
 4. Snooze the upcoming repeat. Its visible delivery time changes; the repeat clock shown beneath it stays fixed.
 5. Click **Stop repeating**. The record moves to history and no new occurrence is queued.
@@ -87,7 +87,7 @@ Schema version 6 adds repeat rules, immutable clock anchors, and active occurren
 2. Expand **Linked notes** on the task. The saved note should also appear in the Notes section.
 3. Edit the note; its linked display updates too. Refresh the browser or restart Atlas and confirm persistence.
 4. On a note card, choose task/reminder and a target, then **Add link**. Repeating the same attachment must not duplicate the link or activity. Use **Unlink task/reminder** to remove it.
-5. Inspect **Task state**, **Reminder state**, and **Note state** in the API testing panel. Linked notes and their explicit target metadata are returned in JSON.
+5. Inspect **Task state**, **Reminder state**, and **Note state** in the API lab tab. Linked notes and their explicit target metadata are returned in JSON.
 6. Create a note via the API panel and click **Replay last request**. Confirm one note and the same ID.
 7. Delete a disposable linked task. Its note stays, with the task labelled `(deleted)`. Deleting the note removes its links but retains activity history.
 
@@ -96,3 +96,7 @@ Schema version 7 adds notes, explicit note links, and note references in activit
 ### Direct reminder link controls
 
 The general reminder form includes **Link reminder to task (optional)**. Existing active reminders have **Link to task** / **Change task link**: choose an open task and save, or select **Standalone reminder** to detach. Verify the linked task appears on the reminder and the task shows it under Linked reminders. Complete the task and verify cancellation. No note is required; note links only associate context.
+
+## Feature testing interface
+
+Use the Tasks, Reminders, Notes, Activity, and API lab tabs to work on one feature at a time. Each tab has a What you can test checklist. The selected tab is stored in the URL fragment and survives browser reload; unsaved form contents remain while switching tabs. A due count on Reminders stays visible from other tabs. Add note / View note / View task shortcuts open the appropriate tab. Use arrow keys, Home, and End on the feature tabs. The dark interface adapts to narrow screens. Refresh data reloads saved records; browser reload loads interface updates.

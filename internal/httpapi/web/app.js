@@ -87,6 +87,7 @@ setInterval(() => {if(!busy && !document.querySelector('.task .edit')) render();
 
 $('reminder-zone').textContent = 'Reminder timezone: ' + zone;
 function renderReminders(deliveries) {
+ updateReminderBadge(reminders);
  const selector=$('reminder-task');const selected=selector.value;fillReminderTaskChoices(selector);selector.value=selected;if(selector.selectedIndex<0)selector.value='';
  for(const id of ['reminder-inbox','reminder-upcoming','reminder-history','delivery-history']) $(id).replaceChildren();
  $('inbox-heading').textContent = 'Reminder inbox (' + reminders.filter(r => r.status === 'due').length + ')';
@@ -105,7 +106,7 @@ function renderReminders(deliveries) {
  }
  row.append(title,when);
  if(r.repeat){const repeat=document.createElement('p');repeat.className='meta';repeat.textContent=repeatDescription(r);row.append(repeat);}
- if(r.task_id){const task=tasks.find(t=>t.id===r.task_id);const info=document.createElement('p');info.className='meta';info.textContent='Linked task: '+(task?task.title:r.task_title+' (deleted)');row.append(info);if(task){if(task.status==='open')actions.append(completeTaskToo(task));row.append(button('View task',()=>{filter='all';document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.filter==='all')));render();document.getElementById('task-'+task.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}}
+ if(r.task_id){const task=tasks.find(t=>t.id===r.task_id);const info=document.createElement('p');info.className='meta';info.textContent='Linked task: '+(task?task.title:r.task_title+' (deleted)');row.append(info);if(task){if(task.status==='open')actions.append(completeTaskToo(task));row.append(button('View task',()=>{showFeature('tasks');filter='all';document.querySelectorAll('[data-filter]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.filter==='all')));render();document.getElementById('task-'+task.id)?.scrollIntoView({behavior:'smooth',block:'center'});}));}}
  row.append(actions);if(typeof renderLinkedNotes==='function')renderLinkedNotes(row,'reminder',r.id);
  $(r.status==='due'?'reminder-inbox':r.status==='scheduled'?'reminder-upcoming':'reminder-history').append(row);
  }
