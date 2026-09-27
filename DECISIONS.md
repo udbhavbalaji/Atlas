@@ -192,3 +192,14 @@ Capture conversations wrap the existing bounded local interpreter with durable S
 Explicit confirmation freezes the reviewed draft before atomic capture commit. A stable session receipt key recovers interrupted confirmation without duplicate action records. Changed dependency versions require review and confirmation again. Conversation history is durable before confirmation; action records are not. No automatic edits to reference tasks or cross-session memory are inferred.
 
 The feature has a Conversation test section in Capture, visible history, proposal/assumption display, context choices, resume-by-ID, and structured JSON. The former capture tools remain available in a collapsed section. Every Atlas feature continues to require its own testable webpage interface.
+
+
+## Jev owns decisions from user input
+
+**Status:** Accepted — target architecture locked by user decision (2026-09-27).
+
+**Decision:** Use Jev to interpret user input and make semantic decisions: intent, whether tasks/reminders/notes are required, which existing records supply context, and which clarification to request. Do not bake these decisions into a growing set of programmatic language rules in Atlas.
+
+Atlas owns canonical state, bounded context retrieval, versioned structured proposal/session APIs, schema validation, date/capability checks, permissions, confirmation, transactions, idempotency, and delivery. Jev proposes operations through those boundaries; it does not write directly to storage. User confirmation remains required before committing a capture.
+
+**Consequences:** The local English interpreter and reply matcher are interim compatibility mechanisms, not the long-term decision engine. This supersedes earlier decisions treating local rule-based semantic interpretation as the intended architecture. Complete narrowly scoped fixes already underway, then prioritize the bounded Jev adapter rather than broader phrase-rule expansion. Keep deterministic handling for explicit structured requests and validation. Verify Jev's actual interface and deployment requirements before integration; this decision does not claim that Jev is connected or change the current runtime.

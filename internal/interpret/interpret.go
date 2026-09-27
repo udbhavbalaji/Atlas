@@ -19,6 +19,7 @@ type Question struct {
 	Message string `json:"message"`
 }
 type Result struct {
+	Event               bool                   `json:"event"`
 	Continuation        *Continuation          `json:"continuation,omitempty"`
 	ReferenceQuery      string                 `json:"reference_query"`
 	Reference           *store.Task            `json:"reference"`
@@ -37,6 +38,8 @@ type Result struct {
 
 var notePrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:note\s*:|note that\s+|take a note\s*:?|make a note(?: that)?\s*:?|save a note(?: that)?\s*:?|(?:i need to |i want to )?remember that\s+)\s*`)
 var reminderPrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:remind me(?: to)?\s+|reminder\s*:\s*|set a reminder(?: to| for)?\s+|(?:i need to |i want to )?remember to\s+|don't forget to\s+)`)
+var eventPrefix = regexp.MustCompile(`(?i)^(?:please\s+)?i(?: have(?: got)?|'ve got) (?:an? |my )?interview\b`)
+var eventIntro = regexp.MustCompile(`(?i)^(?:please\s+)?i(?: have(?: got)?|'ve got) (?:an? |my )?`)
 var taskPrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:task\s*:\s*|(?:add|create) (?:a )?task(?: to)?\s*:?\s+|i need to\s+|i want to\s+|i have to\s+|todo\s*:\s*)`)
 var noteClause = regexp.MustCompile(`(?is)(?:[;,]\s*|\s+and\s+)(?:note\s*:\s*|note that\s+|remember that\s+|(?:make|take|save|add|create) a note(?: that)?\s*:?\s+)(.+)$`)
 var linkedClause = regexp.MustCompile(`(?i)(?:[;,]\s*|\s+and\s+)(?:remind me(?: to)?|remember to)\s+`)
@@ -70,6 +73,12 @@ func Interpret(text, zone string, reference time.Time) (Result, error) {
 		action = strings.TrimSpace(action[:m[0]])
 	}
 	explicitTask := false
+	event := eventPrefix.MatchString(action)
+	r.Event = event
+	if event {
+		action = eventIntro.ReplaceAllString(action, "")
+		explicitTask = true
+	}
 	if m := regexp.MustCompile(`(?i)^(.+?)\s*,?\s+remind me(?: to)?\s+(.+)$`).FindStringSubmatch(action); m != nil {
 		if start := timingStart.FindStringIndex(m[1]); start != nil && start[0] == 0 {
 			action = "Remind me to " + m[2] + " " + strings.TrimRight(m[1], ", ")
@@ -129,7 +138,7 @@ func Interpret(text, zone string, reference time.Time) (Result, error) {
 		r.Assumptions = append(r.Assumptions, "An action without a time creates a task, with no reminder.")
 	}
 	if primaryTime != "" {
-		deadline := input.Kind == "task" && (strings.HasPrefix(strings.ToLower(primaryTime), "by ") || strings.HasPrefix(strings.ToLower(primaryTime), "due "))
+		deadline := input.Kind == "task" && (event || strings.HasPrefix(strings.ToLower(primaryTime), "by ") || strings.HasPrefix(strings.ToLower(primaryTime), "due "))
 		field := "reminder_at"
 		if deadline {
 			field = "due_at"
@@ -141,6 +150,11 @@ func Interpret(text, zone string, reference time.Time) (Result, error) {
 		r.Questions = append(r.Questions, q...)
 		if deadline {
 			input.DueAt = at
+			if event && at != "" && linkedTime == "" {
+				input.ReminderAt = at
+				input.Timezone = zone
+				r.Assumptions = append(r.Assumptions, "The event time sets the task deadline and a linked reminder at that time. Review before saving.")
+			}
 			if repeat != "" {
 				ask("repeat", "repeating_deadline", "Task deadlines do not repeat. Use a recurring reminder instead.")
 			}
