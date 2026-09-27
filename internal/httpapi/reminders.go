@@ -6,6 +6,24 @@ import (
 )
 
 func reminderRoutes(mux *http.ServeMux, s *store.Store) {
+	mux.HandleFunc("PATCH /api/v1/reminders/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			TaskID *string `json:"task_id"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		if input.TaskID == nil {
+			apiError(w, 400, "invalid_reminder_link", "Provide task_id; an empty string removes the task link.", false)
+			return
+		}
+		v, e := s.SetReminderTask(r.Context(), r.PathValue("id"), *input.TaskID)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		respond(w, 200, v)
+	})
 	mux.HandleFunc("POST /api/v1/reminders/{id}/occurrences/{occurrence}/acknowledge", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			Action string `json:"action"`

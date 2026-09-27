@@ -1187,6 +1187,111 @@
             }
           }
         ]
+      },
+      "patch": {
+        "responses": {
+          "200": {
+            "description": "Committed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderAction"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderLinkPatch"
+              }
+            }
+          }
+        },
+        "summary": "Link or unlink an active reminder directly to an open task"
       }
     },
     "/api/v1/reminders/{id}/complete": {
@@ -2682,7 +2787,8 @@
                   "occurrence_state_conflict",
                   "invalid_note",
                   "invalid_note_link",
-                  "note_not_found"
+                  "note_not_found",
+                  "invalid_reminder_link"
                 ]
               },
               "message": {
@@ -2980,6 +3086,19 @@
             "minLength": 1,
             "maxLength": 10000,
             "description": "Non-whitespace plain text; preserved as supplied."
+          }
+        }
+      },
+      "ReminderLinkPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "Existing open task ID, or empty to detach. Completed reminders cannot change links."
           }
         }
       }

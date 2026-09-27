@@ -9,6 +9,7 @@ $('api-endpoint').onchange=()=>{
  if(method==='POST'&&path==='reminders')body=JSON.stringify({title:'API test reminder',scheduled_at:new Date(Date.now()+60000).toISOString(),timezone:zone},null,2);
  if(path.endsWith('/acknowledge'))body=JSON.stringify({action:'complete'},null,2);
  if(method==='POST'&&path==='notes'||method==='PATCH'&&path.startsWith('notes/'))body=JSON.stringify({body:'API test note'},null,2);
+ if(method==='PATCH'&&path.startsWith('reminders/'))body=JSON.stringify({task_id:''},null,2);
  if(method==='PATCH'&&path.startsWith('tasks/'))body=JSON.stringify({status:'completed'},null,2);
  if(path.endsWith('/snooze'))body=JSON.stringify({scheduled_at:new Date(Date.now()+300000).toISOString()},null,2);
  $('api-body').value=body;
