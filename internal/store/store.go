@@ -52,7 +52,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 7 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 8 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -95,6 +95,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 6 {
 		_, err = tx.Exec(noteMigration)
+		if err == nil {
+			version = 7
+		}
+	}
+	if err == nil && version == 7 {
+		_, err = tx.Exec(dependencyMigration)
 	}
 	if err == nil {
 		err = tx.Commit()

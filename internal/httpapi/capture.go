@@ -10,15 +10,20 @@ import (
 func captureRoutes(mux *http.ServeMux, s *store.Store) {
 	mux.HandleFunc("POST /api/v1/capture/interpret", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			Text     string `json:"text"`
-			Timezone string `json:"timezone"`
+			ContextTaskID string `json:"context_task_id"`
+			Text          string `json:"text"`
+			Timezone      string `json:"timezone"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		result, err := interpret.Interpret(input.Text, input.Timezone, time.Now())
+		result, err := interpret.InterpretWithContext(r.Context(), s, input.Text, input.Timezone, input.ContextTaskID, time.Now())
 		if err != nil {
-			apiError(w, 400, "invalid_interpretation", err.Error(), false)
+			if err == interpret.ErrInput {
+				apiError(w, 400, "invalid_interpretation", err.Error(), false)
+			} else {
+				failure(w, err)
+			}
 			return
 		}
 		respond(w, 200, result)
@@ -32,7 +37,7 @@ func captureRoutes(mux *http.ServeMux, s *store.Store) {
 			failure(w, store.ErrCapturePreview)
 			return
 		}
-		proposal, err := store.PreviewCapture(input)
+		proposal, err := s.CapturePreview(r.Context(), input)
 		if err != nil {
 			failure(w, err)
 			return
