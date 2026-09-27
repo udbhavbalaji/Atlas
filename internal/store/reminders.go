@@ -363,3 +363,54 @@ func cancelTaskReminders(ctx context.Context, tx *sql.Tx, taskID, reason, timest
 	}
 	return nil
 }
+
+// SetReminderTask links an active reminder directly, independent of notes.
+func (s *Store) SetReminderTask(ctx context.Context, id, taskID string) (ReminderAction, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	defer tx.Rollback()
+	r, err := readReminder(ctx, tx, id)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	if r.TaskID == taskID {
+		v, e := reminderAction(ctx, tx, id)
+		if e != nil {
+			return v, e
+		}
+		return v, tx.Commit()
+	}
+	if r.Status == "completed" {
+		return ReminderAction{}, ErrReminderConflict
+	}
+	title := ""
+	if taskID != "" {
+		task, e := readTask(ctx, tx, taskID)
+		if e != nil {
+			return ReminderAction{}, e
+		}
+		if task.Status != "open" {
+			return ReminderAction{}, ErrTaskReminderConflict
+		}
+		title = task.Title
+	}
+	timestamp := now()
+	_, err = tx.ExecContext(ctx, "UPDATE reminders SET task_id=?,task_title=?,updated_at=? WHERE id=?", taskID, title, timestamp, id)
+	action := "reminder.task_unlinked"
+	if taskID != "" {
+		action = "reminder.task_linked"
+	}
+	if err == nil {
+		err = reminderActivity(ctx, tx, id, action, timestamp)
+	}
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	v, err := reminderAction(ctx, tx, id)
+	if err == nil {
+		err = tx.Commit()
+	}
+	return v, err
+}

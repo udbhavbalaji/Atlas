@@ -107,3 +107,36 @@ func TestLinkedReminderAPI(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestChangeReminderLinkHTTP(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	h := Handler(s)
+	task, e := s.Create(context.Background(), "Task")
+	if e != nil {
+		t.Fatal(e)
+	}
+	r, e := s.CreateReminder(context.Background(), "Reminder", "2030-01-01T09:00:00Z", "UTC")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, tc := range []struct {
+		body   string
+		status int
+		code   string
+	}{{`{}`, 400, "invalid_reminder_link"}, {`{"task_id":null}`, 400, "null_field"}, {`{"task_id":"missing"}`, 404, "task_not_found"}, {`{"task_id":"` + task.ID + `"}`, 200, ""}, {`{"task_id":""}`, 200, ""}} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("PATCH", "/api/v1/reminders/"+r.ID, strings.NewReader(tc.body)))
+		if tc.code != "" {
+			assertErrorCode(t, w, tc.status, tc.code)
+		} else {
+			var state store.ReminderAction
+			if e = json.Unmarshal(w.Body.Bytes(), &state); e != nil || w.Code != 200 || state.Reminder.ID != r.ID {
+				t.Fatal(w.Code, w.Body.String(), e)
+			}
+		}
+	}
+}

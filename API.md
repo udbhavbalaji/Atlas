@@ -51,7 +51,7 @@ Clients should branch on `error.code`, not message text. Validation errors retur
 
 ## Manual test
 
-Open the **API testing panel** on the homepage. It uses real data on that server.
+Open the **API lab tab** on the homepage. It uses real data on that server.
 
 1. Choose **Create task**, send the default body, and inspect 201, ID, and Location.
 2. Click **Replay last request**. Expect 200, `replayed: true`, the same ID, and one task.
@@ -82,3 +82,57 @@ Content-Type: application/json
 A due repeat stays in the inbox until acted on. There is at most one active delivery per reminder. After downtime, one overdue occurrence is surfaced; acknowledgment skips missed calendar occurrences and queues the next future one. Snooze/reschedule moves only the active occurrence, preserving the original clock anchor. Acknowledgment after a long snooze skips calendar times before that snoozed delivery.
 
 `POST /reminders/{id}/complete` ends the entire series and cancels future delivery. The older `/dismiss` action applies to one-time reminders; repeating reminders use the occurrence endpoint. Linked task completion/deletion stops the series; reopening a task never revives it. Neither occurrence completion nor stopping a series completes the linked task.
+
+## Notes and explicit links
+
+| Method | Path (relative to `/api/v1`) | Result |
+| --- | --- | --- |
+| POST | /notes | 201 NoteAction; keyed replay 200 original NoteAction |
+| GET | /notes | 200 Note array, newest updated first; empty `[]` |
+| GET | /notes/{id} | 200 NoteAction |
+| PATCH | /notes/{id} | 200 NoteAction after replacing body |
+| DELETE | /notes/{id} | 200 NoteAction with `deleted: true`, `note: null` |
+| PUT | /notes/{id}/links/{kind}/{target} | 200 NoteAction after attaching a target |
+| DELETE | /notes/{id}/links/{kind}/{target} | 200 NoteAction after unlinking |
+
+Create accepts `body` and optional `task_id` and `reminder_id`, attaching both links atomically if supplied. PATCH requires `body`; links remain unchanged. Body is plain text, preserved exactly, must include non-whitespace content, and is limited to 10,000 Unicode code points. The existing strict JSON validation applies. `Idempotency-Key` is supported for creation, independently scoped to `notes.create`, with the same durable receipt semantics as tasks/reminders.
+
+NoteAction contains `note_id`, `note` (or null after deletion), and `deleted`. Note contains `id`, `body`, timestamps, and `links` (always an array). Each link contains `target_type` (`task` or `reminder`), `target_id`, `target_title`, and `target_exists`. The target title resolves to the current title when available; after task deletion it falls back to the title snapshot captured when linked. Links are explicit and can connect one note to multiple tasks and reminders, including completed records. A duplicate attachment or removal of an absent link is a no-op, with no duplicate activity.
+
+Link mutation requests accept an empty body or `{}`. Attaching requires the target to exist and returns the corresponding resource's 404 error otherwise. Unlinking still works after target deletion. Invalid bodies return `invalid_note`; invalid link kinds return `invalid_note_link`; missing notes return `note_not_found`. Both edits and link changes update the note timestamp only when something changes.
+
+Deleting a task preserves notes and historical links; the link becomes `target_exists: false`. Deleting a note removes its links while retaining activity and creation receipts. Replaying creation after deletion returns the original creation response and never restores the note. TaskAction and ReminderAction now include `notes: []` or their linked notes. Activity adds `note_id` and records note creation, edits, deletion, attachment, and removal without copying note text into the log.
+
+There is no rich text, note search, attachments, note-to-note linking, revision history, or generic relation graph in this slice. Plain text is displayed as text, including line breaks. This is a local service with the existing loopback/authentication limits.
+
+### Change a reminder’s direct task link
+
+`PATCH /api/v1/reminders/{id}` accepts exactly `{"task_id":"<open task ID>"}` or `{"task_id":""}` to detach. It returns canonical ReminderAction with task, deliveries, and linked notes. Only active reminders (scheduled, due, dismissed) may change links; completed/cancelled records retain provenance. An unchanged link returns current state without duplicate activity. Missing `task_id` returns 400 `invalid_reminder_link`; null is rejected. Missing tasks return 404, completed targets return 409. The link change and activity commit together, without changing the schedule, occurrence, repeat rule, or note links. Task completion/deletion subsequently cancels the linked reminder normally. Notes linking to both records does not establish this direct relationship.
+
+## Search
+
+`GET /api/v1/search?q=atlas&type=task&status=open&limit=20&offset=0`
+
+Required `q` is trimmed and must contain 1–200 Unicode code points. Matching is literal substring matching after Unicode lowercase conversion, with accents preserved; `%` and `_` are ordinary text. Search covers task titles/details, reminder titles, and note bodies. It does not search activity or linked record text.
+
+Optional `type` is `task`, `reminder`, `note`, or empty for all. Optional `status` is empty for any, `open`/`completed` for tasks, or `scheduled`/`due`/`dismissed`/`completed` for reminders. Notes require empty status. A status with all types returns only matching types. Unknown, duplicate, malformed, or incompatible query parameters return HTTP 400 with `invalid_search`.
+
+`limit` defaults to 20, bounded 1–100; `offset` defaults to 0, bounded 0–10000. Results use newest `updated_at` first, then type and ID for deterministic ties. Response fields are `query`, `type`, `status`, `limit`, `offset`, `results`, `has_more`, and nullable `next_offset`. No matches returns `results: []`. At the offset cap, `has_more` may be true with `next_offset: null`; narrow the search. Pages can shift between requests when records change; no cross-request snapshot or total count is promised.
+
+Each result includes `type`, `id`, `title`, plain-text `snippet`, `status` (empty for notes), `updated_at`, `matched_fields`, webpage `url`, and canonical `api_url`. Note titles are previews of the first body line. Snippets contain up to 180 code points plus ellipses. The canonical resource endpoint returns complete structured state; a result can become stale after a later edit or deletion.
+
+Search reads canonical tables in one SQLite statement snapshot. Edits/deletions are immediately reflected by a new request. This initial implementation scans records rather than maintaining a separate text index, intended for personal datasets. Full-text ranking, stemming, semantic search, and scalable indexed search remain deferred. The Search tab provides filters, pagination, record navigation, and JSON inspection; API lab exposes the raw search query.
+
+## Unified capture: preview and confirm
+
+`POST /api/v1/capture/preview` accepts explicit flat fields: required `title`, optional `details`, `due_at`, `reminder_at`, `reminder_title`, `timezone`, and `repeat`. Title/details/deadline validation matches task creation. Reminder timestamps require RFC3339 with an offset; timezone must be a valid IANA name. Repeat is empty, `daily`, or `weekly`. Reminder title defaults to the normalized task title. Without `reminder_at`, reminder title/timezone/repeat must be empty or omitted. A deadline alone creates no notification. This endpoint performs no writes or natural-language interpretation.
+
+The proposal contains `input` (normalized values including a `preview_id`), `effects` (explicit operations), and `warnings` (past deadline/reminder times). Dates normalize to UTC; the reminder timezone preserves its recurrence clock. Past times remain valid and are surfaced for review. Explicit offset timestamps choose the intended instant, including during DST ambiguity.
+
+After user review, send the proposal's `input` unchanged to `POST /api/v1/capture/commit`, with a **required** `Idempotency-Key`. Missing key returns 400 `capture_key_required`. Missing/mismatched preview ID returns 409 `capture_preview_conflict`; preview again after changing fields. Unsupported reminder-only fields without a time return 400 `invalid_capture_reminder`. Other validation errors use existing structured task/reminder codes. Both endpoints reject null, duplicate, unknown, or incorrectly typed fields. Preview rejects a nonempty `preview_id` in its request.
+
+Commit creates one open task, optionally one directly linked reminder with its queued delivery, activity entries, and the durable receipt in a single transaction. It returns 201 `TaskAction` with task, reminders, deliveries, and notes, plus `Location` pointing to canonical task state. Retry with identical normalized fields and the same key returns 200 and `Idempotency-Replayed: true`. Reusing a key for different normalized content returns 409 `idempotency_conflict`. The key is scoped to `capture.commit`; receipts remain after edits, deletion, and restart. Replays return the original creation snapshot, so use canonical endpoints for current state. If response delivery is interrupted, retry unchanged rather than use a new key.
+
+`preview_id` is a deterministic versioned fingerprint of normalized input, not an authorization token or persisted proposal. The client owns displaying the proposal and obtaining confirmation. Direct integrations must implement their own confirmation flow. The local API has no authentication boundary. Preview warnings can change as time passes; the normalized absolute times remain fixed.
+
+The Capture tab shows readable review fields and raw proposal/state JSON. It preserves a pending confirmation's exact body/key in browser session storage before sending, allowing recovery after reload in the same tab. It locks fields while the outcome is uncertain and clears the pending request after a successful response. Closing the browser session may lose this retry state; inspect existing records before recreating an uncertain capture. No database migration is required.

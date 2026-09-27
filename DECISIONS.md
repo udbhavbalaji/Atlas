@@ -87,3 +87,43 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Begin recurrence with daily and weekly reminders at the original local clock in an IANA timezone. Keep one active occurrence, awaiting user acknowledgment before queuing the next future repeat. Complete/dismiss occurrence is distinct from stopping the series. Occurrence IDs provide durable retry deduplication.
 
 **Consequences:** Downtime surfaces one overdue occurrence; acknowledgment skips missed repeats. Snooze preserves the series clock. Missing local times are skipped and ambiguous times choose the earlier instant. Explicit first timestamps are honored. Task completion/deletion stops linked repeats, and reopening does not revive them. Creation receipts include the repeat rule. The webpage includes repeat selection, five-second testing, occurrence actions, stop controls, visible repeat clocks, and API inspection. Monthly/custom rules, end dates, editing rules, and task recurrence remain deferred.
+
+## Persistent plain-text notes with explicit context links
+
+**Status:** Accepted
+
+**Decision:** Notes store plain text and explicitly link to existing tasks and reminders. One note may have multiple targets, including completed records. Note mutations, link validation, creation receipts, and activity commit transactionally. Task and reminder state responses expose linked notes.
+
+**Consequences:** Task deletion preserves note content and link provenance, using the title snapshot from attachment when the target no longer exists. Note deletion removes links but preserves activity and creation receipts. Duplicate linking/unlinking is a no-op. Note text is not copied into activity entries. The webpage provides capture, editing, deletion, linking/unlinking, per-record linked note views, and API testing. Search, rich text, attachments, revision history, and a general relation graph are deferred.
+
+## Direct reminder task links in both creation flows
+
+**Status:** Accepted
+
+**Decision:** Expose direct task selection in the general reminder creation form and allow active reminders to attach, change, or remove their task link. Keep Add reminder on task cards. Notes are independent context links and do not establish task-reminder lifecycle relationships.
+
+**Consequences:** Targets must be open tasks. Schedule, recurrence, deliveries, and note links remain intact during attachment changes. Completed/cancelled reminders retain their link provenance. Repeated identical changes create no duplicate activity; changed links record activity atomically. The webpage and API testing panel expose these controls.
+
+## Focused feature tabs for manual testing
+
+**Status:** Accepted
+
+**Decision:** Organize the testing webpage into Tasks, Reminders, Notes, Activity, and API lab tabs, with a dark minimalist theme. Each feature includes a concise testing checklist, and only its current panel is visible. API inputs are shown when relevant to the selected endpoint.
+
+**Consequences:** New features must fit an existing feature tab or add a focused tab and manual test guide. Preserve form drafts when switching tabs; URL fragments identify the active panel. Cross-record shortcuts switch panels before navigating. Due reminders remain discoverable through a navigation badge. Tabs support keyboard navigation and phone layouts. This changes presentation without changing API or persistence semantics.
+
+## Canonical text search with a focused testing tab
+
+**Status:** Accepted
+
+**Decision:** Search task titles/details, reminder titles, and note bodies with literal Unicode lowercase substring matching. Read canonical tables in one SQLite snapshot; return bounded pages of structured results with matched fields, snippets, and webpage/API record links. Add a dedicated Search testing tab and API lab endpoint.
+
+**Consequences:** No migration or duplicate index state is required. Type/status filters and strict query validation keep API behavior explicit. Results are newest first; pages may shift between requests after writes. The initial scan targets personal datasets. Indexed full-text search, ranking, stemming, and semantic search are deferred. Record links reveal completed tasks and reminder history and survive reloads.
+
+## Explicit unified capture with atomic confirmation
+
+**Status:** Accepted
+
+**Decision:** Add a Capture testing tab and preview/commit APIs for one task and an optional directly linked reminder. Start with explicit validated fields. Preview has no persistence effects, exposes normalized input, planned effects, and warnings, and identifies content with a versioned fingerprint. Confirmation requires unchanged content and a durable retry key; records, delivery, activity, and receipt commit together.
+
+**Consequences:** Browser edits invalidate preview. Uncertain confirmation preserves its exact request in session storage and locks editing until retry succeeds. A fingerprint identifies content and does not enforce authorization; clients own user confirmation. Existing lifecycle cancellation, recurrence, and receipt semantics apply. No migration is required. Natural-language interpretation, saved drafts, note capture, and multi-step general orchestration remain future work.
