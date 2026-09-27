@@ -108,3 +108,17 @@ There is no rich text, note search, attachments, note-to-note linking, revision 
 ### Change a reminder’s direct task link
 
 `PATCH /api/v1/reminders/{id}` accepts exactly `{"task_id":"<open task ID>"}` or `{"task_id":""}` to detach. It returns canonical ReminderAction with task, deliveries, and linked notes. Only active reminders (scheduled, due, dismissed) may change links; completed/cancelled records retain provenance. An unchanged link returns current state without duplicate activity. Missing `task_id` returns 400 `invalid_reminder_link`; null is rejected. Missing tasks return 404, completed targets return 409. The link change and activity commit together, without changing the schedule, occurrence, repeat rule, or note links. Task completion/deletion subsequently cancels the linked reminder normally. Notes linking to both records does not establish this direct relationship.
+
+## Search
+
+`GET /api/v1/search?q=atlas&type=task&status=open&limit=20&offset=0`
+
+Required `q` is trimmed and must contain 1–200 Unicode code points. Matching is literal substring matching after Unicode lowercase conversion, with accents preserved; `%` and `_` are ordinary text. Search covers task titles/details, reminder titles, and note bodies. It does not search activity or linked record text.
+
+Optional `type` is `task`, `reminder`, `note`, or empty for all. Optional `status` is empty for any, `open`/`completed` for tasks, or `scheduled`/`due`/`dismissed`/`completed` for reminders. Notes require empty status. A status with all types returns only matching types. Unknown, duplicate, malformed, or incompatible query parameters return HTTP 400 with `invalid_search`.
+
+`limit` defaults to 20, bounded 1–100; `offset` defaults to 0, bounded 0–10000. Results use newest `updated_at` first, then type and ID for deterministic ties. Response fields are `query`, `type`, `status`, `limit`, `offset`, `results`, `has_more`, and nullable `next_offset`. No matches returns `results: []`. At the offset cap, `has_more` may be true with `next_offset: null`; narrow the search. Pages can shift between requests when records change; no cross-request snapshot or total count is promised.
+
+Each result includes `type`, `id`, `title`, plain-text `snippet`, `status` (empty for notes), `updated_at`, `matched_fields`, webpage `url`, and canonical `api_url`. Note titles are previews of the first body line. Snippets contain up to 180 code points plus ellipses. The canonical resource endpoint returns complete structured state; a result can become stale after a later edit or deletion.
+
+Search reads canonical tables in one SQLite statement snapshot. Edits/deletions are immediately reflected by a new request. This initial implementation scans records rather than maintaining a separate text index, intended for personal datasets. Full-text ranking, stemming, semantic search, and scalable indexed search remain deferred. The Search tab provides filters, pagination, record navigation, and JSON inspection; API lab exposes the raw search query.

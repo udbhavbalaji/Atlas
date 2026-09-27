@@ -91,7 +91,7 @@ Schema version 6 adds repeat rules, immutable clock anchors, and active occurren
 6. Create a note via the API panel and click **Replay last request**. Confirm one note and the same ID.
 7. Delete a disposable linked task. Its note stays, with the task labelled `(deleted)`. Deleting the note removes its links but retains activity history.
 
-Schema version 7 adds notes, explicit note links, and note references in activity. Existing tasks, repeats, deliveries, and request receipts are retained. Generic relations and note search remain future work.
+Schema version 7 adds notes, explicit note links, and note references in activity. Existing tasks, repeats, deliveries, and request receipts are retained. Generic relations remain future work; text search is now available.
 
 ### Direct reminder link controls
 
@@ -99,4 +99,15 @@ The general reminder form includes **Link reminder to task (optional)**. Existin
 
 ## Feature testing interface
 
-Use the Tasks, Reminders, Notes, Activity, and API lab tabs to work on one feature at a time. Each tab has a What you can test checklist. The selected tab is stored in the URL fragment and survives browser reload; unsaved form contents remain while switching tabs. A due count on Reminders stays visible from other tabs. Add note / View note / View task shortcuts open the appropriate tab. Use arrow keys, Home, and End on the feature tabs. The dark interface adapts to narrow screens. Refresh data reloads saved records; browser reload loads interface updates.
+Use the Tasks, Reminders, Notes, Search, Activity, and API lab tabs to work on one feature at a time. Each tab has a What you can test checklist. The selected tab is stored in the URL fragment and survives browser reload; unsaved form contents remain while switching tabs. A due count on Reminders stays visible from other tabs. Add note / View note / View task shortcuts open the appropriate tab. Use arrow keys, Home, and End on the feature tabs. The dark interface adapts to narrow screens. Refresh data reloads saved records; browser reload loads interface updates.
+
+## Test search
+
+1. Save distinctive text in a task's details, a reminder title, and a note body. Open **Search** and search for that text; all matching record types should appear.
+2. Change **Record type** and **Status**; notes offer Any status only. Try different letter case and literal `%` or `_` text.
+3. Click **Open task/reminder/note** to reveal and focus the matching record. Completed tasks remain visible; completed/dismissed reminders open history. Reload a record URL to verify navigation persists.
+4. Edit a matching record and search again. New results should reflect the edit. Inspect **JSON state** for full canonical state.
+5. With more than 20 matches, use Next/Previous page. API lab supports GET search with a raw query such as `q=atlas&limit=1`; inspect pagination and `matched_fields`.
+6. In API lab try missing `q`, duplicate `q`, or `type=note&status=completed`. Expect structured HTTP 400 `invalid_search`.
+
+Search introduces no database migration. It scans canonical records; index-backed search and semantic retrieval remain deferred.

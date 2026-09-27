@@ -111,3 +111,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Organize the testing webpage into Tasks, Reminders, Notes, Activity, and API lab tabs, with a dark minimalist theme. Each feature includes a concise testing checklist, and only its current panel is visible. API inputs are shown when relevant to the selected endpoint.
 
 **Consequences:** New features must fit an existing feature tab or add a focused tab and manual test guide. Preserve form drafts when switching tabs; URL fragments identify the active panel. Cross-record shortcuts switch panels before navigating. Due reminders remain discoverable through a navigation badge. Tabs support keyboard navigation and phone layouts. This changes presentation without changing API or persistence semantics.
+
+## Canonical text search with a focused testing tab
+
+**Status:** Accepted
+
+**Decision:** Search task titles/details, reminder titles, and note bodies with literal Unicode lowercase substring matching. Read canonical tables in one SQLite snapshot; return bounded pages of structured results with matched fields, snippets, and webpage/API record links. Add a dedicated Search testing tab and API lab endpoint.
+
+**Consequences:** No migration or duplicate index state is required. Type/status filters and strict query validation keep API behavior explicit. Results are newest first; pages may shift between requests after writes. The initial scan targets personal datasets. Indexed full-text search, ranking, stemming, and semantic search are deferred. Record links reveal completed tasks and reminder history and survive reloads.

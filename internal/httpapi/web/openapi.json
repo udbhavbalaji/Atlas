@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -2494,6 +2494,99 @@
           }
         ]
       }
+    },
+    "/api/v1/search": {
+      "get": {
+        "description": "Literal case-insensitive text search in canonical records, newest update first. Task status: open/completed; reminder status: scheduled/due/dismissed/completed; notes require empty status. Unknown, duplicate, or malformed parameters return invalid_search. Pages may shift between requests when records change.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "task",
+                "reminder",
+                "note"
+              ],
+              "default": ""
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "open",
+                "completed",
+                "scheduled",
+                "due",
+                "dismissed"
+              ],
+              "default": ""
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3099,6 +3192,107 @@
           "task_id": {
             "type": "string",
             "description": "Existing open task ID, or empty to detach. Completed reminders cannot change links."
+          }
+        }
+      },
+      "SearchResult": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "title",
+          "snippet",
+          "status",
+          "updated_at",
+          "url",
+          "api_url",
+          "matched_fields"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "task",
+              "reminder",
+              "note"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "api_url": {
+            "type": "string"
+          },
+          "matched_fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "title",
+                "details",
+                "body"
+              ]
+            }
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": [
+          "query",
+          "type",
+          "status",
+          "limit",
+          "offset",
+          "results",
+          "has_more",
+          "next_offset"
+        ],
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         }
       }
