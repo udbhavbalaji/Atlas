@@ -19,6 +19,7 @@ type Question struct {
 	Message string `json:"message"`
 }
 type Result struct {
+	Continuation        *Continuation          `json:"continuation,omitempty"`
 	ReferenceQuery      string                 `json:"reference_query"`
 	Reference           *store.Task            `json:"reference"`
 	Candidates          []store.Task           `json:"candidates"`

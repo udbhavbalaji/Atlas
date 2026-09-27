@@ -168,3 +168,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Normalize complete common time idioms into the existing strict time parser. Support local calendar boundaries (day/week/month), close of business, named day periods and fractional/couple intervals. Expose conventional clock defaults in assumptions and a collapsible Capture phrase guide; include an end-of-day movie-ticket example button.
 
 **Consequences:** No migration is required. End of day is 23:59, week ends Sunday, close of business is 17:00 without holiday logic; morning/afternoon/evening/night defaults are 09:00/15:00/18:00/20:00. Exact clocks, timezone, DST validation, capture context, preview and atomic commit semantics remain in use. Passed named times and conflicting or unrecognized suffixes require clarification. General linguistic understanding and vague phrases such as “a few hours” remain unsupported.
+
+## Typed capture continuations for future orchestrators
+
+**Status:** Accepted
+
+**Decision:** Add an additive, versioned continuation envelope to interpretation APIs. Describe clarification IDs, answer value types, choices, request fields, preset values, follow-up calls, confirmation requirements and endpoint/body templates. Preserve legacy questions and existing capture validation.
+
+**Consequences:** Consumers need not parse English prompts to choose context or supply timing. Read-only interpretation/preview remain separate from confirmed mutations. Reference deadline edits explicitly require confirmation and re-interpretation. Templates do not grant authorization. Capture exposes the full interpretation/continuation JSON for testing; no migration or automatic dispatch is introduced.
