@@ -203,3 +203,13 @@ The feature has a Conversation test section in Capture, visible history, proposa
 Atlas owns canonical state, bounded context retrieval, versioned structured proposal/session APIs, schema validation, date/capability checks, permissions, confirmation, transactions, idempotency, and delivery. Jev proposes operations through those boundaries; it does not write directly to storage. User confirmation remains required before committing a capture.
 
 **Consequences:** The local English interpreter and reply matcher are interim compatibility mechanisms, not the long-term decision engine. This supersedes earlier decisions treating local rule-based semantic interpretation as the intended architecture. Complete narrowly scoped fixes already underway, then prioritize the bounded Jev adapter rather than broader phrase-rule expansion. Keep deterministic handling for explicit structured requests and validation. Verify Jev's actual interface and deployment requirements before integration; this decision does not claim that Jev is connected or change the current runtime.
+
+## Offer optional reminder and note enrichment before task confirmation
+
+**Status:** Accepted; pending implementation through the Jev conversation flow.
+
+**Decision:** When capturing a new task, offer an optional reminder and an optional attached note before final confirmation. Provide a clear “save task only” path; neither addition is mandatory. If the user's request already supplies a reminder or note, show it for review and ask only about missing additions, without repeating questions already answered. A reminder requires an explicit or reviewed resolved time; do not infer an arbitrary time solely because the user chose to add one.
+
+Jev owns interpretation of replies and selection of focused conversational questions. Atlas exposes versioned structured choices and validated draft fields for task/reminder/note enrichment. Session history retains answers and skipped options across reloads. Editing additions requires a refreshed proposal; one explicit confirmation atomically saves the chosen records and links. Existing-record edits or extra reminders are separate operations, never implicit effects of this offer.
+
+**Verification:** Add webpage conversation controls and tests for task-only skip, reminder timing, note attachment, already-supplied additions, resume, and duplicate-safe confirmation. This is a product-flow requirement, not a new rule-based English decision engine.
