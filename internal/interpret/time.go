@@ -26,6 +26,11 @@ func parseTime(raw string, now time.Time, loc *time.Location, field string) (str
 		return "", repeat, assumptions, []Question{{field, code, message}}
 	}
 	text = regexp.MustCompile(`^(?:by|due)(?:\s+on)?\s+`).ReplaceAllString(text, "")
+	text, phraseAssumptions, fixedPhrase := normalizeCommonTime(text, now)
+	assumptions = append(assumptions, phraseAssumptions...)
+	if strings.HasPrefix(text, "tonight ") {
+		text = "today evening " + strings.TrimPrefix(text, "tonight ")
+	}
 	text = regexp.MustCompile(`\bat (one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b`).ReplaceAllStringFunc(text, func(s string) string { return "at " + strconv.Itoa(words[strings.TrimPrefix(s, "at ")]) })
 	if m := durationPattern.FindStringSubmatch(text); m != nil {
 		n, ok := words[m[1]]
@@ -241,6 +246,9 @@ func parseTime(raw string, now time.Time, loc *time.Location, field string) (str
 		return fail("ambiguous_local_time", "That local time occurs twice because of a timezone clock change. Use the explicit fields to choose the earlier instant, or an offset timestamp through the API.")
 	}
 	at := candidates[0]
+	if fixedPhrase && !at.After(now) {
+		return fail("named_time_passed", "The proposed named time has already passed. Choose tomorrow or an explicit future time.")
+	}
 	if monthWithoutYear && !at.After(now) {
 		year++
 		candidates = wallTimes(year, month, day, hour, minute, 0, 0, loc)

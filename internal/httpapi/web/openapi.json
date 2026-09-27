@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Atlas local API",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
   },
   "servers": [
@@ -2725,7 +2725,7 @@
     },
     "/api/v1/capture/interpret": {
       "post": {
-        "description": "Local English rule interpreter. Uses server reference time; never persists. Ready results include a validated capture proposal; unresolved wording returns questions and null proposal. Clients must display the proposal and obtain confirmation before commit. One task or standalone reminder or standalone note, with optional linked note and task reminder. Explicit before/ahead-of references resolve open task titles; ambiguous matches require selection. Context is visible user input. Ordering does not infer a delivery time. Reminder actions also suggest related open tasks by topic overlap and a small explicit vocabulary bridge. Matching context creates a prerequisite task with its linked reminder. Dated context supplies a reviewed lead time (default one hour); explicit time overrides it. Undated context and past derived times require clarification. Minutes/hours/day/week offsets before tasks are supported; saved delivery times are fixed snapshots.",
+        "description": "Local English rule interpreter. Uses server reference time; never persists. Ready results include a validated capture proposal; unresolved wording returns questions and null proposal. Clients must display the proposal and obtain confirmation before commit. One task or standalone reminder or standalone note, with optional linked note and task reminder. Explicit before/ahead-of references resolve open task titles; ambiguous matches require selection. Context is visible user input. Ordering does not infer a delivery time. Reminder actions also suggest related open tasks by topic overlap and a small explicit vocabulary bridge. Matching context creates a prerequisite task with its linked reminder. Dated context supplies a reviewed lead time (default one hour); explicit time overrides it. Undated context and past derived times require clarification. Minutes/hours/day/week offsets before tasks are supported; saved delivery times are fixed snapshots. Common English timing includes end of day/week/month, close of business, named morning/afternoon/evening/night defaults, half/quarter hours and couple intervals. Defaults are returned as assumptions; passed fixed named times return named_time_passed. See the Capture phrase guide and API.md for exact clocks.",
         "requestBody": {
           "required": true,
           "content": {

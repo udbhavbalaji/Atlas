@@ -142,3 +142,16 @@ func equalInstant(actual, expected string) bool {
 	b, f := time.Parse(time.RFC3339Nano, expected)
 	return e == nil && f == nil && a.Equal(b)
 }
+
+func TestMovieContextWithEndOfDay(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	movie, _ := s.Create(t.Context(), "Go for a movie with mummy")
+	r, e := InterpretWithContext(t.Context(), s, "remind me to book tickets for movie by end of the day", "Asia/Kolkata", "", time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC))
+	if e != nil || r.Status != "ready" || r.Draft.BeforeTaskID != movie.ID || !equalInstant(r.Draft.ReminderAt, "2026-09-27T18:29:00Z") || len(r.Questions) != 0 {
+		t.Fatal(r, e)
+	}
+}
