@@ -95,3 +95,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Notes store plain text and explicitly link to existing tasks and reminders. One note may have multiple targets, including completed records. Note mutations, link validation, creation receipts, and activity commit transactionally. Task and reminder state responses expose linked notes.
 
 **Consequences:** Task deletion preserves note content and link provenance, using the title snapshot from attachment when the target no longer exists. Note deletion removes links but preserves activity and creation receipts. Duplicate linking/unlinking is a no-op. Note text is not copied into activity entries. The webpage provides capture, editing, deletion, linking/unlinking, per-record linked note views, and API testing. Search, rich text, attachments, revision history, and a general relation graph are deferred.
+
+## Direct reminder task links in both creation flows
+
+**Status:** Accepted
+
+**Decision:** Expose direct task selection in the general reminder creation form and allow active reminders to attach, change, or remove their task link. Keep Add reminder on task cards. Notes are independent context links and do not establish task-reminder lifecycle relationships.
+
+**Consequences:** Targets must be open tasks. Schedule, recurrence, deliveries, and note links remain intact during attachment changes. Completed/cancelled reminders retain their link provenance. Repeated identical changes create no duplicate activity; changed links record activity atomically. The webpage and API testing panel expose these controls.

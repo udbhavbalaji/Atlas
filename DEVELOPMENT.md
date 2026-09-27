@@ -92,3 +92,7 @@ Schema version 6 adds repeat rules, immutable clock anchors, and active occurren
 7. Delete a disposable linked task. Its note stays, with the task labelled `(deleted)`. Deleting the note removes its links but retains activity history.
 
 Schema version 7 adds notes, explicit note links, and note references in activity. Existing tasks, repeats, deliveries, and request receipts are retained. Generic relations and note search remain future work.
+
+### Direct reminder link controls
+
+The general reminder form includes **Link reminder to task (optional)**. Existing active reminders have **Link to task** / **Change task link**: choose an open task and save, or select **Standalone reminder** to detach. Verify the linked task appears on the reminder and the task shows it under Linked reminders. Complete the task and verify cancellation. No note is required; note links only associate context.

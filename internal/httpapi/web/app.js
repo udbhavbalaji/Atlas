@@ -68,7 +68,7 @@ function edit(row, t) {
 }
 async function load(preserveEdits = false) {
   const [next, activity, nextReminders, deliveries,nextNotes] = await Promise.all([api('tasks'), api('activity'), api('reminders'), api('deliveries'),api('notes')]); if(preserveEdits && (busy || document.querySelector('.task .edit')))return; reminders=nextReminders; tasks = next; notes=nextNotes; if(typeof renderNotes==='function')renderNotes();renderReminders(deliveries); render(); $('activity').replaceChildren();
-  const names = {'note.created':'Note added','note.updated':'Note changed','note.deleted':'Note deleted','note.linked':'Note linked','note.unlinked':'Note unlinked','task.created':'Task added', 'task.completed':'Task completed', 'task.updated':'Task changed', 'task.deleted':'Task deleted', 'reminder.scheduled':'Reminder scheduled', 'reminder.delivered':'Reminder delivered to inbox', 'reminder.snoozed':'Reminder snoozed', 'reminder.dismissed':'Reminder dismissed', 'reminder.occurrence.complete':'Repeat occurrence completed', 'reminder.occurrence.dismiss':'Repeat occurrence dismissed', 'reminder.completed':'Reminder completed', 'reminder.cancelled.task.completed':'Reminder cancelled because task completed', 'reminder.cancelled.task.deleted':'Reminder cancelled because task deleted'};
+  const names = {'note.created':'Note added','note.updated':'Note changed','note.deleted':'Note deleted','note.linked':'Note linked','note.unlinked':'Note unlinked','task.created':'Task added', 'task.completed':'Task completed', 'task.updated':'Task changed', 'task.deleted':'Task deleted', 'reminder.task_linked':'Reminder linked to task','reminder.task_unlinked':'Reminder task link removed','reminder.scheduled':'Reminder scheduled', 'reminder.delivered':'Reminder delivered to inbox', 'reminder.snoozed':'Reminder snoozed', 'reminder.dismissed':'Reminder dismissed', 'reminder.occurrence.complete':'Repeat occurrence completed', 'reminder.occurrence.dismiss':'Repeat occurrence dismissed', 'reminder.completed':'Reminder completed', 'reminder.cancelled.task.completed':'Reminder cancelled because task completed', 'reminder.cancelled.task.deleted':'Reminder cancelled because task deleted'};
   for (const a of activity) { const li = document.createElement('li'); const task = a.note_id ? notes.find(n=>n.id===a.note_id) : a.reminder_id ? reminders.find(r => r.id === a.reminder_id) : tasks.find(t => t.id === a.task_id); li.textContent = (names[a.action] || a.action) + (task ? ': ' + (task.title||'Note '+task.id.slice(0,8)) : '') + ' · ' + new Date(a.timestamp).toLocaleString(); $('activity').append(li); }
   if (!activity.length) { const li = document.createElement('li'); li.textContent = 'Your activity will appear here.'; $('activity').append(li); }
 }
@@ -87,6 +87,7 @@ setInterval(() => {if(!busy && !document.querySelector('.task .edit')) render();
 
 $('reminder-zone').textContent = 'Reminder timezone: ' + zone;
 function renderReminders(deliveries) {
+ const selector=$('reminder-task');const selected=selector.value;fillReminderTaskChoices(selector);selector.value=selected;if(selector.selectedIndex<0)selector.value='';
  for(const id of ['reminder-inbox','reminder-upcoming','reminder-history','delivery-history']) $(id).replaceChildren();
  $('inbox-heading').textContent = 'Reminder inbox (' + reminders.filter(r => r.status === 'due').length + ')';
  for(const r of reminders) {
@@ -95,6 +96,7 @@ function renderReminders(deliveries) {
  const when=document.createElement('p');when.className='meta';when.textContent=reminderStatus(r)+' · '+new Date(r.scheduled_at).toLocaleString()+' ('+zone+')';
  const actions=document.createElement('div');actions.className='actions';
  if(r.status!=='completed') {
+ actions.append(button(r.task_id?'Change task link':'Link to task',()=>reminderTaskForm(row,r)));
  if(r.status==='due' && !r.repeat) actions.append(button('Dismiss',()=>mutate(()=>api('reminders/'+r.id+'/dismiss','POST'),'Reminder dismissed.')));
  for(const minutes of [5,15,60]) actions.append(button('Snooze '+minutes+' min',()=>mutate(()=>api('reminders/'+r.id+'/snooze','POST',{scheduled_at:new Date(Date.now()+minutes*60000).toISOString()}),'Reminder snoozed.')));
  actions.append(button('Choose time',()=>rescheduleReminder(row,r)));
@@ -121,7 +123,7 @@ function rescheduleReminder(row,r) {
 }
 function scheduleReminder(test) {
  const title=$('reminder-title').value.trim();if(!title){message('Enter a reminder title.',true);$('reminder-title').reportValidity();return;}
- mutate(async()=>{const at=test?new Date(Date.now()+5000).toISOString():deadlineValue($('reminder-time').value);await api('reminders','POST',{title,scheduled_at:at,timezone:zone,repeat:$('reminder-repeat').value});$('reminder-title').value='';$('reminder-time').value='';},test?'Reminder scheduled. Watch the inbox in 5 seconds.':'Reminder scheduled.');
+ mutate(async()=>{const at=test?new Date(Date.now()+5000).toISOString():deadlineValue($('reminder-time').value);await api('reminders','POST',{title,scheduled_at:at,timezone:zone,repeat:$('reminder-repeat').value,task_id:$('reminder-task').value});$('reminder-title').value='';$('reminder-time').value='';$('reminder-task').value='';},test?'Reminder scheduled. Watch the inbox in 5 seconds.':'Reminder scheduled.');
 }
 $('reminder-form').onsubmit=e=>{e.preventDefault();scheduleReminder(false);};
 $('test-reminder').onclick=()=>scheduleReminder(true);
@@ -151,3 +153,6 @@ function completeTaskToo(task){return button('Complete task too',()=>mutate(()=>
 
 function occurrenceButton(r,action){return button(action==='complete'?'Complete occurrence':'Dismiss occurrence',()=>mutate(()=>api('reminders/'+r.id+'/occurrences/'+r.occurrence_id+'/acknowledge','POST',{action}),'Occurrence acknowledged. Next repeat scheduled.'));}
 function repeatDescription(r){const time=new Date(r.repeat_anchor);return (r.status==='completed'?'Stopped '+r.repeat+' repeat':'Repeats '+r.repeat)+(r.repeat==='weekly'?' on '+time.toLocaleDateString([],{weekday:'long',timeZone:r.timezone}):'')+' at '+time.toLocaleTimeString([],{timeZone:r.timezone})+' ('+r.timezone+').'+(r.status==='completed'?'':' Snooze changes only this occurrence.');}
+
+function fillReminderTaskChoices(select){select.replaceChildren();const none=document.createElement('option');none.value='';none.textContent='Standalone reminder';select.append(none);for(const t of tasks.filter(t=>t.status==='open')){const option=document.createElement('option');option.value=t.id;option.textContent=t.title;select.append(option);}}
+function reminderTaskForm(row,r){const form=document.createElement('form');form.className='edit';const label=document.createElement('label');label.textContent='Task for this reminder';const select=document.createElement('select');select.setAttribute('aria-label','Task for this reminder');fillReminderTaskChoices(select);select.value=r.task_id;label.append(select);const save=document.createElement('button');save.textContent='Save task link';save.className='primary';const explanation=document.createElement('p');explanation.textContent='Completing or deleting the linked task cancels this reminder. Choose Standalone reminder to remove the link. Notes are not required.';form.append(label,explanation,save,button('Cancel task link',()=>load().catch(()=>message('Could not reload reminders.',true))));row.replaceChildren(form);form.onsubmit=e=>{e.preventDefault();mutate(()=>api('reminders/'+r.id,'PATCH',{task_id:select.value}),'Reminder task link updated.');};}
