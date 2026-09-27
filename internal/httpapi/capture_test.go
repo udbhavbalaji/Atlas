@@ -175,3 +175,35 @@ func TestContextCaptureAPI(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
+func TestContextReminderLeadAPI(t *testing.T) {
+	s, e := store.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	target, e := s.CreateWithFields(t.Context(), "Movie with mummy", "", "2090-01-03T18:00:00Z")
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := Handler(s)
+	send := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/capture/interpret", strings.NewReader(body)))
+		return w
+	}
+	w := send(`{"text":"Remind me to book movie tickets","timezone":"UTC","reminder_lead_minutes":180}`)
+	var r struct {
+		Status   string                 `json:"status"`
+		Proposal *store.CaptureProposal `json:"proposal"`
+	}
+	if e = json.Unmarshal(w.Body.Bytes(), &r); e != nil || w.Code != 200 || r.Status != "ready" || r.Proposal == nil || r.Proposal.Input.BeforeTaskID != target.ID || r.Proposal.Input.ReminderAt != "2090-01-03T15:00:00.000000000Z" {
+		t.Fatal(w.Code, w.Body.String(), e)
+	}
+	for _, body := range []string{`{"text":"Remind me to book movie tickets","timezone":"UTC","reminder_lead_minutes":7}`, `{"text":"Remind me to book movie tickets","timezone":"UTC","reminder_lead_minutes":null}`} {
+		w = send(body)
+		if w.Code != 400 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+}
