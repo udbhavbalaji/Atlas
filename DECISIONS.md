@@ -160,3 +160,11 @@ The first deadline interface takes an explicit local date and time, displays the
 **Decision:** Reminder captures suggest context through meaningful shared title tokens and a small explicit resume/interview vocabulary bridge. Multiple matches require selection. A visible lead-time control proposes a reminder before a dated context deadline (default one hour); supported explicit minute/hour/day/week offsets override the default. Contextual reminders create a prerequisite task with a directly linked reminder. Show identified context even when its deadline is missing.
 
 **Consequences:** No migration is required. Interpretation remains a local heuristic, with user review and editable relationships. Undated tasks explain missing timing rather than generic missing context. Past derived times, unsupported offsets, DST gaps/overlaps and competing time requests require clarification. Preview binds the target snapshot and commit rechecks it. Delivery times are fixed after saving; live relative rescheduling remains future work. Capture exposes lead-time selection, context, candidate choice, computed times, explanations, explicit fields and raw state for manual testing.
+
+## Common time idioms with visible defaults
+
+**Status:** Accepted
+
+**Decision:** Normalize complete common time idioms into the existing strict time parser. Support local calendar boundaries (day/week/month), close of business, named day periods and fractional/couple intervals. Expose conventional clock defaults in assumptions and a collapsible Capture phrase guide; include an end-of-day movie-ticket example button.
+
+**Consequences:** No migration is required. End of day is 23:59, week ends Sunday, close of business is 17:00 without holiday logic; morning/afternoon/evening/night defaults are 09:00/15:00/18:00/20:00. Exact clocks, timezone, DST validation, capture context, preview and atomic commit semantics remain in use. Passed named times and conflicting or unrecognized suffixes require clarification. General linguistic understanding and vague phrases such as “a few hours” remain unsupported.
