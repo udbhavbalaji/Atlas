@@ -4,10 +4,12 @@ This is a native SwiftUI iPhone app. It is an Xcode project, not a web app. The 
 
 ## Build and install on an iPhone
 
-1. On a Mac with Xcode, open `AtlasPhone.xcodeproj`.
-2. Set the AtlasPhone target's Signing & Capabilities team to your Apple Account or Developer team. If Xcode reports that the bundle identifier is taken, change `com.atlas.personal` to a unique value.
-3. Connect your iPhone, enable Developer Mode if prompted, select it as the run destination, and choose Product → Run. Xcode signs and installs the app on the phone.
-4. Grant microphone and speech recognition permissions when you first use voice input. Spoken text remains editable until you tap Send. At the review stage, say or type `yes` and send it to save; say or type `cancel` to discard.
+1. Install Xcode from the Mac App Store. Launch it once and let it install its required components.
+2. In Xcode → Settings → Apple Accounts, sign in with your Apple Account. A free account appears as a **Personal Team**.
+3. Open `AtlasPhone.xcodeproj`. Select the AtlasPhone project, then the AtlasPhone target → Signing & Capabilities. Leave **Automatically manage signing** on and select your team. If Xcode reports that the bundle identifier is taken, change `com.atlas.personal` to a unique value.
+4. Connect your iPhone to the Mac with a cable, unlock it, and approve any trust prompt. Select the phone as Xcode's run destination. If Xcode requests Developer Mode, on the iPhone open Settings → Privacy & Security → Developer Mode, turn it on, restart, and confirm.
+5. Choose Product → Run. Xcode signs, installs, and launches Atlas on the phone.
+6. Grant microphone and speech recognition permissions when you first use voice input. Spoken text remains editable until you tap Send. At the review stage, say or type `yes` and send it to save; say or type `cancel` to discard.
 
 A free personal Apple Account can sign a development build for your own device. Apple says personal-team provisioning profiles expire after seven days, so you may need to run the app from Xcode again. No signed `.ipa` can be produced on this Linux machine; the final device build and signing need Xcode on a Mac.
 
