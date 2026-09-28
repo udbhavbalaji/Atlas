@@ -242,7 +242,7 @@ Only after explicit user review, submit unchanged `proposal.input` to `POST /api
 
 ## Input routing and channel handoff
 
-`GET /api/v1/routing` returns contract/registry version `1`, implemented actions, provider configuration (not proof of access), provisional policy, context/cache budgets and receipt lifetime. Actions are `task`, `reminder`, `note`, `clarify`, `unsupported`; executable channels are `tasks`, `reminders`, `notes`.
+`GET /api/v1/routing` returns contract/registry version `1`, implemented actions, provider configuration (not proof of access), provisional policy, context/cache budgets and receipt lifetime. The Jev provider reports its `via` (`openrouter`) and pinned `model` (`typesafe/jev-1.13`). Actions are `task`, `reminder`, `note`, `clarify`, `unsupported`; executable channels are `tasks`, `reminders`, `notes`.
 
 `POST /api/v1/routing/{provider}/evaluate`, with provider `mock` or `jev`:
 

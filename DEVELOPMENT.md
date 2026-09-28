@@ -188,7 +188,7 @@ Provider foundation introduces no migration. Contract tests cover schema/status 
 
 The routing layer is implemented separately from the interim Capture interpreter. Open **Routing** to inspect the registry, probabilities and channel handoff. Channel field extraction currently requires explicit review/input.
 
-For Gateway access, save only the key (no quotes or assignment) in `/home/udawg_00/Developer/atlas/data/ai-gateway.key`. This directory is ignored by Git. Restrict the file to mode 600. Atlas reads it at startup; `AI_GATEWAY_API_KEY` takes precedence. Override its path with `-gateway-key-file`, or use an empty flag to disable file loading. No npm setup command is required. Vercel returned HTTP 403 requiring a credit card for this account; included credits did not bypass verification. User declined a card, so further live evaluations are paused. Do not silently substitute another model.
+For OpenRouter access, save only the key (no quotes or assignment) in `/home/udawg_00/Developer/atlas/data/openrouter.key`. This directory is ignored by Git. Restrict the file to mode 600. Atlas reads it at startup; `OPENROUTER_API_KEY` takes precedence. Override its path with `-openrouter-key-file`, or use an empty flag to disable file loading. No npm setup command is required. Atlas uses OpenRouter's Decisions API and pinned model `typesafe/jev-1.13`. The prior Vercel key is no longer loaded. Do not silently substitute another model.
 
 Manual tests:
 
@@ -199,7 +199,7 @@ Manual tests:
 5. Use Ambiguous: evaluation must wait for your explicit channel selection and dispatch click. Unsupported/malformed/unavailable cases must offer no confirmation.
 6. Change source/provider/context: evaluation is invalidated. Change channel fields: preview is invalidated without another evaluation. A restored uncertain confirmation retries the same storage key through reload/restart.
 7. Optional context search is bounded to five open tasks; only supplied IDs can be selected as prerequisite targets. Changing canonical state still requires reviewing the refreshed preview.
-8. When actual Gateway access becomes available, explicitly choose Jev and evaluate a synthetic sentence once. A repeated unchanged evaluation should return `cache_hit:true`, `model_calls:0`. Inspect the originating token usage and cost. Changing relevant context must miss the cache.
+8. With an OpenRouter key configured, explicitly choose Jev and evaluate a synthetic sentence once. A repeated unchanged evaluation should return `cache_hit:true`, `model_calls:0`. Inspect the originating token usage and cost. Changing relevant context must miss the cache.
 
 Automated routing tests simulate HTTP/authentication, malformed output, cancellation, redirects, uncertainty, bounded caching/concurrent reuse, channel questions, token tampering, cross-server receipts and atomic idempotent capture. They make no actual Jev calls. The next natural-language milestone is channel-owned extraction/decision handling and durable conversations using the routing boundary.
 

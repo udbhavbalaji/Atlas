@@ -64,12 +64,12 @@ func (s routingService) verify(token string) (routing.Result, error) {
 }
 
 func routingRoutes(mux *http.ServeMux, s *store.Store) {
-	key := os.Getenv("AI_GATEWAY_API_KEY")
+	key := os.Getenv("OPENROUTER_API_KEY")
 	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, configured: key != "", secret: rand.Text()})
 }
 func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 5}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
+		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 5}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
 	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
 		var input routing.Request
@@ -91,7 +91,7 @@ func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routin
 				return
 			}
 			if !service.configured {
-				apiError(w, 503, "routing_unavailable", "Save the key in data/ai-gateway.key or set AI_GATEWAY_API_KEY and restart Atlas. No fallback was used.", false)
+				apiError(w, 503, "routing_unavailable", "Save the key in data/openrouter.key or set OPENROUTER_API_KEY and restart Atlas. No fallback was used.", false)
 				return
 			}
 			evaluator = service.jev

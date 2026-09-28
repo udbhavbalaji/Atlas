@@ -15,7 +15,7 @@ import (
 )
 
 func TestRoutingAPIChannelHandoffAndConfirmedPersistence(t *testing.T) {
-	t.Setenv("AI_GATEWAY_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
