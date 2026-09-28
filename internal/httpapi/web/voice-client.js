@@ -108,6 +108,7 @@ function voiceUpdateControls() {
   const listenLabel = VoiceDesktopDictation ? 'Focus for dictation' : voiceListening ? 'Stop listening' : 'Use microphone';
   voiceElement('listen-first').textContent = listenLabel;
   voiceElement('listen-answer').textContent = listenLabel;
+  window.atlasDesktopAudio?.updateControls();
 }
 
 async function voiceCall(action, speak = true) {

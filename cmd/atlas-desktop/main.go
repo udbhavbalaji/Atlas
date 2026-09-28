@@ -5,6 +5,7 @@ package main
 /*
 #cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
 #include <stdlib.h>
+#include <string.h>
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
@@ -21,6 +22,21 @@ static void atlas_request_close() {
     g_idle_add(atlas_quit_on_idle, NULL);
 }
 
+static gboolean atlas_permission_request(WebKitWebView *view, WebKitPermissionRequest *request, gpointer data) {
+    const char *base = (const char *)data;
+    const char *current = webkit_web_view_get_uri(view);
+    size_t length = strlen(base);
+    if (!current || strncmp(current, base, length) != 0 ||
+        (current[length] != '/' && current[length] != '\0') ||
+        !WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(request)) return FALSE;
+    WebKitUserMediaPermissionRequest *media = WEBKIT_USER_MEDIA_PERMISSION_REQUEST(request);
+    if (!webkit_user_media_permission_is_for_audio_device(media) ||
+        webkit_user_media_permission_is_for_video_device(media) ||
+        webkit_user_media_permission_is_for_display_device(media)) return FALSE;
+    webkit_permission_request_allow(request);
+    return TRUE;
+}
+
 static gboolean atlas_open_window(const char *url) {
     int argc = 0;
     char **argv = NULL;
@@ -29,8 +45,12 @@ static gboolean atlas_open_window(const char *url) {
     gtk_window_set_title(GTK_WINDOW(window), "Atlas");
     gtk_window_set_default_size(GTK_WINDOW(window), 1080, 820);
     WebKitWebView *view = WEBKIT_WEB_VIEW(webkit_web_view_new());
+    WebKitSettings *settings = webkit_web_view_get_settings(view);
+    webkit_settings_set_enable_media_stream(settings, TRUE);
+    webkit_settings_set_enable_webrtc(settings, TRUE);
     gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
     g_signal_connect(window, "destroy", G_CALLBACK(atlas_window_destroy), NULL);
+    g_signal_connect(view, "permission-request", G_CALLBACK(atlas_permission_request), (gpointer)url);
     webkit_web_view_load_uri(view, url);
     gtk_widget_show_all(window);
     gtk_main();
