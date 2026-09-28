@@ -3,6 +3,7 @@
 const voiceStorage = 'atlas.voice.session.v1';
 const voiceClient = new AtlasVoiceSession(window.fetch.bind(window), voiceRender);
 const VoiceRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VoiceDesktopDictation = !VoiceRecognition && location.pathname === '/desktop';
 let voiceBusy = false;
 let voiceListening = false;
 let voiceRecognizer = null;
@@ -100,12 +101,13 @@ function voiceRender(state) {
 
 function voiceUpdateControls() {
   for (const button of document.querySelectorAll('#panel-voice button')) button.disabled = voiceBusy;
-  if (!VoiceRecognition) {
+  if (!VoiceRecognition && !VoiceDesktopDictation) {
     voiceElement('listen-first').disabled = true;
     voiceElement('listen-answer').disabled = true;
   }
-  voiceElement('listen-first').textContent = voiceListening ? 'Stop listening' : 'Use microphone';
-  voiceElement('listen-answer').textContent = voiceListening ? 'Stop listening' : 'Use microphone';
+  const listenLabel = VoiceDesktopDictation ? 'Focus for dictation' : voiceListening ? 'Stop listening' : 'Use microphone';
+  voiceElement('listen-first').textContent = listenLabel;
+  voiceElement('listen-answer').textContent = listenLabel;
 }
 
 async function voiceCall(action, speak = true) {
@@ -126,7 +128,15 @@ async function voiceCall(action, speak = true) {
 }
 
 function voiceListen(targetID) {
-  if (!VoiceRecognition) return;
+  if (!VoiceRecognition) {
+    if (VoiceDesktopDictation) {
+      voiceElement(targetID).focus();
+      voiceElement('mic-status').textContent = /Mac/.test(navigator.platform)
+        ? 'Use your Mac Dictation shortcut, then review the text before sending.'
+        : 'On Omarchy, hold F9 or toggle Super+Ctrl+X to dictate. Review the text before sending.';
+    }
+    return;
+  }
   if (voiceListening) { voiceRecognizer?.stop(); return; }
   if (voiceBusy) return;
   window.speechSynthesis?.cancel();
@@ -197,7 +207,9 @@ voiceElement('cancel').onclick = () => voiceCall(() => voiceClient.cancel());
 voiceElement('repeat').onclick = voiceSpeakPrompt;
 voiceElement('listen-first').onclick = () => voiceListen('first');
 voiceElement('listen-answer').onclick = () => voiceListen('answer');
-if (!VoiceRecognition) voiceElement('mic-status').textContent = 'This browser has no speech recognition API. Type a transcript to test the same conversation.';
+if (!VoiceRecognition) voiceElement('mic-status').textContent = VoiceDesktopDictation
+  ? (/Mac/.test(navigator.platform) ? 'Use macOS Dictation in a text box, then review before sending.' : 'Omarchy dictation is ready: focus a text box and hold F9, or toggle Super+Ctrl+X.')
+  : 'This browser has no speech recognition API. Type a transcript to test the same conversation.';
 if (!('speechSynthesis' in window)) voiceElement('speak').disabled = true;
 voiceUpdateControls();
 try {
