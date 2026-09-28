@@ -1,5 +1,7 @@
 # Atlas
 
+<img src="brand/atlas-logo.svg" alt="Atlas Folded Path logo" width="360">
+
 Atlas is a local-first personal context and task system intended to reduce mental load while keeping the user in control.
 
 Its first useful loop is:

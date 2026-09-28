@@ -252,6 +252,14 @@ Jev is an evaluation model, not a free-form generator. It selects among supplied
 
 **Decision:** Branch new work from `development` onto feature branches and merge tested work back into `development`. Never merge into `main` autonomously. At a substantial milestone, present the completed scope, verification evidence and remaining risks/limitations and recommend whether to promote. Merge `development` into `main` only after the user explicitly approves that promotion. Prior general authorization to implement features does not authorize main promotion.
 
+## Folded Path is the Atlas identity for now
+
+**Status:** Accepted by the user (2026-09-28); provisional until a later explicit brand decision.
+
+**Decision:** Use the Folded Path ribbon mark as the native iPhone app icon and the standalone Atlas symbol. Pair it with an `ATLAS` wordmark where space allows. Replace the prior mint `A.` icon and use the same symbol in the testing webpage header and favicon. Keep the vector masters, iPhone asset catalog, and webpage copies aligned. The palette and asset locations are recorded in [brand/README.md](brand/README.md).
+
+**Verification:** The icon export must be a full-bleed, opaque 1024 × 1024 RGB PNG. Visual checks should cover the icon at app size and the logo on light and dark backgrounds. Device build and installation remain separate from this brand decision.
+
 ## Carry routing context into channel preparation
 
 **Status:** Accepted (2026-09-27).

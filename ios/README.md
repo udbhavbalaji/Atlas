@@ -1,5 +1,7 @@
 # Atlas for iPhone
 
+The app icon uses the agreed Folded Path Atlas identity. See [brand/README.md](../brand/README.md) for the vector masters, palette, and export rules.
+
 This is a native SwiftUI iPhone app. It is an Xcode project, not a web app. The app uses the existing durable routing conversation API for typed and push-to-talk input, follow-up questions, a review screen, explicit spoken or typed confirmation, cancellation, and session recovery. Tasks, reminders, and notes are read-only in the app. All changes go through conversation.
 
 ## Build and install on an iPhone

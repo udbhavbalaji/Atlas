@@ -21,7 +21,7 @@ func Handler(s *store.Store) http.Handler {
 	routingRoutes(mux, s)
 	dependencyRoutes(mux, s)
 	relationRoutes(mux, s)
-	for path, file := range map[string]string{"/": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
+	for path, file := range map[string]string{"/": "index.html", "/atlas-mark.svg": "atlas-mark.svg", "/atlas-icon.svg": "atlas-icon.svg", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
 		pattern := "GET " + path
 		if path == "/" {
 			pattern = "GET /{$}"
@@ -38,6 +38,9 @@ func Handler(s *store.Store) http.Handler {
 			}
 			if file == "styles.css" {
 				content = "text/css; charset=utf-8"
+			}
+			if file == "atlas-mark.svg" || file == "atlas-icon.svg" {
+				content = "image/svg+xml"
 			}
 			if file == "openapi.json" {
 				content = "application/json"
