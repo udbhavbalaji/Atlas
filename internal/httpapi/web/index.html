@@ -13,6 +13,7 @@
 <button id="tab-activity" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1" data-feature="activity">Activity</button>
 <button id="tab-providers" role="tab" aria-controls="panel-providers" aria-selected="false" tabindex="-1" data-feature="providers">Providers</button>
 <button id="tab-routing" role="tab" aria-controls="panel-routing" aria-selected="false" tabindex="-1" data-feature="routing">Routing</button>
+<button id="tab-voice" role="tab" aria-controls="panel-voice" aria-selected="false" tabindex="-1" data-feature="voice">Voice</button>
 <button id="tab-api" role="tab" aria-controls="panel-api" aria-selected="false" tabindex="-1" data-feature="api">API lab</button>
 </nav>
 <div id="message" role="status" aria-live="polite"></div>
@@ -120,6 +121,25 @@
 <p id="routing-conversation-status" role="status" aria-live="polite"></p><div id="routing-conversation-messages"></div><div id="routing-conversation-preview"></div>
 <form id="routing-conversation-reply" hidden><label>Reply<textarea id="routing-conversation-answer" rows="2" maxlength="12000"></textarea></label><label>Structured field (optional)<input id="routing-conversation-field" placeholder="fields.title"></label><label>Structured value (optional)<input id="routing-conversation-value" placeholder="Value from a voice model"></label><button class="primary">Send reply</button></form><details><summary>Conversation JSON</summary><pre id="routing-conversation-json"></pre></details></section>
 </section>
+<section id="panel-voice" role="tabpanel" aria-labelledby="tab-voice" tabindex="0" hidden>
+<div class="feature-heading"><span class="eyebrow">SPEAK / REVIEW / SAVE</span><h2>Voice prototype</h2><p>Talk through the routing conversation. Review every proposal before saving.</p></div>
+<details class="test-guide"><summary>What you can test</summary><ul><li>Start with a task, reminder, note, or ambiguous mock route. Jev is optional and only called at the start.</li><li>Use the microphone if this browser supports speech recognition, or type a transcript. The browser may process speech through its own service.</li><li>Hear Atlas prompts, answer one question at a time, correct a proposal, then tap Confirm and save. Speech never confirms a save automatically.</li><li>Reload or resume a session ID. If a response is interrupted, resume before retrying confirmation.</li></ul></details>
+<section class="composer" aria-label="Voice setup"><h3>Start</h3>
+<label>Decision provider<select id="voice-provider"><option value="mock">Mock fixture</option><option value="jev">Jev via OpenRouter</option></select></label>
+<label id="voice-fixture-label">Mock route<select id="voice-fixture"><option value="task">Task</option><option value="reminder">Reminder</option><option value="note">Note</option><option value="ambiguous">Ambiguous</option><option value="unsupported">Unsupported</option></select></label>
+<label>Speech language<select id="voice-language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option></select></label>
+<label class="voice-option"><input id="voice-speak" type="checkbox" checked> Speak Atlas prompts</label>
+<label class="voice-option"><input id="voice-auto-send" type="checkbox" checked> Send spoken follow-up answers automatically</label>
+<form id="voice-start-form"><label>First utterance<textarea id="voice-first" rows="2" maxlength="12000" required placeholder="Remind me to call Maya tomorrow at 6pm"></textarea></label><label>Context search (optional)<input id="voice-context" maxlength="200"></label><div class="actions"><button id="voice-listen-first" type="button">Use microphone</button><button class="primary" type="submit">Start conversation</button></div></form>
+</section>
+<section class="composer" aria-label="Voice conversation"><h3>Conversation</h3><p id="voice-status" role="status" aria-live="polite">Start a conversation or resume one below.</p><p id="voice-mic-status" class="meta" role="status" aria-live="polite"></p>
+<form id="voice-resume-form"><label>Session ID<input id="voice-session-id" autocomplete="off" placeholder="Paste a session ID"></label><button type="submit">Resume session</button></form>
+<div id="voice-transcript" aria-label="Conversation transcript" aria-live="polite"></div>
+<div id="voice-prompt" class="voice-prompt" aria-live="polite"></div><div id="voice-question-actions" class="actions"></div>
+<div id="voice-proposal" class="voice-proposal"></div><div class="actions"><button id="voice-repeat" type="button" hidden>Speak prompt again</button><button id="voice-confirm" class="primary" type="button" hidden>Confirm and save</button><button id="voice-cancel" type="button" hidden>Cancel conversation</button></div>
+<form id="voice-reply-form" hidden><label>Your answer or correction<textarea id="voice-answer" rows="2" maxlength="12000" placeholder="No reminder, tomorrow at 6pm, or change title to…"></textarea></label><div class="actions"><button id="voice-listen-answer" type="button">Use microphone</button><button type="submit" class="primary">Send answer</button></div></form>
+</section>
+</section>
 <section id="panel-api" role="tabpanel" aria-labelledby="tab-api" tabindex="0" hidden><div class="feature-heading"><span class="eyebrow">06 / CONTRACTS</span><h2>API lab</h2><p>Inspect structured responses, validation, and safe retries.</p></div><details class="test-guide"><summary>What you can test</summary><ul><li>Create a record, then Replay last request to verify creation deduplication.</li><li>Change the input while keeping the key to inspect a conflict.</li><li>Read task, reminder, or note state with linked records.</li><li>Send malformed JSON to inspect structured errors.</li></ul></details>
 <p>Inspect structured state and try retries. Requests here use your real Atlas data.</p>
 <label>Endpoint<select id="api-endpoint">
@@ -131,4 +151,4 @@
 <pre id="api-response" tabindex="0" aria-label="API response">Actions in other tabs also show their latest structured response here.</pre>
 </section>
 <footer><span class="status-dot"></span> Local storage · Changes persist across page reloads and server restarts.</footer>
-</main><script src="/navigation.js" defer></script><script src="/app.js" defer></script><script src="/notes.js" defer></script><script src="/search.js" defer></script><script src="/dependencies.js" defer></script><script src="/relations.js" defer></script><script src="/capture.js" defer></script><script src="/sessions.js" defer></script><script src="/providers.js" defer></script><script src="/routing.js" defer></script><script src="/routing-conversation.js" defer></script><script src="/api-test.js" defer></script></body></html>
+</main><script src="/navigation.js" defer></script><script src="/app.js" defer></script><script src="/notes.js" defer></script><script src="/search.js" defer></script><script src="/dependencies.js" defer></script><script src="/relations.js" defer></script><script src="/capture.js" defer></script><script src="/sessions.js" defer></script><script src="/providers.js" defer></script><script src="/routing.js" defer></script><script src="/routing-conversation.js" defer></script><script src="/voice-client-core.js" defer></script><script src="/voice-client.js" defer></script><script src="/api-test.js" defer></script></body></html>
