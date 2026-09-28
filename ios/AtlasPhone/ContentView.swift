@@ -179,7 +179,7 @@ struct ContentView: View {
             reviewRow("Details", input.details)
             reviewRow("Deadline", displayDate(input.due_at))
             reviewRow("Reminder", displayDate(input.reminder_at))
-            reviewRow("Repeat", input.repeat)
+            reviewRow("Repeat", input.`repeat`)
             reviewRow("Note", input.note_body)
             ForEach(Array((warnings + proposal.warnings).enumerated()), id: \.offset) { _, warning in
                 Text(warning).font(.footnote).foregroundStyle(.orange)

@@ -39,7 +39,7 @@ struct CaptureInput: Decodable {
     let details: String
     let due_at: String
     let reminder_at: String
-    let repeat: String
+    let `repeat`: String
     let note_body: String
     let timezone: String
 }

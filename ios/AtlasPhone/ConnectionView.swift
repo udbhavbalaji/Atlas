@@ -10,7 +10,7 @@ struct ConnectionView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Atlas server") {
+                Section {
                     TextField("https://atlas.example.com", text: $address)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -23,10 +23,12 @@ struct ConnectionView: View {
                             if store.connected { dismiss() }
                         }
                     }
+                } header: {
+                    Text("Atlas server")
                 } footer: {
                     Text("Use a private HTTPS address reachable from your iPhone, including when you’re away from home. Atlas currently has no login, so keep the server behind a private network.")
                 }
-                Section("Conversation recovery") {
+                Section {
                     TextField("Session ID", text: $sessionID)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -37,6 +39,8 @@ struct ConnectionView: View {
                         }
                     }
                     .disabled(sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } header: {
+                    Text("Conversation recovery")
                 } footer: {
                     Text("Your latest session normally resumes automatically after reconnecting.")
                 }
