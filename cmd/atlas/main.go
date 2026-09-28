@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +22,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	path := flag.String("db", "data/atlas.db", "SQLite database path")
 	openRouterKeyFile := flag.String("openrouter-key-file", "data/openrouter.key", "Optional private file containing only the OpenRouter key; environment takes precedence")
+	announceURL := flag.Bool("announce-url", false, "Print the bound local URL for a desktop launcher")
 	flag.Parse()
 	if os.Getenv("OPENROUTER_API_KEY") == "" && *openRouterKeyFile != "" {
 		key, err := os.ReadFile(*openRouterKeyFile)
@@ -73,8 +76,17 @@ func main() {
 			log.Print(err)
 		}
 	}()
-	log.Printf("Atlas listening on http://%s", *addr)
-	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer listener.Close()
+	url := "http://" + listener.Addr().String()
+	log.Printf("Atlas listening on %s", url)
+	if *announceURL {
+		fmt.Printf("ATLAS_URL=%s\n", url)
+	}
+	if err = server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 	stop()

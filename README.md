@@ -29,6 +29,10 @@ make check
 
 The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [API.md](API.md) for structured responses, creation retries, schemas, and the webpage API lab tab. [DEVELOPMENT.md](DEVELOPMENT.md) covers current limits and the feature → development → main branching workflow.
 
+### macOS desktop preview
+
+On a Mac, run `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. The native app opens the conversation interface, runs a private local Atlas service while open, and keeps its database in Application Support. See [desktop/macos/README.md](desktop/macos/README.md) and the in-app **Desktop checks** page for requirements and verification.
+
 Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
 ## Product intention
