@@ -2,7 +2,7 @@
 
 **Status:** Agreed for now (2026-09-28). The Folded Path direction is the Atlas app icon and logo until a later explicit brand decision changes it.
 
-The three overlapping ribbon planes suggest a thought becoming a clear next step. The mark stays recognizable without the wordmark at iPhone icon size. Use the mark with the `ATLAS` wordmark when space allows, and the mark alone for compact placements.
+The three folded ribbon planes suggest a thought becoming a clear next step. The mark stays recognizable without the wordmark at iPhone icon size. Use the mark with the `ATLAS` wordmark when space allows, and the mark alone for compact placements.
 
 ## Master assets
 
@@ -21,6 +21,5 @@ The iPhone asset catalog contains a copy of `atlas-icon.svg` and an opaque 1024 
 - Upper ribbon: `#ff816e`
 - Middle ribbon: `#91a5f8`
 - Lower ribbon: `#4d5cb0`
-- Fold highlight: `#6578d1`
 
 The SVGs are editable vector masters. The wordmark uses Inter with local sans-serif fallbacks; keep its spacing and weight consistent when exporting another format. Use `atlas-logo.svg` on light surfaces and `atlas-logo-on-dark.svg` on dark surfaces. Let iOS apply the app icon mask, rather than drawing a rounded square into the asset. Do not use the retired mint `A.` icon.

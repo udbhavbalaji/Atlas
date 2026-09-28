@@ -1,9 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="240" viewBox="0 0 1000 240" role="img" aria-label="Atlas logo">
   <g transform="translate(-28 -28) scale(.29)">
-    <path d="M626 573 748 526c24-9 43 5 43 31v68c0 21-12 37-32 45L384 818c-19 8-36 8-56 0l-121-48c-30-12-36-42-3-57l364-148z" fill="#4d5cb0"/>
-    <path d="M476 224c0-22 18-32 39-24l235 84c29 11 45 30 45 54 0 22-16 40-44 51L411 523l-153-74 218-91z" fill="#ff816e"/>
-    <path d="M288 381c-25-7-42 9-42 35v72c0 24 13 39 34 47l338 119c19 7 34 6 52-1l87-35-343-125z" fill="#91a5f8"/>
-    <path d="m618 654 52-1 87-35-99-36z" fill="#6578d1"/>
+    <path d="M613 195q0-20 19-14l180 68q29 11 30 39 1 29-27 43L543 457 322 377l272-104q19-8 19-30z" fill="#ff816e"/>
+    <path d="M322 377 779 524 451 617 318 553q-23-10-23-34V405q0-25 27-28z" fill="#91a5f8"/>
+    <path d="M165 697 779 524c18 0 26 9 26 30v141q0 20-25 32L404 902q-27 15-52 0L153 799c-24-12-21-47-7-73 6-12 12-22 19-29z" fill="#4d5cb0"/>
   </g>
   <text x="265" y="164" fill="#14172f" font-family="Inter, Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="112" font-weight="700" letter-spacing="19">ATLAS</text>
 </svg>
