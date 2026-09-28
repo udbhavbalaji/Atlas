@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Atlas · Desktop checks</title><link rel="stylesheet" href="/styles.css"></head>
+<body><main><header><div class="brand"><h1>Atlas<span>.</span></h1><span class="environment">DESKTOP CHECKS</span></div><a href="/">Back to Atlas</a></header>
+<p class="intro">Run this page inside the desktop window after building or installing Atlas.</p>
+<section class="composer"><h2>Connection and storage</h2><p>These checks use the same local service and database as the desktop app. They do not create records.</p><button id="check" class="primary">Run checks</button><pre id="results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Manual desktop checks</h2><ol><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Use <a href="/#voice">Voice</a> to check microphone and speech support; typed turns remain available when the web engine lacks speech recognition.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
+</main><script>
+document.getElementById('check').addEventListener('click', async () => {
+  const output = document.getElementById('results');
+  output.textContent = 'Checking…';
+  try {
+    const [health, tasks] = await Promise.all([fetch('/healthz'), fetch('/api/v1/tasks')]);
+    if (!health.ok || !tasks.ok) throw new Error(`HTTP ${health.status} / ${tasks.status}`);
+    const items = await tasks.json();
+    output.textContent = `Local service: healthy\nSaved tasks: ${items.length}\nMicrophone API: ${navigator.mediaDevices?.getUserMedia ? 'available' : 'unavailable'}\nSpeech recognition: ${window.SpeechRecognition || window.webkitSpeechRecognition ? 'available' : 'unavailable'}\nSpeech synthesis: ${window.speechSynthesis ? 'available' : 'unavailable'}`;
+  } catch (error) {
+    output.textContent = `Desktop check failed: ${error.message}`;
+  }
+});
+</script></body></html>

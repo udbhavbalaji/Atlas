@@ -29,6 +29,10 @@ make check
 
 The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [API.md](API.md) for structured responses, creation retries, schemas, and the webpage API lab tab. [DEVELOPMENT.md](DEVELOPMENT.md) covers current limits and the feature → development → main branching workflow.
 
+### Omarchy desktop preview
+
+On Omarchy, run `desktop/linux/build.sh` followed by `dist/linux/atlas-desktop`, or run `desktop/linux/install.sh` to add Atlas to the user application launcher. The desktop window starts on the conversation screen, starts and stops its own local Atlas service, and stores its database under the XDG data directory. See [desktop/linux/README.md](desktop/linux/README.md) and the in-app **Desktop checks** page for requirements and verification.
+
 Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
 ## Product intention
