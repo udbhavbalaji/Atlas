@@ -201,7 +201,13 @@ Manual tests:
 7. Optional context search is bounded to five open tasks; only supplied IDs can be selected as prerequisite targets. Changing canonical state still requires reviewing the refreshed preview.
 8. With an OpenRouter key configured, explicitly choose Jev and evaluate a synthetic sentence once. A repeated unchanged evaluation should return `cache_hit:true`, `model_calls:0`. Inspect the originating token usage and cost. Changing relevant context must miss the cache.
 
-Automated routing tests simulate HTTP/authentication, malformed output, cancellation, redirects, uncertainty, bounded caching/concurrent reuse, channel questions, token tampering, cross-server receipts and atomic idempotent capture. They make no actual Jev calls. The next natural-language milestone is channel-owned extraction/decision handling and durable conversations using the routing boundary.
+Automated routing tests simulate HTTP/authentication, malformed output, cancellation, redirects, uncertainty, bounded caching/concurrent reuse, channel questions, token tampering, cross-server receipts and atomic idempotent capture. They make no actual Jev calls.
+
+## Routing conversation test
+
+Open **Routing → Conversation test**. Choose Mock/Task and enter `Call Maya`. Answer the reminder and note questions with `no`, review the proposal, say `change title to Call Maya tonight`, then `yes`. Resume the displayed session ID and verify the saved result. Try Mock/Ambiguous to choose a channel in a follow-up turn, or Mock/Reminder with `Remind me to call Maya` and answer the timing question with `tomorrow at 6pm`. A wrong field name or unresolved time keeps the current question open. `cancel` creates no action records. The JSON panel exposes the version, question, proposal and next request for voice-client integration.
+
+This milestone provides durable turn management, one Jev routing decision, typed follow-up questions, local source hints, reviewed correction, and idempotent confirmation. It still uses the existing local English time grammar and field hints; it does not connect a separate model for free-form channel extraction. A voice model can submit the current `question.id`/`field` and a recognized `value`, then speak the returned `prompt`. The model must not treat a proposal as saved before `state:saved`.
 
 ## Branch promotion policy
 

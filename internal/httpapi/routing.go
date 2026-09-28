@@ -68,6 +68,7 @@ func routingRoutes(mux *http.ServeMux, s *store.Store) {
 	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, configured: key != "", secret: rand.Text()})
 }
 func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
+	routingConversationRoutes(mux, s, service)
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 5}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
@@ -80,70 +81,12 @@ func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routin
 			apiError(w, 400, "invalid_routing_request", err.Error(), false)
 			return
 		}
-		p := r.PathValue("provider")
-		var evaluator routing.Evaluator
-		switch p {
-		case "mock":
-			evaluator = routing.Mock{}
-		case "jev":
-			if input.Fixture != "" {
-				apiError(w, 400, "invalid_routing_request", "Fixture controls are only accepted in mock mode.", false)
-				return
-			}
-			if !service.configured {
-				apiError(w, 503, "routing_unavailable", "Save the key in data/openrouter.key or set OPENROUTER_API_KEY and restart Atlas. No fallback was used.", false)
-				return
-			}
-			evaluator = service.jev
-		default:
-			apiError(w, 404, "routing_provider_not_found", "Unknown routing provider.", false)
+		result, err := evaluateRouting(r.Context(), s, service, r.PathValue("provider"), input)
+		if err != nil {
+			routingFailure(w, err)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), Context: []provider.ContextRecord{}}
-		if strings.TrimSpace(input.ContextQuery) != "" {
-			found, err := s.Search(ctx, store.SearchOptions{Query: input.ContextQuery, Type: "task", Status: "open", Limit: 5})
-			if err != nil {
-				failure(w, err)
-				return
-			}
-			state.ContextTruncated = found.HasMore
-			for _, hit := range found.Results {
-				snapshot, err := s.TaskState(ctx, hit.ID)
-				if err != nil {
-					failure(w, err)
-					return
-				}
-				t := snapshot.Task
-				if t.Status == "open" {
-					state.Context = append(state.Context, provider.ContextRecord{ID: t.ID, Title: t.Title, DueAt: t.DueAt, UpdatedAt: t.UpdatedAt})
-				}
-			}
-		}
-		evaluation, err := evaluator.Evaluate(ctx, state, routing.Registry(), input.Fixture)
-		if err == nil {
-			var result routing.Result
-			result, err = routing.Decide(input, state, evaluation, p, p == "mock")
-			if err == nil {
-				result.RoutingToken = service.sign(result)
-				respond(w, 200, result)
-				return
-			}
-		}
-		if errors.Is(err, routing.ErrUnavailable) || ctx.Err() != nil {
-			message, retryable := routing.ErrUnavailable.Error(), true
-			var upstream routing.RemoteError
-			if errors.As(err, &upstream) {
-				message = upstream.Error()
-				retryable = upstream.Status == 429 || upstream.Status >= 500
-			}
-			apiError(w, 503, "routing_unavailable", message, retryable)
-		} else if errors.Is(err, routing.ErrRequest) {
-			apiError(w, 400, "invalid_routing_request", err.Error(), false)
-		} else {
-			apiError(w, 422, "routing_evaluation_rejected", routing.ErrContract.Error(), false)
-		}
+		respond(w, 200, result)
 	})
 	mux.HandleFunc("POST /api/v1/routing/dispatch", func(w http.ResponseWriter, r *http.Request) {
 		var input dispatchRequest
