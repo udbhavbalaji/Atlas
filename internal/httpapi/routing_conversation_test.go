@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -228,5 +229,26 @@ func TestRoutingConversationResumesAcrossServerRestart(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resumed)
 	if resumed["id"] != id || resumed["state"] != "awaiting_confirmation" {
 		t.Fatal(resumed)
+	}
+}
+
+func TestVoiceTestingPageAssets(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h := Handler(s)
+	for _, path := range []string{"/routing-conversation.js", "/voice-client-core.js", "/voice-client.js"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Type"), "javascript") {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "id=\"panel-voice\"") {
+		t.Fatal("voice testing panel missing")
 	}
 }

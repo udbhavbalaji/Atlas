@@ -209,6 +209,12 @@ Open **Routing → Conversation test**. Choose Mock/Task and enter `Call Maya`. 
 
 This milestone provides durable turn management, one Jev routing decision, typed follow-up questions, local source hints, reviewed correction, and idempotent confirmation. It still uses the existing local English time grammar and field hints; it does not connect a separate model for free-form channel extraction. A voice model can submit the current `question.id`/`field` and a recognized `value`, then speak the returned `prompt`. The model must not treat a proposal as saved before `state:saved`.
 
+## Browser voice prototype
+
+Open **Voice** in the testing webpage. Use Mock/Task with `Call Maya`; answer **Skip reminder**, **Skip note**, say or type `change title to Call Maya tonight`, then review the proposal and tap **Confirm and save**. The same flow can use Mock/Reminder or Mock/Ambiguous. Reload to resume the last session, or paste its ID into **Resume session**. The browser microphone button records one utterance at a time when its speech-recognition API is available. Typed text exercises the same server flow. Spoken follow-up answers can advance automatically, but a recognized “yes” at the proposal stage never saves; the separate button is required. Turn off prompt playback or automatic follow-up submission with the checkboxes.
+
+The browser may process speech through its own remote recognition service; Atlas stores the resulting transcript in its existing local conversation session and does not store audio. Speech recognition support and quality vary by browser. Prompt speech uses browser synthesis and falls back to visible text. This is a prototype of the client transport, not a realtime voice model or an offline speech engine. `voice-client-core.js` exposes `start`, `resume`, `reply`, `confirm` and `cancel` for a future voice-model adapter. Scripted tests run with `node internal/httpapi/webtest/voice-client-core.test.cjs`.
+
 ## Branch promotion policy
 
 Use feature branches from `development`; tested work may merge into `development`. Never merge into `main` without explicit user approval. At a substantial milestone, make the case for promotion with scope, verification and limitations, then await approval. This supersedes earlier autonomous main promotion guidance.
