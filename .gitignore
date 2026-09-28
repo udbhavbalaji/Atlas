@@ -3,3 +3,5 @@
 *.db
 *.db-shm
 *.db-wal
+ios/*.xcodeproj/xcuserdata/
+ios/DerivedData/

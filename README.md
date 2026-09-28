@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. Persistent plain-text notes now link explicitly to tasks and reminders. Search finds text across tasks, reminders, and notes with type/status filters and direct record links. Capture interprets common English sentences into reviewed tasks, reminders, and notes, with explicit fields for correction and atomic saving. Ambiguous or unsupported wording asks for clarification. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
+Atlas has a runnable Go foundation with SQLite-backed tasks, reminders, notes, durable routing conversations, and a testing webpage. A native SwiftUI iPhone client is in `ios/`; it provides typed and push-to-talk conversation with read-only saved-item views. Fixed-time and recurring reminders still deliver to a durable webpage inbox. iPhone device build, private remote access setup, and notification delivery remain to be verified or configured.
 
 ## Run locally
 
@@ -61,7 +61,7 @@ The minimum useful Atlas should support:
 - Run locally without an account or sync requirement
 - Continue deterministic capture and reminders when Jev is unavailable
 
-The first client target is an iPhone. The initial client should be a responsive Progressive Web App (PWA), usable from iPhone Safari and installable on the Home Screen without requiring a paid Apple Developer account. A native SwiftUI shell can be added later if PWA limitations become blocking.
+The first client target is an iPhone. The v1 client is a native SwiftUI app installed through Xcode on a personal device; see [ios/README.md](ios/README.md). The app's daily interaction is voice or typed conversation. Saved tasks, reminders, and notes can be viewed but are changed only through conversation.
 
 Voice is an input and output interface for the same request loop. Text should work end to end before voice is introduced.
 
@@ -73,7 +73,7 @@ Voice is an input and output interface for the same request loop. Text should wo
 - Fixed-time scheduling
 - A local SQLite database with migrations
 - A Go-based Atlas core and API
-- One iPhone-oriented PWA client
+- One native iPhone conversation client
 - Push-to-talk voice after the text workflow is proven
 - A bounded Jev adapter for interpretation
 
@@ -106,7 +106,7 @@ Voice is an input and output interface for the same request loop. Text should wo
 
 ```mermaid
 flowchart TD
-    UI["Clients: iPhone PWA and voice"] --> API["Atlas API and orchestrator"]
+    UI["Clients: native iPhone app and voice"] --> API["Atlas API and orchestrator"]
     API --> CTX["Bounded context retrieval"]
     API --> POLICY["Validation and policy"]
     API --> SVC["Tasks, notes, reminders"]
@@ -148,11 +148,11 @@ Hermes is an optional future adapter for explicitly scoped, multi-step work. It 
 
 ### Clients
 
-The initial client is an iPhone-first PWA. The client communicates with the Atlas API and should not contain canonical business logic.
+The initial client is a native iPhone app. The client communicates with the Atlas API and does not contain canonical business logic.
 
 Future clients may include:
 
-- A native iPhone shell if needed
+- A web client if needed
 - A desktop hub
 - A second mobile or desktop client
 - A browser extension when web capture becomes useful
@@ -161,15 +161,12 @@ Future clients may include:
 
 ### User interface
 
-The first user-facing interface is the iPhone PWA. It should provide:
+The first daily user-facing interface is the native iPhone app. Its v1 provides:
 
-- Text capture
-- Task, reminder, and note views
-- Editing and completion actions
-- Reminder snooze controls
-- Activity and decision history
-- Settings for privacy, external reasoning, and timezone behavior
-- Offline drafts or queued requests where practical
+- Typed and push-to-talk conversation
+- Follow-up answers, proposal review, explicit confirmation, and session recovery
+- Read-only task, reminder, and note views
+- Locally saved text drafts
 
 ### HTTP API
 
@@ -326,7 +323,7 @@ These features should extend the core contracts rather than bypassing validation
 - Keep the user-visible explanation tied to committed state.
 - Avoid empty abstractions for future capabilities.
 - Verify behavior with restart, offline, ambiguity, duplicate-request, invalid-proposal, and timezone tests.
-- Keep the iPhone PWA thin so the Atlas API remains the durable product boundary.
+- Keep the iPhone client thin so the Atlas API remains the durable product boundary.
 
 ## Manual task test
 

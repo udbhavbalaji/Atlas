@@ -19,7 +19,7 @@
 - [x] Explicit unified capture with preview and atomic task/reminder confirmation.
 - [x] Fixed-time reminders with durable webpage inbox delivery, restart recovery, snooze, dismissal, and completion.
 - [x] Task-linked reminder creation, inspection, snooze, and transactional cancellation.
-- [ ] iPhone text client proving the capture-to-reminder loop.
+- [x] Native iPhone conversation client source covering typed capture, push-to-talk, follow-up questions, review, and explicit confirmation. Device build and end-to-end test remain pending on a Mac.
 - [x] Validated capture orchestration and local English sentence interpretation.
 - [x] Persistent capture conversations, typed replies, resume, and confirmation recovery.
 - [ ] Jev adapter for semantic decisions, bounded context requests, and validated proposals.
@@ -42,7 +42,7 @@ All endpoints use `/api/v1`, except `GET /healthz`.
 
 IDs are random 128-bit hex strings. Timestamps are UTC RFC3339. Task titles are trimmed and limited to 500 Unicode code points. Invalid input returns 400, missing tasks 404, storage failures 500. JSON errors have an `error` field. Task writes and activity entries share one transaction. SQLite `user_version` tracks migrations; a newer database schema is rejected.
 
-Creation supports durable optional Idempotency-Key receipts; see [API.md](API.md) for the revision 2 contract and retry semantics. The responsive task interface is served at `/`. Durable webpage reminder delivery is implemented. Local English sentence interpretation is available in Capture; external reasoning providers, authentication, PWA installation, and an offline queue are deferred. The service binds to loopback by default; keep it local during this stage.
+Creation supports durable optional Idempotency-Key receipts; see [API.md](API.md) for the revision 2 contract and retry semantics. The responsive task interface is served at `/`. Durable webpage reminder delivery is implemented. Local English sentence interpretation is available in Capture; authentication and an offline queue are deferred. The service binds to loopback by default; keep it local until private access is configured.
 
 ## Task details and deadline contract
 
@@ -214,6 +214,12 @@ This milestone provides durable turn management, one Jev routing decision, typed
 Open **Voice** in the testing webpage. Use Mock/Task with `Call Maya`; answer **Skip reminder**, **Skip note**, say or type `change title to Call Maya tonight`, then review the proposal and tap **Confirm and save**. The same flow can use Mock/Reminder or Mock/Ambiguous. Reload to resume the last session, or paste its ID into **Resume session**. The browser microphone button records one utterance at a time when its speech-recognition API is available. Typed text exercises the same server flow. Spoken follow-up answers can advance automatically, but a recognized “yes” at the proposal stage never saves; the separate button is required. Turn off prompt playback or automatic follow-up submission with the checkboxes.
 
 The browser may process speech through its own remote recognition service; Atlas stores the resulting transcript in its existing local conversation session and does not store audio. Speech recognition support and quality vary by browser. Prompt speech uses browser synthesis and falls back to visible text. This is a prototype of the client transport, not a realtime voice model or an offline speech engine. `voice-client-core.js` exposes `start`, `resume`, `reply`, `confirm` and `cancel` for a future voice-model adapter. Scripted tests run with `node internal/httpapi/webtest/voice-client-core.test.cjs`.
+
+## Native iPhone conversation client
+
+`ios/AtlasPhone.xcodeproj` contains a sideloadable SwiftUI client. It follows the routing conversation API with typed or push-to-talk turns, spoken or typed choice answers, a visible proposal, explicit spoken or typed confirmation, cancellation, and automatic session resume. Saved tasks, reminders, and notes are read-only. The focused webpage test for the same server flow remains the **Voice** tab described above. See [ios/README.md](ios/README.md) for Xcode installation and private HTTPS access.
+
+Native build and device microphone verification are pending because this development host is Linux and has no Xcode or iOS Simulator. On a Mac, build for a simulator and a physical iPhone; test permission denial, on-device transcription if supported, a network transcription failure, an interrupted confirmation, session resume, and a mock routing conversation before using live Jev. Remote use additionally requires private HTTPS setup such as Tailscale Serve. Do not expose the unauthenticated API publicly.
 
 ## Branch promotion policy
 
