@@ -43,29 +43,29 @@ func TestJevWireContractAndRedactedFailures(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer test-only-secret" {
+		if r.Method != "POST" || r.Header.Get("Authorization") != "Bearer test-only-secret" || r.URL.Path != "/api/alpha/decisions" {
 			t.Error("missing auth or wrong method")
 		}
 		var request struct {
 			Model     string `json:"model"`
-			State     string `json:"state"`
+			State     State  `json:"state"`
 			Questions map[string]struct {
 				Type     string            `json:"type"`
 				Criteria map[string]string `json:"criteria"`
 			} `json:"questions"`
 		}
-		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Model != GatewayModel || len(request.Questions) != 1 || len(request.Questions["primary_action"].Criteria) != len(Registry()) {
+		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Model != OpenRouterModel || len(request.Questions) != 1 || len(request.Questions["primary_action"].Criteria) != len(Registry()) {
 			t.Error(request)
 		}
-		var state State
-		if json.Unmarshal([]byte(request.State), &state) != nil || state.Text != "Interview" {
+		state := request.State
+		if state.Text != "Interview" {
 			t.Error(request.State)
 		}
 		e, _ := (Mock{}).Evaluate(r.Context(), state, Registry(), "task")
-		json.NewEncoder(w).Encode(map[string]any{"model": GatewayModel, "answers": map[string]any{"primary_action": e.Decision}, "usage": map[string]int{"input_tokens": 275, "output_tokens": 20}, "provider_metadata": map[string]any{"gateway": map[string]string{"cost": "0.00001155"}}})
+		json.NewEncoder(w).Encode(map[string]any{"model": OpenRouterModel, "answers": map[string]any{"primary_action": e.Decision}, "usage": map[string]any{"input_tokens": 275, "output_tokens": 20, "cost": 0.00001155}})
 	}))
 	defer server.Close()
-	j := Jev{APIKey: "test-only-secret", Endpoint: server.URL, Client: server.Client()}
+	j := Jev{APIKey: "test-only-secret", Endpoint: server.URL + "/api/alpha/decisions", Client: server.Client()}
 	e, err := j.Evaluate(t.Context(), State{Text: "Interview"}, Registry(), "")
 	if err != nil || e.Decision.Choice != "task" || e.Usage.CostUSD != "0.00001155" || calls != 1 {
 		t.Fatal(e, err, calls)

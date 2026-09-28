@@ -19,20 +19,20 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	path := flag.String("db", "data/atlas.db", "SQLite database path")
-	gatewayKeyFile := flag.String("gateway-key-file", "data/ai-gateway.key", "Optional private file containing only the Vercel AI Gateway key; environment takes precedence")
+	openRouterKeyFile := flag.String("openrouter-key-file", "data/openrouter.key", "Optional private file containing only the OpenRouter key; environment takes precedence")
 	flag.Parse()
-	if os.Getenv("AI_GATEWAY_API_KEY") == "" && *gatewayKeyFile != "" {
-		key, err := os.ReadFile(*gatewayKeyFile)
+	if os.Getenv("OPENROUTER_API_KEY") == "" && *openRouterKeyFile != "" {
+		key, err := os.ReadFile(*openRouterKeyFile)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Fatal("Could not read the configured Gateway key file")
+			log.Fatal("Could not read the configured OpenRouter key file")
 		}
 		if err == nil {
 			value := strings.TrimSpace(string(key))
 			if strings.ContainsAny(value, "\r\n\t ") {
-				log.Fatal("Gateway key file must contain only the key")
+				log.Fatal("OpenRouter key file must contain only the key")
 			}
-			if err = os.Setenv("AI_GATEWAY_API_KEY", value); err != nil {
-				log.Fatal("Could not configure the Gateway key")
+			if err = os.Setenv("OPENROUTER_API_KEY", value); err != nil {
+				log.Fatal("Could not configure the OpenRouter key")
 			}
 		}
 	}
