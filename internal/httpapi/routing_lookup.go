@@ -249,7 +249,7 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 			}
 			lines = append(lines, fmt.Sprintf("“%s” — %s (%s)", r.Title, lookupTime(r.ScheduledAt, state.Timezone), r.Status))
 			answer.Sources = append(answer.Sources, conversationSource{Type: "reminder", Title: r.Title, URL: "/#reminders/" + r.ID})
-			if len(lines) == 5 {
+			if len(lines) == 10 {
 				break
 			}
 		}
@@ -265,7 +265,7 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 			}
 			lines = append(lines, line)
 			answer.Sources = append(answer.Sources, conversationSource{Type: "task", Title: t.Title, URL: "/#tasks/" + t.ID})
-			if len(lines) == 5 {
+			if len(lines) == 10 {
 				break
 			}
 		}
@@ -278,7 +278,7 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 			excerpt := lookupExcerpt(n.Body)
 			lines = append(lines, "“"+excerpt+"”")
 			answer.Sources = append(answer.Sources, conversationSource{Type: "note", Title: excerpt, URL: "/#notes/" + n.ID})
-			if len(lines) == 5 {
+			if len(lines) == 10 {
 				break
 			}
 		}
