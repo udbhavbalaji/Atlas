@@ -6,6 +6,9 @@ install_dir="${XDG_DATA_HOME:-$HOME/.local/share}/atlas/app"
 application_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 icon_dir="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
 "$repo_root/desktop/linux/build.sh" "$repo_root/dist/linux"
+if ! command -v gst-inspect-1.0 >/dev/null || ! gst-inspect-1.0 autoaudiosink >/dev/null 2>&1; then
+  echo "Microphone capture needs gst-plugins-good. Install it with: omarchy pkg add gst-plugins-good" >&2
+fi
 install -d -m 700 "$install_dir"
 install -m 755 "$repo_root/dist/linux/atlas-server" "$install_dir/atlas-server"
 install -m 755 "$repo_root/dist/linux/atlas-desktop" "$install_dir/atlas-desktop"

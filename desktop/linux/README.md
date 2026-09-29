@@ -2,7 +2,7 @@
 
 The Linux desktop app opens a conversation-first Atlas interface in a GTK 3 and WebKitGTK 4.1 window. It starts a private loopback Go server on an available port and stops it when the window closes. Records are stored in `${XDG_DATA_HOME:-~/.local/share}/atlas/atlas.db`; an optional OpenRouter key can be placed in `${XDG_CONFIG_HOME:-~/.config}/atlas/openrouter.key` or supplied via `OPENROUTER_API_KEY`.
 
-This was built against Omarchy 4.0.1 on x86_64 Wayland/Hyprland. GTK 3, WebKitGTK 4.1, their development headers, Go 1.27, and `pkg-config` are required to build. The installed app requires the GTK/WebKit runtime libraries.
+This was built against Omarchy 4.0.1 on x86_64 Wayland/Hyprland. GTK 3, WebKitGTK 4.1, their development headers, Go 1.27, and `pkg-config` are required to build. The installed app requires the GTK/WebKit runtime libraries and `gst-plugins-good` for microphone capture. If the button briefly shows **Cancel microphone** and then resets, check the message beside it and run `omarchy pkg add gst-plugins-good` if GStreamer reports a missing audio element.
 
 Run `desktop/linux/build.sh` and then `dist/linux/atlas-desktop`, or run `desktop/linux/install.sh` to place the app in the user's local application directory and add it to the launcher. No Omarchy configuration changes are needed.
 
