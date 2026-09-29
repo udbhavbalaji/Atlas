@@ -16,7 +16,7 @@ func TestRoutingDecisions(t *testing.T) {
 	if err := ValidateRequest(request); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ fixture, state, channel string }{{"task", "routed", "tasks"}, {"reminder", "routed", "reminders"}, {"note", "routed", "notes"}, {"ambiguous", "needs_clarification", ""}, {"clarify", "needs_clarification", ""}, {"unsupported", "unsupported", ""}} {
+	for _, tc := range []struct{ fixture, state, channel string }{{"task", "routed", "tasks"}, {"reminder", "routed", "reminders"}, {"note", "routed", "notes"}, {"lookup", "routed", "lookup"}, {"ambiguous", "needs_clarification", ""}, {"clarify", "needs_clarification", ""}, {"unsupported", "unsupported", ""}} {
 		e, err := (Mock{}).Evaluate(t.Context(), State{}, Registry(), tc.fixture)
 		if err != nil {
 			t.Fatal(err)

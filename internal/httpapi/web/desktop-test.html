@@ -3,19 +3,35 @@
 <body><main><header><div class="brand"><h1>Atlas<span>.</span></h1><span class="environment">DESKTOP CHECKS</span></div><a href="/desktop">Back to conversation</a></header>
 <p class="intro">Run this page inside the desktop window after building or installing Atlas.</p>
 <section class="composer"><h2>Connection and storage</h2><p>These checks use the same local service and database as the desktop app. They do not create records.</p><button id="check" class="primary">Run checks</button><pre id="results" role="status" aria-live="polite">Ready.</pre></section>
-<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. A partial transcript should appear while recording and the final text should remain editable before you send it.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
+<section class="composer"><h2>Saved-record answer</h2><p>This creates a local test conversation session and reads saved records. It does not change tasks, reminders, or notes.</p><label>Question<input id="lookup-question" value="When is my interview?"></label><button id="lookup-test" class="primary">Test lookup answer</button><pre id="lookup-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Jev via OpenRouter</strong> and ask about a saved record. Jev should choose the lookup path; the answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. A partial transcript should appear while recording and the final text should remain editable before you send it.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
 </main><script>
 document.getElementById('check').addEventListener('click', async () => {
   const output = document.getElementById('results');
   output.textContent = 'Checking…';
   try {
-    const [health, tasks, audio] = await Promise.all([fetch('/healthz'), fetch('/api/v1/tasks'), fetch('/api/v1/audio/capabilities')]);
-    if (!health.ok || !tasks.ok || !audio.ok) throw new Error(`HTTP ${health.status} / ${tasks.status} / ${audio.status}`);
+    const [health, tasks, reminders, notes, routing, audio] = await Promise.all([fetch('/healthz'), fetch('/api/v1/tasks'), fetch('/api/v1/reminders'), fetch('/api/v1/notes'), fetch('/api/v1/routing'), fetch('/api/v1/audio/capabilities')]);
+    if ([health, tasks, reminders, notes, routing, audio].some(response => !response.ok)) throw new Error('One or more local service checks failed.');
     const items = await tasks.json();
+    const savedReminders = await reminders.json();
+    const savedNotes = await notes.json();
+    const providers = await routing.json();
     const capability = await audio.json();
-    output.textContent = `Local service: healthy\nSaved tasks: ${items.length}\nMicrophone capture: ${navigator.mediaDevices?.getUserMedia ? 'available' : 'unavailable'}\nLocal audio streaming: ${capability.streaming ? 'available' : 'unavailable'}\nLocal transcriber: ${capability.local_transcription ? capability.backend : 'setup needed'}\nSpeech synthesis: ${window.speechSynthesis ? 'available' : 'unavailable'}`;
+    output.textContent = `Local service: healthy\nSaved tasks: ${items.length}\nSaved reminders: ${savedReminders.length}\nSaved notes: ${savedNotes.length}\nJev key: ${providers.providers.find(provider => provider.id === 'jev')?.configured ? 'configured' : 'missing'}\nMicrophone capture: ${navigator.mediaDevices?.getUserMedia ? 'available' : 'unavailable'}\nLocal audio streaming: ${capability.streaming ? 'available' : 'unavailable'}\nLocal transcriber: ${capability.local_transcription ? capability.backend : 'setup needed'}\nSpeech synthesis: ${window.speechSynthesis ? 'available' : 'unavailable'}`;
   } catch (error) {
     output.textContent = `Desktop check failed: ${error.message}`;
+  }
+});
+document.getElementById('lookup-test').addEventListener('click', async () => {
+  const output = document.getElementById('lookup-results');
+  output.textContent = 'Looking up saved records…';
+  try {
+    const response = await fetch('/api/v1/conversations/routing', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider: 'mock', fixture: 'lookup', version: '1', request_id: crypto.randomUUID(), text: document.getElementById('lookup-question').value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || 'Lookup failed.');
+    output.textContent = `${result.prompt}\n\nSources: ${(result.answer?.sources || []).map(source => `${source.type}: ${source.title}`).join('; ') || 'none'}`;
+  } catch (error) {
+    output.textContent = error.message;
   }
 });
 </script></body></html>

@@ -10,7 +10,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. Persistent plain-text notes now link explicitly to tasks and reminders. Search finds text across tasks, reminders, and notes with type/status filters and direct record links. Capture interprets common English sentences into reviewed tasks, reminders, and notes, with explicit fields for correction and atomic saving. Ambiguous or unsupported wording asks for clarification. External notifications, reasoning adapters, and PWA installation/offline support are not implemented yet.
+Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. Persistent plain-text notes now link explicitly to tasks and reminders. Search finds text across tasks, reminders, and notes with type/status filters and direct record links. Capture interprets common English sentences into reviewed tasks, reminders, and notes, with explicit fields for correction and atomic saving. Ambiguous or unsupported wording asks for clarification. The desktop conversation uses Jev to choose between capture and read-only lookup, then answers questions from saved tasks, reminders, and notes with record links. External notifications and PWA installation/offline support are not implemented yet.
 
 ## Run locally
 
@@ -31,9 +31,9 @@ The default database is `data/atlas.db`. Configure paths and listen address with
 
 ### macOS desktop preview
 
-On a Mac, run `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. The native app opens the conversation interface, runs a private local Atlas service while open, and keeps its database in Application Support. See [desktop/macos/README.md](desktop/macos/README.md) and the in-app **Desktop checks** page for requirements and verification.
+On a Mac, run `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. The native app opens the conversation interface, runs a private local Atlas service while open, and keeps its database in Application Support. The build script can copy an existing local key and import records into an empty macOS database without overwriting a populated profile. See [desktop/macos/README.md](desktop/macos/README.md) and the in-app **Desktop checks** page for requirements and verification.
 
-Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
+Before adding other reasoning, voice, or notification providers, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
 ## Product intention
 

@@ -16,4 +16,15 @@ cd "$repo_root"
 CGO_ENABLED=0 go build -trimpath -o "$app/Contents/Resources/atlas-server" ./cmd/atlas
 codesign --force --sign - "$app/Contents/Resources/atlas-server"
 codesign --force --sign - "$app"
+profile_dir="$HOME/Library/Application Support/Atlas"
+install -d -m 700 "$profile_dir"
+if [[ -s "$repo_root/data/openrouter.key" && ! -e "$profile_dir/openrouter.key" ]]; then
+  install -m 600 "$repo_root/data/openrouter.key" "$profile_dir/openrouter.key"
+  echo "Configured the existing OpenRouter key for the macOS app."
+fi
+if command -v python3 >/dev/null && ! pgrep -x Atlas >/dev/null; then
+  python3 "$repo_root/desktop/macos/import-existing-data.py" "$repo_root/data/atlas.db" "$profile_dir/atlas.db"
+else
+  echo "Close Atlas and rerun build.sh to import existing records into an empty macOS database." >&2
+fi
 echo "Built $app"

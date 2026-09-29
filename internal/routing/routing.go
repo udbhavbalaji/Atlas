@@ -33,8 +33,9 @@ func Registry() []Action {
 		{"task", "tasks", "Capture a new action, obligation, plan or scheduled event, including an interview or movie outing. The task channel may offer linked reminders and notes."},
 		{"reminder", "reminders", "Capture an explicit request to be reminded or notified. Timing and linkage to an existing task are collected by the reminder channel."},
 		{"note", "notes", "Capture information, observations or reference material to retain, without an action or notification as the primary intent."},
+		{"lookup", "lookup", "Answer a question about existing Atlas tasks, reminders including past reminders, or notes. Examples: when is my interview, what reminders did I have, or what did I note about a topic. This is read-only."},
 		{"clarify", "", "The primary intent is unclear, or several independent actions cannot be represented by one capture. Ask the user before routing."},
-		{"unsupported", "", "The request needs a capability not implemented here: search, editing/deleting existing records, external actions, or unrelated conversation."},
+		{"unsupported", "", "The request needs a capability not implemented here: editing/deleting existing records, external actions, or unrelated conversation."},
 	}
 }
 

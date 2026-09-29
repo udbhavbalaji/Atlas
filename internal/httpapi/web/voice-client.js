@@ -37,7 +37,7 @@ function voiceRender(state) {
   voiceElement('session-id').value = state.id;
   try { localStorage.setItem(voiceStorage, state.id); } catch {}
   voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.mock ? 'mock route' : 'Jev route') + ' · session version ' + state.version);
-  voiceElement('prompt').textContent = state.prompt;
+  voiceElement('prompt').textContent = state.state === 'answered' ? '' : state.prompt;
   const transcript = voiceElement('transcript');
   transcript.replaceChildren();
   for (const turn of state.messages || []) {
@@ -53,7 +53,7 @@ function voiceRender(state) {
   const actions = voiceElement('question-actions');
   actions.replaceChildren();
   if (state.state === 'awaiting_route') {
-    for (const channel of ['task', 'reminder', 'note']) actions.append(voiceButton(channel, () => voiceCall(() => voiceClient.reply(channel))));
+    for (const channel of ['task', 'reminder', 'note', 'lookup']) actions.append(voiceButton(channel === 'lookup' ? 'Find existing records' : channel, () => voiceCall(() => voiceClient.reply(channel))));
   }
   if (state.state === 'awaiting_answer' && state.question?.choices) {
     for (const choice of state.question.choices) {
@@ -90,6 +90,20 @@ function voiceRender(state) {
     line.textContent = 'Saved. Task: ' + (state.saved.task_id || 'none') + ' · reminders: ' + (state.saved.reminders?.length || 0) + ' · notes: ' + (state.saved.notes?.length || 0);
     proposal.append(line);
   }
+  if (state.answer?.sources?.length) {
+    const heading = document.createElement('h3');
+    heading.textContent = 'Saved records used';
+    proposal.append(heading);
+    for (const source of state.answer.sources) {
+      if (!source.url?.startsWith('/#')) continue;
+      const link = document.createElement('a');
+      link.href = source.url;
+      link.textContent = `${source.type}: ${source.title}`;
+      const line = document.createElement('p');
+      line.append(link);
+      proposal.append(line);
+    }
+  }
   const active = !['saved', 'cancelled', 'unsupported'].includes(state.state);
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
   voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming'].includes(state.state);
@@ -118,10 +132,15 @@ async function voiceCall(action, speak = true) {
   try {
     const state = await action();
     voiceElement('answer').value = '';
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
+    if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
     if (speak) voiceSpeakPrompt();
     if (state.saved && typeof load === 'function') await load();
   } catch (error) {
-    voiceStatus(error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : ''));
+    const message = error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : '');
+    voiceStatus(message);
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = message;
+    if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = message;
   } finally {
     voiceBusy = false;
     voiceUpdateControls();
@@ -179,9 +198,24 @@ function voiceListen(targetID) {
   catch { voiceRecognizer = null; voiceElement('mic-status').textContent = 'Microphone input could not start. You can type your answer.'; }
 }
 
+let voiceProviderTouched = false;
 voiceElement('provider').onchange = () => {
+  voiceProviderTouched = true;
   voiceElement('fixture-label').hidden = voiceElement('provider').value !== 'mock';
 };
+if (location.pathname === '/desktop') {
+  fetch('/api/v1/routing').then(response => response.json()).then(result => {
+    const jev = result.providers?.find(provider => provider.id === 'jev');
+    if (!voiceProviderTouched && jev?.configured) {
+      voiceElement('provider').value = 'jev';
+      voiceElement('fixture-label').hidden = true;
+    } else if (!jev?.configured && voiceElement('start-feedback')) {
+      voiceElement('start-feedback').textContent = 'Jev needs an OpenRouter key. Local test mode is available.';
+    }
+  }).catch(() => {
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Could not check Jev configuration.';
+  });
+}
 voiceElement('start-form').onsubmit = event => {
   event.preventDefault();
   const text = voiceElement('first').value.trim();
