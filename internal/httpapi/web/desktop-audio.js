@@ -16,21 +16,27 @@ const atlasDesktopAudio = (() => {
   let processor = null;
   let socket = null;
   let stopTimer = null;
+  let startTimer = null;
+  let attempt = 0;
 
-  function status(message) { voiceElement('mic-status').textContent = message; }
+  function status(message) {
+    for (const id of ['mic-status', 'mic-hint-first', 'mic-hint-answer']) voiceElement(id).textContent = message;
+  }
 
   function updateControls() {
-    const label = state === 'recording' ? 'Stop microphone' : state === 'starting' ? 'Connecting…' : state === 'finishing' ? 'Transcribing…' : captureSupported && available ? 'Start microphone' : 'Focus for dictation';
+    const label = state === 'recording' ? 'Stop microphone' : state === 'starting' ? 'Cancel microphone' : state === 'finishing' ? 'Transcribing…' : captureSupported && available ? 'Start microphone' : 'Focus for dictation';
     for (const id of ['listen-first', 'listen-answer']) {
       const button = voiceElement(id);
       button.textContent = label;
-      button.disabled = voiceBusy || state === 'starting' || state === 'finishing';
+      button.disabled = voiceBusy || state === 'finishing';
     }
   }
 
   function cleanupCapture() {
     if (stopTimer) clearTimeout(stopTimer);
+    if (startTimer) clearTimeout(startTimer);
     stopTimer = null;
+    startTimer = null;
     if (processor) { processor.onaudioprocess = null; processor.disconnect(); }
     source?.disconnect();
     media?.getTracks().forEach(track => track.stop());
@@ -39,6 +45,7 @@ const atlasDesktopAudio = (() => {
   }
 
   function fail(message) {
+    attempt++;
     cleanupCapture();
     if (target) target.readOnly = false;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
@@ -86,20 +93,29 @@ const atlasDesktopAudio = (() => {
   }
 
   async function start(targetID) {
+    const currentAttempt = ++attempt;
     state = 'starting';
     target = voiceElement(targetID);
     original = target.value;
+    status('Connecting to the microphone…');
     updateControls();
+    startTimer = setTimeout(() => {
+      if (currentAttempt === attempt) fail('Microphone did not respond. Check its permission and audio device, then try again.');
+    }, 12000);
     try {
       window.speechSynthesis?.cancel();
-      media = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}, video: false});
+      const stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}, video: false});
+      if (currentAttempt !== attempt) { stream.getTracks().forEach(track => track.stop()); return; }
+      media = stream;
       context = new AudioContextType();
       await context.resume();
+      if (currentAttempt !== attempt) return;
       socket = new WebSocket(`ws://${location.host}/api/v1/audio/stream`);
       socket.binaryType = 'arraybuffer';
       socket.onmessage = handleMessage;
       socket.onclose = () => { if (state !== 'idle') fail('Audio connection closed. You can retry or type your reply.'); };
       await waitForOpen(socket);
+      if (currentAttempt !== attempt) return;
       socket.send(JSON.stringify({type: 'start', sample_rate: Math.round(context.sampleRate)}));
       source = context.createMediaStreamSource(media);
       processor = context.createScriptProcessor(4096, 1, 1);
@@ -120,11 +136,13 @@ const atlasDesktopAudio = (() => {
       processor.connect(context.destination);
       target.readOnly = true;
       state = 'recording';
+      clearTimeout(startTimer);
+      startTimer = null;
       stopTimer = setTimeout(stop, 29_000);
       status(`Recording locally with ${backend}. Click Stop microphone when done (30 second limit).`);
       updateControls();
     } catch (error) {
-      fail(`Microphone could not start: ${error.message}. You can type instead.`);
+      if (currentAttempt === attempt) fail(`Microphone could not start: ${error.message}. Check the device and permission, or type instead.`);
     }
   }
 
@@ -140,6 +158,7 @@ const atlasDesktopAudio = (() => {
 
   function toggle(targetID) {
     if (state === 'recording') { stop(); return; }
+    if (state === 'starting') { fail('Microphone start canceled.'); return; }
     if (state !== 'idle') return;
     if (!captureSupported || !available) {
       voiceElement(targetID).focus();
@@ -150,6 +169,7 @@ const atlasDesktopAudio = (() => {
   }
 
   window.addEventListener('pagehide', () => {
+    attempt++;
     cleanupCapture();
     socket?.close();
   });
@@ -166,5 +186,5 @@ voiceElement('listen-first').onclick = () => atlasDesktopAudio.toggle('first');
 voiceElement('listen-answer').onclick = () => atlasDesktopAudio.toggle('answer');
 atlasDesktopAudio.updateControls();
 fetch('/api/v1/audio/capabilities').then(response => response.json()).then(value => atlasDesktopAudio.setCapabilities(value)).catch(() => {
-  voiceElement('mic-status').textContent = 'Local audio service is unavailable. You can type your reply.';
+  for (const id of ['mic-status', 'mic-hint-first', 'mic-hint-answer']) voiceElement(id).textContent = 'Local audio service is unavailable. You can type your reply.';
 });
