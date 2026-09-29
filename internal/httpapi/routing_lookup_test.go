@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -104,6 +105,15 @@ func TestLookupAnswersMissingAndGenericHistoryWithoutGuessing(t *testing.T) {
 	answer, err = answerLookup(t.Context(), s, state)
 	if err != nil || !strings.Contains(answer.Text, "couldn't find") {
 		t.Fatal(answer, err)
+	}
+	for i := 0; i < 10; i++ {
+		if _, err := s.CreateReminder(t.Context(), fmt.Sprintf("Old reminder %d", i), "2025-01-01T04:30:00Z", "UTC"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	answer, err = answerLookup(t.Context(), s, state)
+	if err != nil || len(answer.Sources) != 10 {
+		t.Fatal("old reminder list was incomplete", answer, err)
 	}
 }
 
