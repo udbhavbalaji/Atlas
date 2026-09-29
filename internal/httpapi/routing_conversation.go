@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
 type routingConversation struct {
 	State    string                 `json:"state"`
 	Route    routing.Result         `json:"route"`
+	Fixture  string                 `json:"fixture,omitempty"`
 	Channel  string                 `json:"channel"`
 	Draft    dispatchRequest        `json:"draft"`
 	Question *channelQuestion       `json:"question,omitempty"`
@@ -20,6 +22,7 @@ type routingConversation struct {
 	Warnings []string               `json:"warnings"`
 	Messages []conversationTurn     `json:"messages"`
 	Saved    *store.TaskAction      `json:"saved,omitempty"`
+	Answer   *conversationAnswer    `json:"answer,omitempty"`
 }
 
 func (c *routingConversation) prompt() string {
@@ -30,10 +33,15 @@ func (c *routingConversation) prompt() string {
 		return "Cancelled. Nothing was saved."
 	case "saved":
 		return "Saved."
+	case "answered":
+		if c.Answer != nil {
+			return c.Answer.Text
+		}
+		return "I couldn't read the saved records. Please ask again."
 	case "confirming":
 		return "Saving. If the connection was interrupted, retry confirmation or resume this conversation."
 	case "awaiting_route":
-		return "Should I save this as a task, reminder, or note?"
+		return "Should I save a task, reminder, or note, or look up an existing record?"
 	case "awaiting_confirmation":
 		p := c.Proposal.Input
 		summary := p.Kind
@@ -61,14 +69,24 @@ func (c *routingConversation) prompt() string {
 
 func routingConversationResponse(w http.ResponseWriter, status int, d store.SessionDocument, c routingConversation) {
 	prompt := c.prompt()
-	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "messages": c.Messages, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "saved" || c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming"}})
+	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "messages": c.Messages, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "saved" || c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming"}})
 }
 
 func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 	c.Question = nil
 	c.Proposal = nil
+	c.Answer = nil
 	if c.Channel == "" {
 		c.State = "awaiting_route"
+		return nil
+	}
+	if c.Channel == "lookup" {
+		answer, err := answerLookup(ctx.Context(), s, c.Route.Input)
+		if err != nil {
+			return err
+		}
+		c.Answer = &answer
+		c.State = "answered"
 		return nil
 	}
 	out, err := dispatchChannel(ctx.Context(), s, c.Route, c.Channel, c.Draft)
@@ -85,6 +103,31 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 	}
 	c.Proposal = out.Proposal
 	c.State = "awaiting_confirmation"
+	return nil
+}
+
+func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result routing.Result) error {
+	c.Route = result
+	c.Channel = ""
+	c.Question = nil
+	c.Proposal = nil
+	c.Answer = nil
+	c.Warnings = []string{}
+	c.Draft = dispatchRequest{Version: routing.Version, RoutingToken: result.RoutingToken}
+	switch result.State {
+	case "unsupported":
+		c.State = "unsupported"
+	case "needs_clarification":
+		c.State = "awaiting_route"
+	default:
+		c.Channel = result.SelectedChannel
+		if c.Channel != "lookup" {
+			seed := prepareChannel(result.Input, strings.TrimSuffix(c.Channel, "s"))
+			c.Draft = applyChannelPrefill(c.Draft, seed)
+			c.Warnings = seed.Warnings
+		}
+		return c.advance(r, s)
+	}
 	return nil
 }
 
@@ -113,6 +156,8 @@ func selectedChannel(value string) string {
 		return "reminders"
 	case "note", "a note", "notes":
 		return "notes"
+	case "lookup", "look up", "find", "search", "find existing records":
+		return "lookup"
 	}
 	return ""
 }
@@ -199,9 +244,11 @@ func (c *routingConversation) correction(field, value string) bool {
 		}
 		c.Channel = channel
 		c.Draft = dispatchRequest{Version: routing.Version, RoutingToken: c.Route.RoutingToken, Channel: channel, ReviewedChannel: true}
-		seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
-		c.Draft = applyChannelPrefill(c.Draft, seed)
-		c.Warnings = seed.Warnings
+		if channel != "lookup" {
+			seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
+			c.Draft = applyChannelPrefill(c.Draft, seed)
+			c.Warnings = seed.Warnings
+		}
 		return true
 	case "title":
 		if c.Channel == "notes" {
@@ -315,22 +362,10 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			routingFailure(w, err)
 			return
 		}
-		c := routingConversation{Route: result, Draft: dispatchRequest{Version: routing.Version, RoutingToken: result.RoutingToken}, Warnings: []string{}, Messages: []conversationTurn{{Role: "user", Text: in.Text}}}
-		switch result.State {
-		case "unsupported":
-			c.State = "unsupported"
-		case "needs_clarification":
-			c.State = "awaiting_route"
-		default:
-			c.Channel = result.SelectedChannel
-			kind := strings.TrimSuffix(c.Channel, "s")
-			seed := prepareChannel(result.Input, kind)
-			c.Draft = applyChannelPrefill(c.Draft, seed)
-			c.Warnings = seed.Warnings
-			if err = c.advance(r, s); err != nil {
-				failure(w, err)
-				return
-			}
+		c := routingConversation{Fixture: in.Fixture, Messages: []conversationTurn{{Role: "user", Text: in.Text}}}
+		if err = c.beginRoute(r, s, result); err != nil {
+			failure(w, err)
+			return
 		}
 		c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: c.prompt()})
 		d, err := s.CreateSession(r.Context(), c)
@@ -396,15 +431,27 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 				c.Proposal = nil
 			} else {
 				switch c.State {
+				case "answered":
+					result, routeErr := evaluateRouting(r.Context(), s, service, c.Route.Provider, routing.Request{Version: routing.Version, RequestID: d.ID + "." + strconv.Itoa(d.Version+1), Text: value, Timezone: c.Route.Input.Timezone, Fixture: c.Fixture})
+					if routeErr != nil {
+						routingFailure(w, routeErr)
+						return
+					}
+					if err = c.beginRoute(r, s, result); err != nil {
+						failure(w, err)
+						return
+					}
 				case "awaiting_route":
 					channel := selectedChannel(value)
 					if channel != "" {
 						c.Channel = channel
 						c.Draft.Channel = channel
 						c.Draft.ReviewedChannel = true
-						seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
-						c.Draft = applyChannelPrefill(c.Draft, seed)
-						c.Warnings = seed.Warnings
+						if channel != "lookup" {
+							seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
+							c.Draft = applyChannelPrefill(c.Draft, seed)
+							c.Warnings = seed.Warnings
+						}
 						if err = c.advance(r, s); err != nil {
 							failure(w, err)
 							return

@@ -33,7 +33,7 @@ func TestRoutingCacheReusesOnlyMatchingSuccessfulEvaluations(t *testing.T) {
 	}
 	second.Decision.Probabilities["task"] = 0
 	third, _ := c.Evaluate(t.Context(), state, Registry(), "")
-	if third.Decision.Probabilities["task"] != 0.92 {
+	if third.Decision.Probabilities["task"] != 0.9 {
 		t.Fatal("caller mutated cache")
 	}
 	state.Text = "changed"

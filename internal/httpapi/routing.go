@@ -161,12 +161,13 @@ type channelResponse struct {
 	Extraction string                 `json:"extraction"`
 	Questions  []channelQuestion      `json:"questions"`
 	Proposal   *store.CaptureProposal `json:"proposal"`
+	Answer     *conversationAnswer    `json:"answer,omitempty"`
 	Persisted  bool                   `json:"persisted"`
 }
 type channelHandler func(context.Context, *store.Store, routing.Result, dispatchRequest) (channelResponse, error)
 
 func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result, channel string, input dispatchRequest) (channelResponse, error) {
-	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel}
+	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel}
 	handler, ok := handlers[channel]
 	if !ok {
 		return channelResponse{}, routing.ErrRequest
@@ -178,6 +179,16 @@ func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result,
 		return channelResponse{}, routing.ErrRequest
 	}
 	return handler(ctx, s, result, input)
+}
+func lookupChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	answer, err := answerLookup(ctx, s, r.Input)
+	if err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "lookup", State: "answered", Source: r.Input.Text, Input: r.Input, Extraction: "saved_record_lookup", Questions: []channelQuestion{}, Answer: &answer}, nil
 }
 func taskChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
 	return captureChannel(ctx, s, r, in, "tasks", "task")

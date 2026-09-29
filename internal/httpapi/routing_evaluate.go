@@ -12,7 +12,7 @@ import (
 )
 
 var errRoutingProvider = errors.New("unknown routing provider")
-var errRoutingConfiguration = errors.New("save the key in data/openrouter.key or set OPENROUTER_API_KEY and restart Atlas; no fallback was used")
+var errRoutingConfiguration = errors.New("configure an OpenRouter key for this Atlas app and restart it; no fallback was used")
 
 // Both the stateless evaluation API and durable conversation entry use this
 // boundary. A turn never calls it again after the session has been created.
@@ -35,7 +35,7 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	default:
 		return routing.Result{}, errRoutingProvider
 	}
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
 	defer cancel()
 	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), Context: []provider.ContextRecord{}}
 	if strings.TrimSpace(input.ContextQuery) != "" {

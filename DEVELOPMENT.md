@@ -192,7 +192,7 @@ For OpenRouter access, save only the key (no quotes or assignment) in `/home/uda
 
 Manual tests:
 
-1. Select Mock, Task, and enter the interview sentence. Evaluate: inspect five action probabilities and task channel questions. No action records are created.
+1. Select Mock, Task, and enter the interview sentence. Evaluate: inspect six action probabilities and task channel questions. No action records are created.
 2. Supply the reviewed title and deadline. Choose Skip reminder / Skip note and Dispatch / preview. Confirm; verify one task only.
 3. Repeat with Add reminder / Add note, supply timing and contents, preview and confirm. Inspect canonical task/reminder/note links.
 4. Use the Reminder or Note fixture and exercise their required fields. They must not create an accidental task.
@@ -205,15 +205,17 @@ Automated routing tests simulate HTTP/authentication, malformed output, cancella
 
 ## Routing conversation test
 
-Open **Routing → Conversation test**. Choose Mock/Task and enter `Call Maya`. Answer the reminder and note questions with `no`, review the proposal, say `change title to Call Maya tonight`, then `yes`. Resume the displayed session ID and verify the saved result. Try Mock/Ambiguous to choose a channel in a follow-up turn, or Mock/Reminder with `Remind me to call Maya` and answer the timing question with `tomorrow at 6pm`. A wrong field name or unresolved time keeps the current question open. `cancel` creates no action records. The JSON panel exposes the version, question, proposal and next request for voice-client integration.
+Open **Routing → Conversation test**. Choose Mock/Lookup and ask `When is my interview?`; check the saved date, task link, and an old-reminder follow-up. Then choose Mock/Task and enter `Call Maya`. Answer the reminder and note questions with `no`, review the proposal, say `change title to Call Maya tonight`, then `yes`. Resume the displayed session ID and verify the saved result. Try Mock/Ambiguous to choose a channel in a follow-up turn, or Mock/Reminder with `Remind me to call Maya` and answer the timing question with `tomorrow at 6pm`. A wrong field name or unresolved time keeps the current question open. `cancel` creates no action records. The JSON panel exposes the version, question, proposal and next request for voice-client integration.
 
-This milestone provides durable turn management, one Jev routing decision, typed follow-up questions, local source hints, reviewed correction, and idempotent confirmation. It still uses the existing local English time grammar and field hints; it does not connect a separate model for free-form channel extraction. A voice model can submit the current `question.id`/`field` and a recognized `value`, then speak the returned `prompt`. The model must not treat a proposal as saved before `state:saved`.
+This milestone provides durable turn management, a Jev decision for each new request, typed capture follow-up questions, read-only saved-record answers with links, local source hints, reviewed correction, and idempotent confirmation. It still uses the existing local English time grammar and field hints; it does not connect a separate model for free-form channel extraction. A voice model can submit the current `question.id`/`field` and a recognized `value`, then speak the returned `prompt`. The model must not treat a proposal as saved before `state:saved`.
 
 ## Browser voice prototype
 
-Open **Voice** in the testing webpage. Use Mock/Task with `Call Maya`; answer **Skip reminder**, **Skip note**, say or type `change title to Call Maya tonight`, then review the proposal and tap **Confirm and save**. The same flow can use Mock/Reminder or Mock/Ambiguous. Reload to resume the last session, or paste its ID into **Resume session**. The browser microphone button records one utterance at a time when its speech-recognition API is available. Typed text exercises the same server flow. Spoken follow-up answers can advance automatically, but a recognized “yes” at the proposal stage never saves; the separate button is required. Turn off prompt playback or automatic follow-up submission with the checkboxes.
+Open **Voice** in the testing webpage. Use Mock/Task with `Call Maya`; answer **Skip reminder**, **Skip note**, say or type `change title to Call Maya tonight`, then review the proposal and tap **Confirm and save**. The same flow can use Mock/Reminder, Mock/Lookup, or Mock/Ambiguous. Reload to resume the last session, or paste its ID into **Resume session**. The browser microphone button records one utterance at a time when its speech-recognition API is available. Typed text exercises the same server flow. Spoken follow-up answers can advance automatically, but a recognized “yes” at the proposal stage never saves; the separate button is required. Turn off prompt playback or automatic follow-up submission with the checkboxes.
 
 The browser may process speech through its own remote recognition service; Atlas stores the resulting transcript in its existing local conversation session and does not store audio. Speech recognition support and quality vary by browser. Prompt speech uses browser synthesis and falls back to visible text. This is a prototype of the client transport, not a realtime voice model or an offline speech engine. `voice-client-core.js` exposes `start`, `resume`, `reply`, `confirm` and `cancel` for a future voice-model adapter. Scripted tests run with `node internal/httpapi/webtest/voice-client-core.test.cjs`.
+
+The Omarchy desktop window streams microphone audio to the local Atlas service and uses local Voxtype transcription. Its **Desktop checks** page tests saved-record answers without a Jev call.
 
 ## Branch promotion policy
 
