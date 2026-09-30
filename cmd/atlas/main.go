@@ -22,6 +22,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	path := flag.String("db", "data/atlas.db", "SQLite database path")
 	openRouterKeyFile := flag.String("openrouter-key-file", "data/openrouter.key", "Optional private file containing only the OpenRouter key; environment takes precedence")
+	groqKeyFile := flag.String("groq-key-file", "data/groq.key", "Optional private file containing only the Groq key; environment takes precedence")
 	announceURL := flag.Bool("announce-url", false, "Print the bound local URL for a desktop launcher")
 	flag.Parse()
 	if os.Getenv("OPENROUTER_API_KEY") == "" && *openRouterKeyFile != "" {
@@ -36,6 +37,21 @@ func main() {
 			}
 			if err = os.Setenv("OPENROUTER_API_KEY", value); err != nil {
 				log.Fatal("Could not configure the OpenRouter key")
+			}
+		}
+	}
+	if os.Getenv("GROQ_API_KEY") == "" && *groqKeyFile != "" {
+		key, err := os.ReadFile(*groqKeyFile)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Fatal("Could not read the configured Groq key file")
+		}
+		if err == nil {
+			value := strings.TrimSpace(string(key))
+			if strings.ContainsAny(value, "\r\n\t ") {
+				log.Fatal("Groq key file must contain only the key")
+			}
+			if err = os.Setenv("GROQ_API_KEY", value); err != nil {
+				log.Fatal("Could not configure the Groq key")
 			}
 		}
 	}

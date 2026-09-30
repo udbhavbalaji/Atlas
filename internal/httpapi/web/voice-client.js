@@ -205,14 +205,20 @@ voiceElement('provider').onchange = () => {
 };
 if (location.pathname === '/desktop') {
   fetch('/api/v1/routing').then(response => response.json()).then(result => {
+    const groq = result.providers?.find(provider => provider.id === 'groq');
     const free = result.providers?.find(provider => provider.id === 'free');
-    if (!voiceProviderTouched && free?.configured) {
-      voiceElement('provider').value = 'free';
+    const jev = result.providers?.find(provider => provider.id === 'jev');
+    if (!voiceProviderTouched && groq?.configured) {
+      voiceElement('provider').value = 'groq';
       voiceElement('fixture-label').hidden = true;
+    } else if (!voiceProviderTouched && jev?.configured) {
+      voiceElement('provider').value = 'jev';
+      voiceElement('fixture-label').hidden = true;
+      voiceElement('start-feedback').textContent = 'For free natural language, add a Groq key. OpenRouter free capacity may be unavailable.';
     } else if (!free?.configured && voiceElement('start-feedback')) {
       voiceElement('provider').value = 'mock';
       voiceElement('fixture-label').hidden = false;
-      voiceElement('start-feedback').textContent = 'Natural language mode needs an OpenRouter key. Local test mode is available.';
+      voiceElement('start-feedback').textContent = 'Natural language mode needs a Groq or OpenRouter key. Local test mode is available.';
     }
   }).catch(() => {
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Could not check conversation configuration.';

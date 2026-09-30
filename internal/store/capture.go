@@ -17,6 +17,7 @@ var ErrCaptureReminder = errors.New("reminder title, timezone, and repeat requir
 type CaptureInput struct {
 	BeforeTaskID      string `json:"before_task_id"`
 	BeforeTaskVersion string `json:"before_task_version"`
+	LinkedTaskID      string `json:"linked_task_id"`
 	Kind              string `json:"kind"`
 	NoteBody          string `json:"note_body"`
 	Title             string `json:"title"`
@@ -45,6 +46,9 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 	}
 	if (input.BeforeTaskID != "" || input.BeforeTaskVersion != "") && (input.Kind != "task" || !taskIDPattern.MatchString(input.BeforeTaskID) || !versionPattern.MatchString(input.BeforeTaskVersion)) {
 		return p, ErrDependency
+	}
+	if input.LinkedTaskID != "" && (input.Kind == "task" || !taskIDPattern.MatchString(input.LinkedTaskID)) {
+		return p, ErrCaptureContext
 	}
 	if input.BeforeTaskID != "" {
 		p.Effects = append(p.Effects, "task.dependency_added")
@@ -104,7 +108,7 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 			return p, ErrInvalidRepeat
 		}
 		p.Effects = append(p.Effects, "reminder.create", "delivery.queue")
-		if input.Kind == "task" {
+		if input.Kind == "task" || input.LinkedTaskID != "" {
 			p.Effects = append(p.Effects, "reminder.link_task")
 		}
 		at, _ := time.Parse(time.RFC3339Nano, input.ReminderAt)
@@ -120,7 +124,7 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 	}
 	if input.NoteBody != "" {
 		p.Effects = append(p.Effects, "note.create")
-		if input.Kind == "task" {
+		if input.Kind == "task" || input.LinkedTaskID != "" {
 			p.Effects = append(p.Effects, "note.link_task")
 		}
 		if input.ReminderAt != "" {
@@ -133,6 +137,10 @@ func PreviewCapture(input CaptureInput) (CaptureProposal, error) {
 	}
 	if input.BeforeTaskID != "" {
 		input.PreviewID = fingerprint("capture.v3", input.Kind, input.Title, input.Details, input.DueAt, input.ReminderAt, input.ReminderTitle, input.Timezone, input.Repeat, input.NoteBody, input.BeforeTaskID, input.BeforeTaskVersion)
+	}
+	if input.LinkedTaskID != "" {
+		input.PreviewID = fingerprint("capture.v4", input.Kind, input.Title, input.Details, input.DueAt, input.ReminderAt, input.ReminderTitle, input.Timezone, input.Repeat, input.NoteBody, input.LinkedTaskID)
+		p.Effects = append(p.Effects, "task.link_existing")
 	}
 	p.Input = input
 	return p, nil
@@ -184,9 +192,21 @@ func (s *Store) CommitCapture(ctx context.Context, key string, input CaptureInpu
 			return saved, false, ErrCaptureContext
 		}
 	}
-	taskID, reminderID := "", ""
+	taskID, reminderID := input.LinkedTaskID, ""
 	timestamp := now()
 	saved = TaskAction{Dependencies: []TaskDependency{}, Reminders: []Reminder{}, Deliveries: []Delivery{}, Notes: []Note{}}
+	linkedTitle := ""
+	if taskID != "" {
+		var linked Task
+		linked, err = readTask(ctx, tx, taskID)
+		if err != nil {
+			return saved, false, err
+		}
+		if input.Kind == "reminder" && linked.Status != "open" {
+			return saved, false, ErrTaskReminderConflict
+		}
+		linkedTitle = linked.Title
+	}
 	if input.Kind == "task" {
 		taskID, err = newID()
 		if err == nil {
@@ -202,9 +222,11 @@ func (s *Store) CommitCapture(ctx context.Context, key string, input CaptureInpu
 	if err == nil && input.ReminderAt != "" {
 		reminderID, err = newID()
 		anchor := ""
-		taskTitle := ""
+		taskTitle := linkedTitle
 		if taskID != "" {
-			taskTitle = input.Title
+			if input.Kind == "task" {
+				taskTitle = input.Title
+			}
 		}
 		if input.Repeat != "" {
 			anchor = input.ReminderAt

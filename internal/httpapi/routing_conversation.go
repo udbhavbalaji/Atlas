@@ -145,6 +145,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 		if plan := result.Plan; plan != nil {
 			switch c.Channel {
 			case "tasks", "reminders", "notes":
+				c.Draft.Fields.LinkedTaskID = plan.LinkedTaskID
 				c.Draft.Fields.Title = plan.Title
 				c.Draft.Fields.Details = plan.Details
 				c.Draft.Fields.DueAt = plan.DueAt

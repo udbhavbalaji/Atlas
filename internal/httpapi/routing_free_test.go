@@ -103,6 +103,9 @@ func TestFreeConversationLookupAndCapturePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err = s.CreateNoteRequest(t.Context(), "lookup-linked-note", "Print directions", task.ID, ""); err != nil {
+		t.Fatal(err)
+	}
 	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "lookup", Kind: "task", TargetID: task.ID}}
 	mux := http.NewServeMux()
 	routingRoutesWithService(mux, s, routingService{free: planner, configured: true, secret: "test"})
@@ -117,7 +120,7 @@ func TestFreeConversationLookupAndCapturePlan(t *testing.T) {
 		return w.Code, out
 	}
 	code, c := send(map[string]any{"provider": "free", "version": "1", "request_id": "free-lookup", "text": "When is my interview?", "timezone": "UTC"})
-	if code != 201 || c["state"] != "answered" || !strings.Contains(c["prompt"].(string), "Interview with Maya") || !strings.Contains(c["prompt"].(string), "due") {
+	if code != 201 || c["state"] != "answered" || !strings.Contains(c["prompt"].(string), "Interview with Maya") || !strings.Contains(c["prompt"].(string), "due") || !strings.Contains(c["prompt"].(string), "Print directions") {
 		t.Fatal(code, c)
 	}
 	planner.plan = routing.ActionPlan{Action: "task", Kind: "task", Title: "Book train tickets", Details: "For the conference"}
@@ -128,5 +131,26 @@ func TestFreeConversationLookupAndCapturePlan(t *testing.T) {
 	proposal := c["proposal"].(map[string]any)["input"].(map[string]any)
 	if proposal["title"] != "Book train tickets" || proposal["details"] != "For the conference" {
 		t.Fatal(proposal)
+	}
+}
+
+func TestGroqConversationUsesStructuredPlan(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	task, err := s.Create(t.Context(), "Interview with Maya")
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "lookup", Kind: "task", TargetID: task.ID}}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{groq: planner, groqConfigured: true, secret: "test"})
+	body, _ := json.Marshal(map[string]any{"provider": "groq", "version": "1", "request_id": "groq-lookup", "text": "How is my interview going?", "timezone": "UTC"})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/conversations/routing", bytes.NewReader(body)))
+	if w.Code != 201 || !strings.Contains(w.Body.String(), "Interview with Maya") || planner.calls != 1 {
+		t.Fatal(w.Code, w.Body.String(), planner.calls)
 	}
 }
