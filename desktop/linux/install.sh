@@ -21,6 +21,11 @@ if [[ -s "$repo_root/data/openrouter.key" && ! -e "$config_dir/openrouter.key" ]
   install -m 600 "$repo_root/data/openrouter.key" "$config_dir/openrouter.key"
   echo "Configured the existing OpenRouter key for the desktop app."
 fi
+if [[ -s "$repo_root/data/groq.key" && ! -e "$config_dir/groq.key" ]]; then
+  install -d -m 700 "$config_dir"
+  install -m 600 "$repo_root/data/groq.key" "$config_dir/groq.key"
+  echo "Configured the existing Groq key for the desktop app."
+fi
 if command -v python3 >/dev/null && ! pgrep -u "$(id -u)" -x atlas-desktop >/dev/null; then
   python3 "$repo_root/desktop/linux/import-existing-data.py" "$repo_root/data/atlas.db" "${XDG_DATA_HOME:-$HOME/.local/share}/atlas/atlas.db"
 else

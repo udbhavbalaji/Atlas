@@ -108,6 +108,7 @@ func run() error {
 		"-addr", "127.0.0.1:0",
 		"-db", filepath.Join(dataDir, "atlas.db"),
 		"-openrouter-key-file", filepath.Join(configHome, "atlas", "openrouter.key"),
+		"-groq-key-file", filepath.Join(configHome, "atlas", "groq.key"),
 		"-announce-url")
 	command.Stderr = os.Stderr
 	stdout, err := command.StdoutPipe()
