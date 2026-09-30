@@ -31,7 +31,7 @@ The default database is `data/atlas.db`. Configure paths and listen address with
 
 ### macOS desktop preview
 
-On a Mac, run `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. The native app opens the conversation interface, runs a private local Atlas service while open, and keeps its database in Application Support. Conversation can look up, add, edit, and delete saved records; edits report their old and new values, and deletions require confirmation. Microphone text appears in the textbox while you speak. The build script can copy an existing local key and import records into an empty macOS database without overwriting a populated profile. See [desktop/macos/README.md](desktop/macos/README.md) and the in-app **Desktop checks** page for requirements and verification.
+On a Mac, run `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. The native app opens the conversation interface, runs a private local Atlas service while open, and keeps its database in Application Support. With an OpenRouter key, its free natural language mode interprets ordinary English requests to look up, add, edit, and delete saved records; edits report their old and new values, and deletions require confirmation. Microphone text appears in the textbox while you speak. The build script can copy an existing local key and import records into an empty macOS database without overwriting a populated profile. See [desktop/macos/README.md](desktop/macos/README.md) and the in-app **Desktop checks** page for requirements and verification.
 
 Before adding other reasoning, voice, or notification providers, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 

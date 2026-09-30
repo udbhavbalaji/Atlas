@@ -36,7 +36,7 @@ function voiceSpeakPrompt() {
 function voiceRender(state) {
   voiceElement('session-id').value = state.id;
   try { localStorage.setItem(voiceStorage, state.id); } catch {}
-  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.mock ? 'mock route' : 'Jev route') + ' · session version ' + state.version);
+  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.provider || 'unknown') + ' route · session version ' + state.version);
   voiceElement('prompt').textContent = state.state === 'answered' ? '' : state.prompt;
   const transcript = voiceElement('transcript');
   transcript.replaceChildren();
@@ -205,15 +205,17 @@ voiceElement('provider').onchange = () => {
 };
 if (location.pathname === '/desktop') {
   fetch('/api/v1/routing').then(response => response.json()).then(result => {
-    const jev = result.providers?.find(provider => provider.id === 'jev');
-    if (!voiceProviderTouched && jev?.configured) {
-      voiceElement('provider').value = 'jev';
+    const free = result.providers?.find(provider => provider.id === 'free');
+    if (!voiceProviderTouched && free?.configured) {
+      voiceElement('provider').value = 'free';
       voiceElement('fixture-label').hidden = true;
-    } else if (!jev?.configured && voiceElement('start-feedback')) {
-      voiceElement('start-feedback').textContent = 'Jev needs an OpenRouter key. Local test mode is available.';
+    } else if (!free?.configured && voiceElement('start-feedback')) {
+      voiceElement('provider').value = 'mock';
+      voiceElement('fixture-label').hidden = false;
+      voiceElement('start-feedback').textContent = 'Natural language mode needs an OpenRouter key. Local test mode is available.';
     }
   }).catch(() => {
-    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Could not check Jev configuration.';
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Could not check conversation configuration.';
   });
 }
 voiceElement('start-form').onsubmit = event => {

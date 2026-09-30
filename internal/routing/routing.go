@@ -83,18 +83,19 @@ type Policy struct {
 	MinMargin      float64 `json:"min_margin"`
 }
 type Result struct {
-	Version         string     `json:"version"`
-	RegistryVersion string     `json:"registry_version"`
-	RequestID       string     `json:"request_id"`
-	Provider        string     `json:"provider"`
-	Mock            bool       `json:"mock"`
-	State           string     `json:"state"`
-	SelectedChannel string     `json:"selected_channel"`
-	Input           State      `json:"input"`
-	Evaluation      Evaluation `json:"evaluation"`
-	Policy          Policy     `json:"policy"`
-	RoutingToken    string     `json:"routing_token,omitempty"`
-	Persisted       bool       `json:"persisted"`
+	Version         string      `json:"version"`
+	RegistryVersion string      `json:"registry_version"`
+	RequestID       string      `json:"request_id"`
+	Provider        string      `json:"provider"`
+	Mock            bool        `json:"mock"`
+	State           string      `json:"state"`
+	SelectedChannel string      `json:"selected_channel"`
+	Input           State       `json:"input"`
+	Evaluation      Evaluation  `json:"evaluation"`
+	Policy          Policy      `json:"policy"`
+	RoutingToken    string      `json:"routing_token,omitempty"`
+	Persisted       bool        `json:"persisted"`
+	Plan            *ActionPlan `json:"plan,omitempty"`
 }
 
 func ValidateRequest(r Request) error {

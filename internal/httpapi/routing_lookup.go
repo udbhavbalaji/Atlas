@@ -219,6 +219,24 @@ func answerLookup(ctx context.Context, s *store.Store, state routing.State) (con
 	return answer, nil
 }
 
+func answerPlannedLookup(ctx context.Context, s *store.Store, state routing.State, plan routing.ActionPlan) (conversationAnswer, error) {
+	if plan.TargetID == "" {
+		return answerLookup(ctx, s, state)
+	}
+	for _, record := range state.Context {
+		if record.ID != plan.TargetID || record.Kind != plan.Kind {
+			continue
+		}
+		plural := map[string]string{"task": "tasks", "reminder": "reminders", "note": "notes"}[record.Kind]
+		item, err := lookupHit(ctx, s, store.SearchResult{Type: record.Kind, ID: record.ID, Title: record.Title, URL: "/#" + plural + "/" + record.ID}, state.Text, state)
+		if err != nil {
+			return conversationAnswer{}, err
+		}
+		return conversationAnswer{Text: "I found this in Atlas: " + item.line + ".", Sources: []conversationSource{item.source}}, nil
+	}
+	return conversationAnswer{}, routing.ErrContract
+}
+
 func listLookup(ctx context.Context, s *store.Store, state routing.State, scope string) (conversationAnswer, error) {
 	answer := conversationAnswer{Sources: []conversationSource{}}
 	if scope == "" {

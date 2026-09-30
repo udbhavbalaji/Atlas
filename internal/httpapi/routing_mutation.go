@@ -126,6 +126,30 @@ func (c *routingConversation) prepareMutation(ctx context.Context, s *store.Stor
 		c.Mutation = &recordMutation{Action: c.Channel}
 	}
 	m := c.Mutation
+	if m.ID != "" && m.Title == "" {
+		switch m.Kind {
+		case "task":
+			current, err := s.TaskState(ctx, m.ID)
+			if err != nil {
+				return err
+			}
+			m.Title = current.Task.Title
+		case "reminder":
+			current, err := s.ReminderState(ctx, m.ID)
+			if err != nil {
+				return err
+			}
+			m.Title = current.Reminder.Title
+		case "note":
+			current, err := s.NoteState(ctx, m.ID)
+			if err != nil {
+				return err
+			}
+			m.Title = lookupExcerpt(current.Note.Body)
+		default:
+			return routing.ErrContract
+		}
+	}
 	if m.ID == "" {
 		query := c.Route.Input.Text
 		if m.TargetQuery != "" {
@@ -135,8 +159,27 @@ func (c *routingConversation) prepareMutation(ctx context.Context, s *store.Stor
 		if err != nil {
 			return err
 		}
+		if c.Route.Plan != nil && m.Kind != "" {
+			filtered := candidates[:0]
+			for _, candidate := range candidates {
+				if candidate.Kind == m.Kind {
+					filtered = append(filtered, candidate)
+				}
+			}
+			candidates = filtered
+		}
 		if len(candidates) == 0 {
 			c.Question = &channelQuestion{ID: "record", Field: "record", ValueType: "text", Prompt: "I couldn't find that saved record. What is its title or a distinctive phrase?", Required: true}
+			c.State = "awaiting_target"
+			return nil
+		}
+		if c.Route.Plan != nil {
+			m.Candidates = candidates
+			choices := []provider.Choice{}
+			for _, candidate := range candidates {
+				choices = append(choices, provider.Choice{Value: candidate.ID, Label: candidate.Kind + ": " + candidate.Title})
+			}
+			c.Question = &channelQuestion{ID: "record", Field: "record", ValueType: "choice", Prompt: "Which saved record should I " + m.Action + "?", Required: true, Choices: choices}
 			c.State = "awaiting_target"
 			return nil
 		}
@@ -151,6 +194,11 @@ func (c *routingConversation) prepareMutation(ctx context.Context, s *store.Stor
 			return nil
 		}
 		m.Kind, m.ID, m.Title = candidates[0].Kind, candidates[0].ID, candidates[0].Title
+	}
+	if m.Action == "edit" && c.Route.Plan != nil && m.Field != "" {
+		if err := routing.ValidatePlan(routing.ActionPlan{Action: "edit", Kind: m.Kind, Field: m.Field}, c.Route.Input); err != nil {
+			return err
+		}
 	}
 	if m.Action == "delete" {
 		if m.Kind == "task" {
@@ -172,8 +220,16 @@ func (c *routingConversation) prepareMutation(ctx context.Context, s *store.Stor
 
 func (c *routingConversation) prepareEditValue(text string) error {
 	m := c.Mutation
+	if c.Route.Plan != nil && (m.Field == "due_at" || m.Field == "scheduled_at") && m.New != "" {
+		instant, _, ok := interpret.ResolveTime(m.New, c.Route.Input.Timezone, c.Route.Input.ReferenceAt, m.Field)
+		if ok {
+			m.New = instant
+		} else {
+			m.New = ""
+		}
+	}
 	lower := strings.ToLower(c.Route.Input.Text)
-	if m.Field == "" {
+	if m.Field == "" && c.Route.Plan == nil {
 		switch {
 		case strings.Contains(lower, "reopen") && m.Kind == "task":
 			m.Field, m.New = "status", "open"
@@ -209,7 +265,7 @@ func (c *routingConversation) prepareEditValue(text string) error {
 		c.State = "awaiting_field"
 		return nil
 	}
-	if m.New == "" {
+	if m.New == "" && c.Route.Plan == nil {
 		value := strings.TrimSpace(text)
 		if text == c.Route.Input.Text {
 			_, after, ok := strings.Cut(strings.ToLower(text), " to ")
