@@ -244,7 +244,9 @@ Only after explicit user review, submit unchanged `proposal.input` to `POST /api
 
 `GET /api/v1/routing` returns contract/registry version `1`, implemented actions, provider configuration (not proof of access), provisional policy, context/cache budgets and receipt lifetime. The Jev provider reports its `via` (`openrouter`) and pinned `model` (`typesafe/jev-1.13`). Actions are `task`, `reminder`, `note`, `lookup`, `clarify`, `unsupported`; executable channels are `tasks`, `reminders`, `notes`, and read-only `lookup`.
 
-`POST /api/v1/routing/{provider}/evaluate`, with provider `mock` or `jev`:
+`POST /api/v1/routing/{provider}/evaluate`, with provider `mock`, `jev`, or `free`:
+
+The `free` provider uses the configured OpenRouter key and pinned `nvidia/nemotron-3-super-120b-a12b:free` chat model with a strict JSON action schema. It sends the sentence, reference time, timezone, and up to 50 task/reminder/note summaries. The signed result includes `plan` with the action, exact context record ID where available, field, new value, and creation fields. Atlas rejects IDs absent from context and invalid kind/field combinations. A free evaluation calls the model once; it is not cached and does not retry or fall back. Free capacity is rate limited and the upstream model can be unavailable. Use the desktop **Desktop checks → Free natural language check** panel to inspect a plan without creating, editing, or deleting records.
 
 ```json
 {"version":"1","request_id":"client-generated-id","text":"I have an interview at Ather on Tuesday","timezone":"Asia/Kolkata","context_query":"","fixture":"task"}
@@ -276,7 +278,7 @@ For initial channel preparation, add `prefill:true` to dispatch. The response st
 
 ### Durable routing conversations for voice clients
 
-`POST /api/v1/conversations/routing` starts a session with the same routing fields plus `provider` (`mock` or `jev`). For example, `{ "provider":"mock", "version":"1", "request_id":"voice-1", "text":"Remind me to call Maya tomorrow at 6pm", "timezone":"Asia/Kolkata", "fixture":"reminder" }`. The server evaluates the primary decision once, stores the result and source context, prepares reviewable local field hints, and returns `201` with `Location`. Jev mode requires a configured key and omits `fixture`. Atlas uses Jev for the first decision and for each new question after a read-only answer; field answers and corrections within a capture flow do not reroute or call Jev.
+`POST /api/v1/conversations/routing` starts a session with the same routing fields plus `provider` (`mock`, `jev`, or `free`). For example, `{ "provider":"mock", "version":"1", "request_id":"voice-1", "text":"Remind me to call Maya tomorrow at 6pm", "timezone":"Asia/Kolkata", "fixture":"reminder" }`. The server evaluates the primary decision once, stores the result and source context, prepares reviewable local field hints, and returns `201` with `Location`. Jev mode requires a configured key and omits `fixture`. Atlas uses Jev for the first decision and for each new question after a read-only answer; field answers and corrections within a capture flow do not reroute or call Jev.
 
 `GET /api/v1/conversations/routing/{id}` resumes a session. `POST /api/v1/conversations/routing/{id}/reply` accepts `{ "version":1, "text":"no" }` or `{ "version":1, "field":"fields.reminder_at", "value":"tomorrow at 6pm" }`. The structured form lets a voice model pass a parsed answer to the *current* question; an answer for another field is ignored and the question remains open. A stale version returns `409 session_version_conflict`. The response includes a speakable `prompt`, current `question`, route evidence, draft, warnings, proposal, saved record IDs, transcript and typed `next_request`.
 

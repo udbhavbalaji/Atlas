@@ -32,13 +32,24 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			return routing.Result{}, errRoutingConfiguration
 		}
 		evaluator = service.jev
+	case "free":
+		if input.Fixture != "" {
+			return routing.Result{}, routing.ErrRequest
+		}
+		if !service.configured || service.free == nil {
+			return routing.Result{}, errRoutingConfiguration
+		}
 	default:
 		return routing.Result{}, errRoutingProvider
 	}
-	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+	timeout := 20 * time.Second
+	if name == "free" {
+		timeout = 45 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), Context: []provider.ContextRecord{}}
-	if name == "jev" {
+	if name == "jev" || name == "free" {
 		tasks, err := s.Tasks(ctx)
 		if err != nil {
 			return routing.Result{}, err
@@ -83,6 +94,30 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 				state.Context = append(state.Context, provider.ContextRecord{ID: t.ID, Title: t.Title, DueAt: t.DueAt, UpdatedAt: t.UpdatedAt})
 			}
 		}
+	}
+	if name == "free" {
+		planned, err := service.free.Plan(ctx, state)
+		if err != nil {
+			return routing.Result{}, err
+		}
+		if err := routing.ValidatePlan(planned.Plan, state); err != nil {
+			return routing.Result{}, err
+		}
+		result := routing.Result{Version: routing.Version, RegistryVersion: routing.RegistryVersion, RequestID: input.RequestID, Provider: name, State: "routed", Input: state, Plan: &planned.Plan, Evaluation: routing.Evaluation{Model: planned.Model, Usage: planned.Usage, ModelCalls: 1, EvaluatedAt: time.Now().UTC().Format(time.RFC3339Nano)}}
+		for _, action := range routing.Registry() {
+			if action.ID == planned.Plan.Action {
+				result.SelectedChannel = action.Channel
+				break
+			}
+		}
+		switch planned.Plan.Action {
+		case "clarify":
+			result.State = "needs_clarification"
+		case "unsupported":
+			result.State = "unsupported"
+		}
+		result.RoutingToken = service.sign(result)
+		return result, nil
 	}
 	evaluation, err := evaluator.Evaluate(ctx, state, routing.Registry(), input.Fixture)
 	if err != nil {

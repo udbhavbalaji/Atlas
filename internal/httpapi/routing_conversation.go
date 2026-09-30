@@ -92,7 +92,13 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 		return nil
 	}
 	if c.Channel == "lookup" {
-		answer, err := answerLookup(ctx.Context(), s, c.Route.Input)
+		var answer conversationAnswer
+		var err error
+		if c.Route.Plan != nil {
+			answer, err = answerPlannedLookup(ctx.Context(), s, c.Route.Input, *c.Route.Plan)
+		} else {
+			answer, err = answerLookup(ctx.Context(), s, c.Route.Input)
+		}
 		if err != nil {
 			return err
 		}
@@ -136,6 +142,32 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 		c.State = "awaiting_route"
 	default:
 		c.Channel = result.SelectedChannel
+		if plan := result.Plan; plan != nil {
+			switch c.Channel {
+			case "tasks", "reminders", "notes":
+				c.Draft.Fields.Title = plan.Title
+				c.Draft.Fields.Details = plan.Details
+				c.Draft.Fields.DueAt = plan.DueAt
+				c.Draft.Fields.ReminderAt = plan.ReminderAt
+				c.Draft.Fields.NoteBody = plan.NoteBody
+				c.Draft.Fields.Repeat = plan.Repeat
+				if c.Channel == "tasks" {
+					c.Draft.Reminder = "skip"
+					if plan.ReminderAt != "" {
+						c.Draft.Reminder = "add"
+					}
+				}
+				if c.Channel != "notes" {
+					c.Draft.Note = "skip"
+					if plan.NoteBody != "" {
+						c.Draft.Note = "add"
+					}
+				}
+			case "edit", "delete":
+				c.Mutation = &recordMutation{Action: c.Channel, Kind: plan.Kind, ID: plan.TargetID, TargetQuery: plan.TargetQuery, Field: plan.Field, New: plan.Value}
+			}
+			return c.advance(r, s)
+		}
 		if c.Channel != "lookup" && c.Channel != "edit" && c.Channel != "delete" {
 			seed := prepareChannel(result.Input, strings.TrimSuffix(c.Channel, "s"))
 			c.Draft = applyChannelPrefill(c.Draft, seed)
