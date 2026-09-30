@@ -26,6 +26,8 @@ type ContextRecord struct {
 	Kind      string `json:"kind,omitempty"`
 	Title     string `json:"title"`
 	Body      string `json:"body,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	TaskTitle string `json:"task_title,omitempty"`
 	Status    string `json:"status,omitempty"`
 	DueAt     string `json:"due_at"`
 	UpdatedAt string `json:"updated_at"`

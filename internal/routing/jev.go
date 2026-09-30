@@ -15,10 +15,17 @@ const OpenRouterEndpoint = "https://openrouter.ai/api/alpha/decisions"
 const OpenRouterModel = "typesafe/jev-1.13"
 
 // RemoteError exposes only the upstream HTTP status, never its body or key.
-type RemoteError struct{ Status int }
+type RemoteError struct {
+	Status   int
+	Provider string
+}
 
 func (e RemoteError) Error() string {
-	return fmt.Sprintf("OpenRouter rejected the evaluation (HTTP %d); no fallback was used", e.Status)
+	provider := e.Provider
+	if provider == "" {
+		provider = "OpenRouter"
+	}
+	return fmt.Sprintf("%s rejected the evaluation (HTTP %d); no fallback was used", provider, e.Status)
 }
 func (e RemoteError) Unwrap() error { return ErrUnavailable }
 
@@ -68,7 +75,7 @@ func (j Jev) Evaluate(ctx context.Context, state State, actions []Action, _ stri
 	// Never expose upstream errors, URLs or headers: they can contain credentials
 	// or user context. No automatic retry or fallback can incur extra model calls.
 	if response.StatusCode != http.StatusOK {
-		return Evaluation{}, RemoteError{response.StatusCode}
+		return Evaluation{}, RemoteError{Status: response.StatusCode}
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, 262145))
 	if err != nil {

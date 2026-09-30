@@ -18,10 +18,12 @@ import (
 )
 
 type routingService struct {
-	jev        routing.Evaluator
-	free       routing.Planner
-	configured bool
-	secret     string
+	jev            routing.Evaluator
+	free           routing.Planner
+	groq           routing.Planner
+	configured     bool
+	groqConfigured bool
+	secret         string
 }
 type routingReceipt struct {
 	Result    routing.Result `json:"result"`
@@ -66,12 +68,13 @@ func (s routingService) verify(token string) (routing.Result, error) {
 
 func routingRoutes(mux *http.ServeMux, s *store.Store) {
 	key := os.Getenv("OPENROUTER_API_KEY")
-	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FreePlanner{APIKey: key}, configured: key != "", secret: rand.Text()})
+	groqKey := os.Getenv("GROQ_API_KEY")
+	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FreePlanner{APIKey: key}, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
 }
 func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
 	routingConversationRoutes(mux, s, service)
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
+		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
 	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
 		var input routing.Request
@@ -274,6 +277,18 @@ func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in di
 		for _, record := range r.Input.Context {
 			if record.ID == draft.BeforeTaskID {
 				allowed = true
+			}
+		}
+		if !allowed {
+			return out, routing.ErrRequest
+		}
+	}
+	if draft.LinkedTaskID != "" {
+		allowed := false
+		for _, record := range r.Input.Context {
+			if record.ID == draft.LinkedTaskID && record.Kind == "task" {
+				allowed = true
+				break
 			}
 		}
 		if !allowed {

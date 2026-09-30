@@ -13,6 +13,7 @@ import (
 
 var errRoutingProvider = errors.New("unknown routing provider")
 var errRoutingConfiguration = errors.New("configure an OpenRouter key for this Atlas app and restart it; no fallback was used")
+var errGroqConfiguration = errors.New("configure a Groq key for this Atlas app and restart it; no fallback was used")
 
 // Both the stateless evaluation API and durable conversation entry use this
 // boundary. A turn never calls it again after the session has been created.
@@ -39,17 +40,24 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 		if !service.configured || service.free == nil {
 			return routing.Result{}, errRoutingConfiguration
 		}
+	case "groq":
+		if input.Fixture != "" {
+			return routing.Result{}, routing.ErrRequest
+		}
+		if !service.groqConfigured || service.groq == nil {
+			return routing.Result{}, errGroqConfiguration
+		}
 	default:
 		return routing.Result{}, errRoutingProvider
 	}
 	timeout := 20 * time.Second
-	if name == "free" {
+	if name == "free" || name == "groq" {
 		timeout = 45 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), Context: []provider.ContextRecord{}}
-	if name == "jev" || name == "free" {
+	if name == "jev" || name == "free" || name == "groq" {
 		tasks, err := s.Tasks(ctx)
 		if err != nil {
 			return routing.Result{}, err
@@ -73,10 +81,17 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			add(provider.ContextRecord{ID: task.ID, Kind: "task", Title: task.Title, Body: lookupExcerpt(task.Details), Status: task.Status, DueAt: task.DueAt, UpdatedAt: task.UpdatedAt})
 		}
 		for _, reminder := range reminders {
-			add(provider.ContextRecord{ID: reminder.ID, Kind: "reminder", Title: reminder.Title, Status: reminder.Status, DueAt: reminder.ScheduledAt, UpdatedAt: reminder.UpdatedAt})
+			add(provider.ContextRecord{ID: reminder.ID, Kind: "reminder", Title: reminder.Title, Status: reminder.Status, DueAt: reminder.ScheduledAt, UpdatedAt: reminder.UpdatedAt, TaskID: reminder.TaskID, TaskTitle: reminder.TaskTitle})
 		}
 		for _, note := range notes {
-			add(provider.ContextRecord{ID: note.ID, Kind: "note", Title: lookupExcerpt(note.Body), Body: lookupExcerpt(note.Body), UpdatedAt: note.UpdatedAt})
+			record := provider.ContextRecord{ID: note.ID, Kind: "note", Title: lookupExcerpt(note.Body), Body: lookupExcerpt(note.Body), UpdatedAt: note.UpdatedAt}
+			for _, link := range note.Links {
+				if link.TargetType == "task" {
+					record.TaskID, record.TaskTitle = link.TargetID, link.TargetTitle
+					break
+				}
+			}
+			add(record)
 		}
 	} else if strings.TrimSpace(input.ContextQuery) != "" {
 		found, err := s.Search(ctx, store.SearchOptions{Query: input.ContextQuery, Type: "task", Status: "open", Limit: 5})
@@ -95,11 +110,16 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			}
 		}
 	}
-	if name == "free" {
-		planned, err := service.free.Plan(ctx, state)
+	if name == "free" || name == "groq" {
+		planner := service.free
+		if name == "groq" {
+			planner = service.groq
+		}
+		planned, err := planner.Plan(ctx, state)
 		if err != nil {
 			return routing.Result{}, err
 		}
+		planned.Plan = routing.NormalizePlan(planned.Plan)
 		if err := routing.ValidatePlan(planned.Plan, state); err != nil {
 			return routing.Result{}, err
 		}
@@ -138,6 +158,8 @@ func routingFailure(w http.ResponseWriter, err error) {
 	case errors.Is(err, routing.ErrRequest):
 		apiError(w, 400, "invalid_routing_request", err.Error(), false)
 	case errors.Is(err, errRoutingConfiguration):
+		apiError(w, 503, "routing_unavailable", err.Error(), false)
+	case errors.Is(err, errGroqConfiguration):
 		apiError(w, 503, "routing_unavailable", err.Error(), false)
 	case errors.Is(err, routing.ErrUnavailable), errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		message, retryable := routing.ErrUnavailable.Error(), true

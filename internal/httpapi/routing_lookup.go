@@ -135,6 +135,13 @@ func lookupHit(ctx context.Context, s *store.Store, hit store.SearchResult, ques
 			}
 			item.line += fmt.Sprintf(". Linked reminder: %s (%s)", lookupTime(reminder.ScheduledAt, state.Timezone), reminder.Status)
 		}
+		for i, note := range v.Notes {
+			if i == 3 { item.line += ". More linked notes are saved"; break }
+			item.line += ". Linked note: " + lookupExcerpt(note.Body)
+		}
+		if t.Status == "completed" && t.UpdatedAt != "" {
+			item.line += ". Last updated " + lookupTime(t.UpdatedAt, state.Timezone)
+		}
 		if t.Status == "open" {
 			item.score++
 		}

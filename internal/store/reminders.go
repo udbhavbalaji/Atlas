@@ -386,7 +386,7 @@ func (s *Store) DeleteReminder(ctx context.Context, id string) (ReminderAction, 
 // Task changes and linked delivery cancellation share the caller's transaction.
 // Keep reminder records and task title snapshots for inspection after deletion.
 func cancelTaskReminders(ctx context.Context, tx *sql.Tx, taskID, reason, timestamp string) error {
-	rows, err := tx.QueryContext(ctx, "SELECT id FROM reminders WHERE task_id=? AND status!='completed'", taskID)
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM reminders WHERE task_id=? AND status IN ('scheduled','due')", taskID)
 	if err != nil {
 		return err
 	}

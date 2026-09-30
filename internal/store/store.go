@@ -310,9 +310,11 @@ func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (Tas
 		return TaskAction{}, err
 	}
 	changed := false
+	renamed := false
 	if title != nil && t.Title != *title {
 		t.Title = *title
 		changed = true
+		renamed = true
 	}
 	if status != nil && t.Status != *status {
 		t.Status = *status
@@ -329,6 +331,12 @@ func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (Tas
 	if changed {
 		t.UpdatedAt = now()
 		_, err = tx.ExecContext(ctx, "UPDATE tasks SET title=?,status=?,updated_at=?,details=?,due_at=? WHERE id=?", t.Title, t.Status, t.UpdatedAt, t.Details, t.DueAt, id)
+		if err == nil && renamed {
+			_, err = tx.ExecContext(ctx, "UPDATE reminders SET task_title=?,updated_at=? WHERE task_id=?", t.Title, t.UpdatedAt, id)
+		}
+		if err == nil && renamed {
+			_, err = tx.ExecContext(ctx, "UPDATE note_links SET target_title=? WHERE target_type='task' AND target_id=?", t.Title, id)
+		}
 		if err == nil && t.Status == "completed" {
 			err = cancelTaskReminders(ctx, tx, id, "task.completed", t.UpdatedAt)
 		}
