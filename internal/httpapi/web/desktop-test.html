@@ -4,7 +4,8 @@
 <p class="intro">Run this page inside the desktop window after building or installing Atlas.</p>
 <section class="composer"><h2>Connection and storage</h2><p>These checks use the same local service and database as the desktop app. They do not create records.</p><button id="check" class="primary">Run checks</button><pre id="results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Saved-record answer</h2><p>This creates a local test conversation session and reads saved records. It does not change tasks, reminders, or notes.</p><label>Question<input id="lookup-question" value="When is my interview?"></label><button id="lookup-test" class="primary">Test lookup answer</button><pre id="lookup-results" role="status" aria-live="polite">Ready.</pre></section>
-<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Jev via OpenRouter</strong> and ask about a saved record. Jev should choose the lookup path; the answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. A partial transcript should appear while recording and the final text should remain editable before you send it.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
+<section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Jev via OpenRouter</strong> and ask about a saved record. Jev should choose the lookup path; the answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Jev to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
 </main><script>
 document.getElementById('check').addEventListener('click', async () => {
   const output = document.getElementById('results');
@@ -32,6 +33,66 @@ document.getElementById('lookup-test').addEventListener('click', async () => {
     output.textContent = `${result.prompt}\n\nSources: ${(result.answer?.sources || []).map(source => `${source.type}: ${source.title}`).join('; ') || 'none'}`;
   } catch (error) {
     output.textContent = error.message;
+  }
+});
+document.getElementById('mutation-test').addEventListener('click', async () => {
+  const output = document.getElementById('mutation-results');
+  output.textContent = 'Creating a test task…';
+  const title = `Atlas desktop edit test ${crypto.randomUUID().slice(0, 8)}`;
+  const oldDue = new Date(Date.now() + 3 * 86400000).toISOString();
+  const newDue = new Date(Date.now() + 4 * 86400000).toISOString();
+  let taskID = '', reminderID = '', noteID = '';
+  const json = async (path, method, body, headers = {}) => {
+    const response = await fetch(path, {method, headers: {'Content-Type': 'application/json', ...headers}, body: body ? JSON.stringify(body) : undefined});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || `${method} ${path} failed`);
+    return data;
+  };
+  try {
+    const created = await json('/api/v1/tasks', 'POST', {title, due_at: oldDue}, {'Idempotency-Key': crypto.randomUUID()});
+    taskID = created.task_id || created.task?.id || created.id;
+    if (!taskID) throw new Error('The created task had no ID.');
+    const start = await json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'edit', version: '1', request_id: crypto.randomUUID(), text: `Reschedule ${title} to ${newDue}`, timezone: 'UTC'});
+    if (start.state !== 'answered' || !start.prompt.includes('from') || !start.prompt.includes('to')) throw new Error('The edit did not report its old and new values.');
+    const changed = await json(`/api/v1/tasks/${taskID}`, 'GET');
+    if (new Date(changed.task.due_at).getTime() !== new Date(newDue).getTime()) throw new Error('The task date did not change.');
+    const removal = await json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'delete', version: '1', request_id: crypto.randomUUID(), text: `Delete ${title}`, timezone: 'UTC'});
+    if (removal.state !== 'awaiting_delete_confirmation') throw new Error('Deletion did not wait for confirmation.');
+    await json(`/api/v1/conversations/routing/${removal.id}/reply`, 'POST', {version: removal.version, text: 'yes'});
+    taskID = '';
+    output.textContent = 'Task edit and confirmed deletion passed. Testing reminder…';
+    const reminderTitle = `Atlas reminder test ${crypto.randomUUID().slice(0, 8)}`;
+    const savedReminder = await json('/api/v1/reminders', 'POST', {title: reminderTitle, scheduled_at: oldDue, timezone: 'UTC'}, {'Idempotency-Key': crypto.randomUUID()});
+    reminderID = savedReminder.reminder?.id || savedReminder.id;
+    if (!reminderID) throw new Error('The created reminder had no ID.');
+    const reminderEdit = await json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'edit', version: '1', request_id: crypto.randomUUID(), text: `Reschedule my reminder ${reminderTitle} to ${newDue}`, timezone: 'UTC'});
+    if (reminderEdit.state !== 'answered' || !reminderEdit.prompt.includes('from')) throw new Error('The reminder edit was not reported.');
+    const changedReminder = await json(`/api/v1/reminders/${reminderID}`, 'GET');
+    if (new Date(changedReminder.reminder.scheduled_at).getTime() !== new Date(newDue).getTime()) throw new Error('The reminder time did not change.');
+    const reminderDelete = await json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'delete', version: '1', request_id: crypto.randomUUID(), text: `Delete my reminder ${reminderTitle}`, timezone: 'UTC'});
+    if (reminderDelete.state !== 'awaiting_delete_confirmation') throw new Error('Reminder deletion lacked confirmation.');
+    await json(`/api/v1/conversations/routing/${reminderDelete.id}/reply`, 'POST', {version: reminderDelete.version, text: 'yes'});
+    reminderID = '';
+    output.textContent = 'Task and reminder checks passed. Testing note…';
+    const noteToken = `AtlasNote${crypto.randomUUID().slice(0, 8)}`;
+    const savedNote = await json('/api/v1/notes', 'POST', {body: `${noteToken} original`}, {'Idempotency-Key': crypto.randomUUID()});
+    noteID = savedNote.note_id || savedNote.note?.id;
+    if (!noteID) throw new Error('The created note had no ID.');
+    const noteEdit = await json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'edit', version: '1', request_id: crypto.randomUUID(), text: `Change my note about ${noteToken} to ${noteToken} revised`, timezone: 'UTC'});
+    if (noteEdit.state !== 'answered' || !noteEdit.prompt.includes('from')) throw new Error('The note edit was not reported.');
+    const changedNote = await json(`/api/v1/notes/${noteID}`, 'GET');
+    if (changedNote.note.body !== `${noteToken} revised`) throw new Error('The note body did not change.');
+    const noteDelete = await json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'delete', version: '1', request_id: crypto.randomUUID(), text: `Delete my note about ${noteToken}`, timezone: 'UTC'});
+    if (noteDelete.state !== 'awaiting_delete_confirmation') throw new Error('Note deletion lacked confirmation.');
+    await json(`/api/v1/conversations/routing/${noteDelete.id}/reply`, 'POST', {version: noteDelete.version, text: 'yes'});
+    noteID = '';
+    output.textContent = `Passed: task, reminder, and note edits reported the change; each deletion waited for confirmation.`;
+  } catch (error) {
+    output.textContent = `Failed: ${error.message}`;
+  } finally {
+    if (taskID) await fetch(`/api/v1/tasks/${taskID}`, {method: 'DELETE'});
+    if (reminderID) await fetch(`/api/v1/reminders/${reminderID}`, {method: 'DELETE'});
+    if (noteID) await fetch(`/api/v1/notes/${noteID}`, {method: 'DELETE'});
   }
 });
 </script></body></html>

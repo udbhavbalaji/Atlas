@@ -10,6 +10,7 @@ const atlasDesktopAudio = (() => {
   let state = 'idle';
   let target = null;
   let original = '';
+  let provisional = '';
   let media = null;
   let context = null;
   let source = null;
@@ -51,7 +52,7 @@ const atlasDesktopAudio = (() => {
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
     socket = null;
     state = 'idle';
-    status(message);
+    status(message + (provisional ? ' The live transcript remains in the textbox.' : ''));
     updateControls();
   }
 
@@ -67,16 +68,16 @@ const atlasDesktopAudio = (() => {
     catch { fail('Atlas returned an unreadable audio response.'); return; }
     if (message.type === 'ready') return;
     if (message.type === 'partial') {
-      if (message.text) applyTranscript(message.text);
+      if (message.text) { provisional = message.text; applyTranscript(message.text); }
       status('Live transcript is provisional. Keep speaking or stop to review it.');
     } else if (message.type === 'final') {
-      applyTranscript(message.text || '');
+      applyTranscript(message.text || provisional);
       cleanupCapture();
       if (target) target.readOnly = false;
       state = 'idle';
       socket?.close();
       socket = null;
-      status(message.text ? 'Transcription complete. Review the text, then send it.' : 'No speech was detected. Try again or type your reply.');
+      status(message.text || provisional ? 'Transcription complete. Review the text, then send it.' : 'No speech was detected. Check the selected microphone and try again, or type your reply.');
       target?.focus();
       updateControls();
     } else if (message.type === 'error') {
@@ -97,6 +98,7 @@ const atlasDesktopAudio = (() => {
     state = 'starting';
     target = voiceElement(targetID);
     original = target.value;
+    provisional = '';
     status('Connecting to the microphone…');
     updateControls();
     startTimer = setTimeout(() => {

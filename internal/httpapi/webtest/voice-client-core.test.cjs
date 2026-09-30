@@ -22,9 +22,9 @@ test('voice client routes once, asks, corrects, and requires a separate confirma
   await client.start({provider: 'mock', fixture: 'task', text: 'Call Maya', timezone: 'UTC', requestID: 'voice-1'});
   assert.equal(calls[0].path, '/api/v1/conversations/routing');
   assert.equal(calls[0].body.fixture, 'task');
-  assert.throws(() => client.confirm(), /Review a proposal/);
+  assert.throws(() => client.confirm(), /Review the pending action/);
   await client.reply('', 'reminder', 'skip');
-  await assert.rejects(client.reply('yes'), /Use Confirm and save/);
+  await assert.rejects(client.reply('yes'), /Use the confirmation button/);
   assert.equal(calls.length, 2);
   await client.reply('change title to Call Maya tonight');
   await client.confirm();

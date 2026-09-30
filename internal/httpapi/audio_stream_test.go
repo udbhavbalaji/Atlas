@@ -58,7 +58,7 @@ func TestAudioStreamPartialAndFinal(t *testing.T) {
 	for i := 0; i < len(frame); i += 2 {
 		frame[i+1] = 16
 	}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 2; i++ {
 		if err := connection.WriteMessage(websocket.BinaryMessage, frame); err != nil {
 			t.Fatal(err)
 		}
@@ -66,16 +66,37 @@ func TestAudioStreamPartialAndFinal(t *testing.T) {
 	if err := connection.ReadJSON(&message); err != nil || message.Type != "partial" || message.Text != "recognized words" {
 		t.Fatal(err, message)
 	}
+	for update := 0; update < 2; update++ {
+		for i := 0; i < 3; i++ {
+			if err := connection.WriteMessage(websocket.BinaryMessage, frame); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := connection.ReadJSON(&message); err != nil || message.Type != "partial" || message.Text != "recognized words" {
+			t.Fatal(err, message)
+		}
+	}
 	if err := connection.WriteJSON(map[string]string{"type": "stop"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := connection.ReadJSON(&message); err != nil || message.Type != "final" || message.Text != "recognized words" {
-		t.Fatal(err, message)
+	partials := 3
+	for {
+		if err := connection.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		if message.Type == "partial" {
+			partials++
+			continue
+		}
+		if message.Type != "final" || message.Text != "recognized words" {
+			t.Fatal(message)
+		}
+		break
 	}
 	fixture.mu.Lock()
 	defer fixture.mu.Unlock()
-	if fixture.calls != 2 {
-		t.Fatalf("transcription calls = %d, want one partial and one final", fixture.calls)
+	if fixture.calls != partials+1 || partials < 3 {
+		t.Fatalf("transcription calls = %d, partials = %d", fixture.calls, partials)
 	}
 }
 

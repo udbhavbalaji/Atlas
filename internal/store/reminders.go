@@ -326,6 +326,63 @@ func (s *Store) ReminderMutation(ctx context.Context, id, target, scheduled stri
 	return v, err
 }
 
+// RenameReminder changes the label without disturbing its occurrence or delivery.
+func (s *Store) RenameReminder(ctx context.Context, id, title string) (ReminderAction, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || len([]rune(title)) > 500 {
+		return ReminderAction{}, ErrInvalidReminder
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	defer tx.Rollback()
+	r, err := readReminder(ctx, tx, id)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	if r.Title != title {
+		at := now()
+		_, err = tx.ExecContext(ctx, "UPDATE reminders SET title=?,updated_at=? WHERE id=?", title, at, id)
+		if err == nil {
+			err = reminderActivity(ctx, tx, id, "reminder.renamed", at)
+		}
+	}
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	v, err := reminderAction(ctx, tx, id)
+	if err == nil {
+		err = tx.Commit()
+	}
+	return v, err
+}
+
+// DeleteReminder also cancels outstanding delivery, then records the deletion.
+func (s *Store) DeleteReminder(ctx context.Context, id string) (ReminderAction, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	defer tx.Rollback()
+	if _, err = readReminder(ctx, tx, id); err != nil {
+		return ReminderAction{}, err
+	}
+	// The delivery table has a restrictive foreign key to reminders.
+	_, err = tx.ExecContext(ctx, "DELETE FROM deliveries WHERE reminder_id=?", id)
+	if err == nil {
+		_, err = tx.ExecContext(ctx, "DELETE FROM reminders WHERE id=?", id)
+	}
+	if err == nil {
+		err = reminderActivity(ctx, tx, id, "reminder.deleted", now())
+	}
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	v := ReminderAction{ReminderID: id, Deleted: true}
+	return v, tx.Commit()
+}
+
 // Task changes and linked delivery cancellation share the caller's transaction.
 // Keep reminder records and task title snapshots for inspection after deletion.
 func cancelTaskReminders(ctx context.Context, tx *sql.Tx, taskID, reason, timestamp string) error {

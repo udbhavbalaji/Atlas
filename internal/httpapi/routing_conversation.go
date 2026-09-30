@@ -23,12 +23,13 @@ type routingConversation struct {
 	Messages []conversationTurn     `json:"messages"`
 	Saved    *store.TaskAction      `json:"saved,omitempty"`
 	Answer   *conversationAnswer    `json:"answer,omitempty"`
+	Mutation *recordMutation        `json:"mutation,omitempty"`
 }
 
 func (c *routingConversation) prompt() string {
 	switch c.State {
 	case "unsupported":
-		return "I can capture a task, reminder, or note. That request needs another capability."
+		return "I can add, find, edit, and delete Atlas tasks, reminders, and notes. That request needs another capability."
 	case "cancelled":
 		return "Cancelled. Nothing was saved."
 	case "saved":
@@ -41,7 +42,17 @@ func (c *routingConversation) prompt() string {
 	case "confirming":
 		return "Saving. If the connection was interrupted, retry confirmation or resume this conversation."
 	case "awaiting_route":
-		return "Should I save a task, reminder, or note, or look up an existing record?"
+		return "Should I add, find, edit, or delete a saved record?"
+	case "awaiting_target", "awaiting_field", "awaiting_change":
+		if c.Question != nil {
+			return c.Question.Prompt
+		}
+	case "awaiting_delete_confirmation", "deleting":
+		if c.Mutation != nil {
+			return "Delete " + c.Mutation.Kind + " “" + c.Mutation.Title + "”? This cannot be undone. " + strings.Join(c.Mutation.Effects, " ") + " Say yes to delete or cancel."
+		}
+	case "applying_edit":
+		return "Applying the change. Resume this conversation if the connection was interrupted."
 	case "awaiting_confirmation":
 		p := c.Proposal.Input
 		summary := p.Kind
@@ -69,7 +80,7 @@ func (c *routingConversation) prompt() string {
 
 func routingConversationResponse(w http.ResponseWriter, status int, d store.SessionDocument, c routingConversation) {
 	prompt := c.prompt()
-	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "messages": c.Messages, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "saved" || c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming"}})
+	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "messages": c.Messages, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "saved" || c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting"}})
 }
 
 func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
@@ -88,6 +99,9 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 		c.Answer = &answer
 		c.State = "answered"
 		return nil
+	}
+	if c.Channel == "edit" || c.Channel == "delete" {
+		return c.prepareMutation(ctx.Context(), s)
 	}
 	out, err := dispatchChannel(ctx.Context(), s, c.Route, c.Channel, c.Draft)
 	if err != nil {
@@ -112,6 +126,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	c.Question = nil
 	c.Proposal = nil
 	c.Answer = nil
+	c.Mutation = nil
 	c.Warnings = []string{}
 	c.Draft = dispatchRequest{Version: routing.Version, RoutingToken: result.RoutingToken}
 	switch result.State {
@@ -121,7 +136,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 		c.State = "awaiting_route"
 	default:
 		c.Channel = result.SelectedChannel
-		if c.Channel != "lookup" {
+		if c.Channel != "lookup" && c.Channel != "edit" && c.Channel != "delete" {
 			seed := prepareChannel(result.Input, strings.TrimSuffix(c.Channel, "s"))
 			c.Draft = applyChannelPrefill(c.Draft, seed)
 			c.Warnings = seed.Warnings
@@ -158,6 +173,10 @@ func selectedChannel(value string) string {
 		return "notes"
 	case "lookup", "look up", "find", "search", "find existing records":
 		return "lookup"
+	case "edit", "change", "update":
+		return "edit"
+	case "delete", "remove":
+		return "delete"
 	}
 	return ""
 }
@@ -367,11 +386,29 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			failure(w, err)
 			return
 		}
+		if c.State == "applying_edit" {
+			if err = c.snapshotMutation(r.Context(), s); err != nil {
+				failure(w, err)
+				return
+			}
+		}
 		c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: c.prompt()})
 		d, err := s.CreateSession(r.Context(), c)
 		if err != nil {
 			failure(w, err)
 			return
+		}
+		if c.State == "applying_edit" {
+			if err = c.commitMutation(r.Context(), s); err != nil {
+				failure(w, err)
+				return
+			}
+			c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: c.prompt()})
+			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
+			if err != nil {
+				failure(w, err)
+				return
+			}
 		}
 		w.Header().Set("Location", "/api/v1/conversations/routing/"+d.ID)
 		routingConversationResponse(w, 201, d, c)
@@ -419,7 +456,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			apiError(w, 409, "session_closed", "Start a new routing conversation.", false)
 			return
 		}
-		if c.State == "confirming" && !isConfirm(value) {
+		if (c.State == "confirming" || c.State == "deleting" || c.State == "applying_edit") && !isConfirm(value) {
 			apiError(w, 409, "confirmation_pending", "Retry confirmation to recover the result.", false)
 			return
 		}
@@ -447,7 +484,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 						c.Channel = channel
 						c.Draft.Channel = channel
 						c.Draft.ReviewedChannel = true
-						if channel != "lookup" {
+						if channel != "lookup" && channel != "edit" && channel != "delete" {
 							seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
 							c.Draft = applyChannelPrefill(c.Draft, seed)
 							c.Warnings = seed.Warnings
@@ -473,7 +510,31 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 							return
 						}
 					}
+				case "awaiting_target", "awaiting_field", "awaiting_change":
+					c.mutationReply(r.Context(), s, value)
+				case "awaiting_delete_confirmation":
+					if isConfirm(value) {
+						c.State = "deleting"
+					}
 				}
+			}
+			if c.State == "applying_edit" {
+				if err = c.snapshotMutation(r.Context(), s); err != nil {
+					failure(w, err)
+					return
+				}
+			}
+			c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: c.prompt()})
+			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+		}
+		if c.State == "applying_edit" || c.State == "deleting" {
+			if err = c.commitMutation(r.Context(), s); err != nil {
+				failure(w, err)
+				return
 			}
 			c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: c.prompt()})
 			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)

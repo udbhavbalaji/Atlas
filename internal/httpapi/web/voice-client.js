@@ -53,9 +53,9 @@ function voiceRender(state) {
   const actions = voiceElement('question-actions');
   actions.replaceChildren();
   if (state.state === 'awaiting_route') {
-    for (const channel of ['task', 'reminder', 'note', 'lookup']) actions.append(voiceButton(channel === 'lookup' ? 'Find existing records' : channel, () => voiceCall(() => voiceClient.reply(channel))));
+    for (const channel of ['task', 'reminder', 'note', 'lookup', 'edit', 'delete']) actions.append(voiceButton(channel === 'lookup' ? 'Find existing records' : channel, () => voiceCall(() => voiceClient.reply(channel))));
   }
-  if (state.state === 'awaiting_answer' && state.question?.choices) {
+  if (['awaiting_answer', 'awaiting_target', 'awaiting_field'].includes(state.state) && state.question?.choices) {
     for (const choice of state.question.choices) {
       actions.append(voiceButton(choice.label, () => voiceCall(() => voiceClient.reply('', state.question.field, choice.value))));
     }
@@ -106,9 +106,9 @@ function voiceRender(state) {
   }
   const active = !['saved', 'cancelled', 'unsupported'].includes(state.state);
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
-  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming'].includes(state.state);
-  voiceElement('confirm').textContent = state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
-  voiceElement('cancel').hidden = !active || state.state === 'confirming';
+  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting'].includes(state.state);
+  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
+  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'applying_edit'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
 }
@@ -135,7 +135,7 @@ async function voiceCall(action, speak = true) {
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
     if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
     if (speak) voiceSpeakPrompt();
-    if (state.saved && typeof load === 'function') await load();
+    if ((state.saved || state.mutation && state.state === 'answered') && typeof load === 'function') await load();
   } catch (error) {
     const message = error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : '');
     voiceStatus(message);
