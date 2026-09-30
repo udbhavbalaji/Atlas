@@ -48,8 +48,8 @@ class AtlasVoiceSession {
   async reply(text, field = '', value = '') {
     this.requireActive();
     if (this.state.state === 'confirming') throw new Error('Confirmation is pending. Use Retry confirmation.');
-    if (this.state.state === 'awaiting_confirmation' && /^(yes|yes save it|save it|confirm|confirm and save)[.! ]*$/i.test(text.trim())) {
-      throw new Error('Use Confirm and save after reviewing the proposal.');
+    if (['awaiting_confirmation', 'awaiting_delete_confirmation'].includes(this.state.state) && /^(yes|yes save it|save it|confirm|confirm and save)[.! ]*$/i.test(text.trim())) {
+      throw new Error('Use the confirmation button after reviewing the exact change.');
     }
     if (!text.trim() && !value.trim()) throw new Error('Say or type a reply first.');
     return this.request('/' + encodeURIComponent(this.state.id) + '/reply', 'POST', {
@@ -59,7 +59,7 @@ class AtlasVoiceSession {
 
   confirm() {
     this.requireActive();
-    if (!['awaiting_confirmation', 'confirming'].includes(this.state.state)) throw new Error('Review a proposal before confirming.');
+    if (!['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting'].includes(this.state.state)) throw new Error('Review the pending action before confirming.');
     return this.request('/' + encodeURIComponent(this.state.id) + '/reply', 'POST', {
       version: this.state.version, text: 'yes'
     });

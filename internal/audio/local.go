@@ -124,6 +124,17 @@ func (l Local) Transcribe(ctx context.Context, pcm []byte, sampleRate int) (stri
 	}
 	output, err := command.Output()
 	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			message := strings.TrimSpace(string(exit.Stderr))
+			if message != "" {
+				runes := []rune(message)
+				if len(runes) > 300 {
+					message = string(runes[:300])
+				}
+				return "", fmt.Errorf("%s", message)
+			}
+		}
 		return "", fmt.Errorf("local transcription failed: %w", err)
 	}
 	text := strings.TrimSpace(string(output))

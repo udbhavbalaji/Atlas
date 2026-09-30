@@ -38,7 +38,36 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	ctx, cancel := context.WithTimeout(parent, 20*time.Second)
 	defer cancel()
 	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), Context: []provider.ContextRecord{}}
-	if strings.TrimSpace(input.ContextQuery) != "" {
+	if name == "jev" {
+		tasks, err := s.Tasks(ctx)
+		if err != nil {
+			return routing.Result{}, err
+		}
+		reminders, err := s.Reminders(ctx)
+		if err != nil {
+			return routing.Result{}, err
+		}
+		notes, err := s.Notes(ctx)
+		if err != nil {
+			return routing.Result{}, err
+		}
+		add := func(item provider.ContextRecord) {
+			if len(state.Context) < 50 {
+				state.Context = append(state.Context, item)
+			} else {
+				state.ContextTruncated = true
+			}
+		}
+		for _, task := range tasks {
+			add(provider.ContextRecord{ID: task.ID, Kind: "task", Title: task.Title, Body: lookupExcerpt(task.Details), Status: task.Status, DueAt: task.DueAt, UpdatedAt: task.UpdatedAt})
+		}
+		for _, reminder := range reminders {
+			add(provider.ContextRecord{ID: reminder.ID, Kind: "reminder", Title: reminder.Title, Status: reminder.Status, DueAt: reminder.ScheduledAt, UpdatedAt: reminder.UpdatedAt})
+		}
+		for _, note := range notes {
+			add(provider.ContextRecord{ID: note.ID, Kind: "note", Title: lookupExcerpt(note.Body), Body: lookupExcerpt(note.Body), UpdatedAt: note.UpdatedAt})
+		}
+	} else if strings.TrimSpace(input.ContextQuery) != "" {
 		found, err := s.Search(ctx, store.SearchOptions{Query: input.ContextQuery, Type: "task", Status: "open", Limit: 5})
 		if err != nil {
 			return routing.Result{}, err

@@ -35,7 +35,7 @@ func audioStreamRoutesWithService(mux *http.ServeMux, service *audioStreamServic
 		respond(w, 200, map[string]any{
 			"streaming": true, "local_transcription": service.available,
 			"backend": service.backend, "max_seconds": audioMaxSeconds,
-			"partial_updates": 2,
+			"partial_interval_seconds": 3,
 		})
 	})
 	mux.HandleFunc("GET /api/v1/audio/stream", func(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +80,7 @@ func audioStreamRoutesWithService(mux *http.ServeMux, service *audioStreamServic
 		}
 		send("ready", "")
 		var pcm bytes.Buffer
-		partialCount := 0
+		nextPartialBytes := 2 * start.SampleRate * 2
 		var partialDone chan struct{}
 		for {
 			kind, body, err = conn.ReadMessage()
@@ -102,7 +102,7 @@ func audioStreamRoutesWithService(mux *http.ServeMux, service *audioStreamServic
 				text, transcribeErr := service.transcriber.Transcribe(r.Context(), pcm.Bytes(), start.SampleRate)
 				<-service.modelSlot
 				if transcribeErr != nil {
-					send("error", "Local transcription failed. Check the model setup and try again.")
+					send("error", "Local transcription failed: "+transcribeErr.Error())
 				} else {
 					send("final", text)
 				}
@@ -124,12 +124,12 @@ func audioStreamRoutesWithService(mux *http.ServeMux, service *audioStreamServic
 				default:
 				}
 			}
-			if partialCount < 2 && partialDone == nil && pcm.Len() >= (partialCount+1)*5*start.SampleRate*2 {
+			if partialDone == nil && pcm.Len() >= nextPartialBytes {
 				select {
 				case service.modelSlot <- struct{}{}:
 					copyPCM := bytes.Clone(pcm.Bytes())
 					partialDone = make(chan struct{})
-					partialCount++
+					nextPartialBytes = pcm.Len() + 3*start.SampleRate*2
 					go func(done chan struct{}) {
 						defer close(done)
 						defer func() { <-service.modelSlot }()
