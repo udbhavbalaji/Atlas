@@ -82,6 +82,7 @@ final class AtlasDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate
             process.arguments = ["-addr", "127.0.0.1:0",
                                  "-db", dataDir.appendingPathComponent("atlas.db").path,
                                  "-openrouter-key-file", dataDir.appendingPathComponent("openrouter.key").path,
+                                 "-groq-key-file", dataDir.appendingPathComponent("groq.key").path,
                                  "-announce-url"]
             process.standardOutput = pipe
             process.standardError = FileHandle.standardError

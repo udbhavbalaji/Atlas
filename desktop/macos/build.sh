@@ -22,6 +22,10 @@ if [[ -s "$repo_root/data/openrouter.key" && ! -e "$profile_dir/openrouter.key" 
   install -m 600 "$repo_root/data/openrouter.key" "$profile_dir/openrouter.key"
   echo "Configured the existing OpenRouter key for the macOS app."
 fi
+if [[ -s "$repo_root/data/groq.key" && ! -e "$profile_dir/groq.key" ]]; then
+  install -m 600 "$repo_root/data/groq.key" "$profile_dir/groq.key"
+  echo "Configured the existing Groq key for the macOS app."
+fi
 if command -v python3 >/dev/null && ! pgrep -x Atlas >/dev/null; then
   python3 "$repo_root/desktop/macos/import-existing-data.py" "$repo_root/data/atlas.db" "$profile_dir/atlas.db"
 else
