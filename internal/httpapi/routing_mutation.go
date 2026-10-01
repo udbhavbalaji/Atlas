@@ -449,13 +449,17 @@ func (c *routingConversation) commitMutation(ctx context.Context, s *store.Store
 			if err != nil {
 				return err
 			}
-			prior := map[string]string{}
+			type reminderBefore struct{ Status, ScheduledAt string }
+			prior := map[string]reminderBefore{}
 			for _, reminder := range current.Reminders {
-				prior[reminder.ID] = reminder.Status
+				prior[reminder.ID] = reminderBefore{Status: reminder.Status, ScheduledAt: reminder.ScheduledAt}
 			}
 			for _, reminder := range updated.Reminders {
-				if old := prior[reminder.ID]; old != "" && old != reminder.Status {
-					effects = append(effects, fmt.Sprintf("Linked reminder “%s” changed from %s to %s.", reminder.Title, old, reminder.Status))
+				if old, ok := prior[reminder.ID]; ok && old.Status != reminder.Status {
+					effects = append(effects, fmt.Sprintf("Linked reminder “%s” changed from %s to %s.", reminder.Title, old.Status, reminder.Status))
+				}
+				if old, ok := prior[reminder.ID]; ok && old.ScheduledAt != reminder.ScheduledAt {
+					effects = append(effects, fmt.Sprintf("Linked reminder “%s” moved from %s to %s.", reminder.Title, old.ScheduledAt, reminder.ScheduledAt))
 				}
 			}
 			switch m.Field {
@@ -491,7 +495,15 @@ func (c *routingConversation) commitMutation(ctx context.Context, s *store.Store
 			if m.Field == "title" {
 				updated, err = s.RenameReminder(ctx, m.ID, m.New)
 			} else if m.Field == "scheduled_at" {
-				updated, err = s.ReminderMutation(ctx, m.ID, "scheduled", m.New)
+				var changes []store.WorkflowChange
+				updated, changes, err = s.ReminderMutationWorkflow(ctx, m.ID, "scheduled", m.New, true)
+				for _, change := range changes {
+					if !change.Derived {
+						continue
+					}
+					label := change.Kind + " “" + change.Title + "”"
+					effects = append(effects, fmt.Sprintf("Linked %s changed %s from %s to %s.", label, strings.ReplaceAll(change.Field, "_", " "), change.Old, change.New))
+				}
 			} else {
 				updated, err = s.ReminderMutation(ctx, m.ID, m.New, "")
 			}
