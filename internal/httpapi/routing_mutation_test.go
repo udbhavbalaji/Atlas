@@ -200,6 +200,51 @@ func TestConversationReminderRescheduleAndNoteDeletion(t *testing.T) {
 	}
 }
 
+func TestConversationReminderRescheduleReportsAtomicLinkedEffects(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	oldReminder := time.Now().Add(72 * time.Hour).UTC().Truncate(time.Second)
+	oldDue := oldReminder.Add(time.Hour)
+	newReminder := oldReminder.Add(2 * time.Hour)
+	task, err := s.CreateWithFields(t.Context(), "Interview schedule group", "", oldDue.Format(time.RFC3339))
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary, err := s.CreateLinkedReminder(t.Context(), "Primary interview reminder", oldReminder.Format(time.RFC3339), "UTC", task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling, err := s.CreateLinkedReminder(t.Context(), "Portfolio interview reminder", oldReminder.Add(-24*time.Hour).Format(time.RFC3339), "UTC", task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	data, _ := json.Marshal(map[string]any{"provider": "mock", "fixture": "edit", "version": "1", "request_id": "linked-schedule-edit", "text": "Reschedule Primary interview reminder to " + newReminder.Format(time.RFC3339), "timezone": "UTC"})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/conversations/routing", bytes.NewReader(data)))
+	var response map[string]any
+	json.Unmarshal(w.Body.Bytes(), &response)
+	prompt, _ := response["prompt"].(string)
+	if w.Code != 201 || response["state"] != "answered" || !strings.Contains(prompt, "Linked task") || !strings.Contains(prompt, "Portfolio interview reminder") {
+		t.Fatal(w.Code, response)
+	}
+	state, err := s.TaskState(t.Context(), task.ID)
+	if err != nil || state.Task.DueAt != oldDue.Add(2*time.Hour).Format("2006-01-02T15:04:05.000000000Z") {
+		t.Fatal(state, err)
+	}
+	byID := map[string]store.Reminder{}
+	for _, reminder := range state.Reminders {
+		byID[reminder.ID] = reminder
+	}
+	if byID[primary.ID].ScheduledAt != newReminder.Format("2006-01-02T15:04:05.000000000Z") || byID[sibling.ID].ScheduledAt != oldReminder.Add(-22*time.Hour).Format("2006-01-02T15:04:05.000000000Z") {
+		t.Fatal(byID)
+	}
+}
+
 func TestConversationGenericEditAsksFieldAndReportsLinkedReminderEffect(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {

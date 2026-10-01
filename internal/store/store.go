@@ -309,6 +309,7 @@ func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (Tas
 	if err != nil {
 		return TaskAction{}, err
 	}
+	oldDueAt := t.DueAt
 	changed := false
 	renamed := false
 	if title != nil && t.Title != *title {
@@ -336,6 +337,15 @@ func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (Tas
 		}
 		if err == nil && renamed {
 			_, err = tx.ExecContext(ctx, "UPDATE note_links SET target_title=? WHERE target_type='task' AND target_id=?", t.Title, id)
+		}
+		if err == nil && p.DueAt != nil && oldDueAt != "" && t.DueAt != "" && oldDueAt != t.DueAt {
+			oldDue, oldErr := time.Parse(time.RFC3339Nano, oldDueAt)
+			newDue, newErr := time.Parse(time.RFC3339Nano, t.DueAt)
+			if oldErr != nil || newErr != nil {
+				err = ErrInvalidFields
+			} else {
+				_, err = shiftLinkedReminderSchedules(ctx, tx, id, "", newDue.Sub(oldDue), t.UpdatedAt)
+			}
 		}
 		if err == nil && t.Status == "completed" {
 			err = cancelTaskReminders(ctx, tx, id, "task.completed", t.UpdatedAt)
