@@ -6,7 +6,8 @@
 <section class="composer"><h2>Saved-record answer</h2><p>This creates a local test conversation session and reads saved records. It does not change tasks, reminders, or notes.</p><label>Question<input id="lookup-question" value="When is my interview?"></label><button id="lookup-test" class="primary">Test lookup answer</button><pre id="lookup-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Free natural language check</h2><p>This sends one sentence and up to 50 saved record summaries to the selected service using your configured key. It consumes one free model request and does not change records.</p><label>Service<select id="plan-provider"><option value="groq">Groq free</option><option value="free">OpenRouter free</option></select></label><label>Sentence<input id="free-question" value="When is my interview?"></label><button id="free-test" class="primary">Test free model plan</button><pre id="free-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre></section>
-<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Free natural language</strong> and ask about a saved record. Atlas should choose the lookup path; the answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Atlas to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>For a linked workflow, create a task named “Atlas rehearsal interview”, then say “Save a note for my Atlas rehearsal interview: bring a portfolio” and “Remind me about my Atlas rehearsal interview tomorrow at 9 AM”. After each save, open the task and verify the note and reminder link. Rename the task and check the linked titles, edit the note and reminder, dismiss the reminder once it is due, complete the task, then ask about it again. The answer should show its completed status, linked note, and reminder.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
+<section class="composer"><h2>Atomic linked schedule</h2><p>This creates one temporary task and two linked reminders. Moving either schedule must preserve all offsets in one database transaction. The test removes its records afterward.</p><button id="schedule-workflow-test" class="primary">Run linked schedule test</button><pre id="schedule-workflow-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Free natural language</strong> and ask about a saved record. Atlas should choose the lookup path; the answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Atlas to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>For a linked workflow, create a task named “Atlas rehearsal interview” with a deadline, then say “Save a note for my Atlas rehearsal interview: bring a portfolio” and “Remind me about my Atlas rehearsal interview one hour before”. Move the reminder two hours later and verify that Atlas moves the task deadline and any other active, non-repeating linked reminders by two hours in the same response. Move the task deadline and verify the reminders preserve their offsets. Rename the task and check the linked titles, edit the note, dismiss the reminder once it is due, complete the task, then ask about it again. The answer should show its completed status, linked note, and reminder.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
 </main><script>
 document.getElementById('check').addEventListener('click', async () => {
   const output = document.getElementById('results');
@@ -107,6 +108,43 @@ document.getElementById('mutation-test').addEventListener('click', async () => {
     if (taskID) await fetch(`/api/v1/tasks/${taskID}`, {method: 'DELETE'});
     if (reminderID) await fetch(`/api/v1/reminders/${reminderID}`, {method: 'DELETE'});
     if (noteID) await fetch(`/api/v1/notes/${noteID}`, {method: 'DELETE'});
+  }
+});
+document.getElementById('schedule-workflow-test').addEventListener('click', async () => {
+  const output = document.getElementById('schedule-workflow-results');
+  output.textContent = 'Creating linked schedule test records…';
+  const json = async (path, method, body, headers = {}) => {
+    const response = await fetch(path, {method, headers: {'Content-Type': 'application/json', ...headers}, body: body ? JSON.stringify(body) : undefined});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || `${method} ${path} failed`);
+    return data;
+  };
+  const base = Date.now() + 7 * 86400000;
+  const due = new Date(base).toISOString();
+  const firstAt = new Date(base - 3600000).toISOString();
+  const secondAt = new Date(base - 86400000).toISOString();
+  const movedAt = new Date(base + 3600000).toISOString();
+  let taskID = '';
+  const reminderIDs = [];
+  try {
+    const task = await json('/api/v1/tasks', 'POST', {title: `Atlas linked schedule ${crypto.randomUUID().slice(0, 8)}`, due_at: due}, {'Idempotency-Key': crypto.randomUUID()});
+    taskID = task.task_id || task.id;
+    if (!taskID) throw new Error('The task had no ID.');
+    for (const [title, scheduled_at] of [['Primary schedule', firstAt], ['Sibling schedule', secondAt]]) {
+      const reminder = await json('/api/v1/reminders', 'POST', {title, scheduled_at, timezone: 'UTC', task_id: taskID}, {'Idempotency-Key': crypto.randomUUID()});
+      reminderIDs.push(reminder.id || reminder.reminder?.id);
+    }
+    await json(`/api/v1/reminders/${reminderIDs[0]}/snooze`, 'POST', {scheduled_at: movedAt});
+    const state = await json(`/api/v1/tasks/${taskID}`, 'GET');
+    const reminders = Object.fromEntries(state.reminders.map(reminder => [reminder.id, reminder]));
+    if (new Date(state.task.due_at).getTime() !== base + 2 * 3600000) throw new Error('The linked task deadline did not move with the reminder.');
+    if (new Date(reminders[reminderIDs[1]].scheduled_at).getTime() !== base - 86400000 + 2 * 3600000) throw new Error('The sibling reminder did not preserve its offset.');
+    output.textContent = 'Passed: the reminder, task deadline, sibling reminder, and queued deliveries moved atomically.';
+  } catch (error) {
+    output.textContent = `Failed: ${error.message}`;
+  } finally {
+    for (const id of reminderIDs) if (id) await fetch(`/api/v1/reminders/${id}`, {method: 'DELETE'});
+    if (taskID) await fetch(`/api/v1/tasks/${taskID}`, {method: 'DELETE'});
   }
 });
 </script></body></html>

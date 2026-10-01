@@ -357,7 +357,7 @@ Deadlines do not trigger notifications. Standalone reminder delivery, snoozing, 
 5. For restart recovery, schedule a reminder, stop Atlas before its time, and restart after that time. It should appear once in the inbox, with one delivered record in Delivery history.
 6. Close and reopen the webpage; due inbox entries remain until you act on them.
 
-Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks; reminders added from a task are explicitly linked. Reminder times remain independent of deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
+Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks; reminders added from a task are explicitly linked. One-time reminders linked to an open task with a deadline form a schedule group: moving either side shifts the deadline and every active, non-repeating linked reminder by the same duration in one transaction. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Explicit snooze times must be in the future.
 
 ### Test task-linked reminders
 
@@ -368,7 +368,7 @@ Delivery currently means the webpage inbox, not an OS or phone push notification
 5. Delete a task with a pending reminder. Its reminder is cancelled; history retains the task title and marks it deleted.
 6. Completing only the reminder leaves the task open. Standalone reminders are unaffected by task changes.
 
-Task deadlines and reminder times remain separate; changing a deadline does not automatically reschedule a reminder.
+Move a linked one-time reminder and confirm the task deadline and sibling linked reminders preserve their offsets. Move the task deadline and confirm the active linked reminders move by the same duration. The response reports every derived change. Standalone, repeating, completed, and dismissed reminders do not move.
 
 On linked reminders (including reminder history), **Complete task too** completes the linked open task and cancels its active reminders atomically. It is also available under the task’s Linked reminders. Completing only a reminder leaves the task open.
 
