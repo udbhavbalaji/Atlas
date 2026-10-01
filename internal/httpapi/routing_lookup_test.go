@@ -85,7 +85,7 @@ func TestJevConversationLooksUpSavedRecordsAndContinues(t *testing.T) {
 		t.Fatal("lookup changed records", tasks)
 	}
 	reply("Add task Call the recruiter")
-	if current["state"] != "awaiting_answer" || fixture.calls != 4 {
+	if current["state"] != "awaiting_confirmation" || fixture.calls != 4 {
 		t.Fatal("Jev follow-up did not enter capture flow", current)
 	}
 }

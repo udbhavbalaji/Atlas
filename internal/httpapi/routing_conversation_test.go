@@ -29,7 +29,7 @@ func TestRoutingConversationQuestioningAndConfirmation(t *testing.T) {
 		return w.Code, out
 	}
 	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "voice-1", "text": "Call Maya", "timezone": "UTC", "fixture": "task"}, "POST")
-	if code != 201 || c["state"] != "awaiting_answer" {
+	if code != 201 || c["state"] != "awaiting_confirmation" {
 		t.Fatal(code, c)
 	}
 	id := c["id"].(string)
@@ -41,7 +41,7 @@ func TestRoutingConversationQuestioningAndConfirmation(t *testing.T) {
 		c = next
 		return c
 	}
-	// The local parser may prepare the title, but optional decisions stay explicit.
+	// Required missing fields still ask, while unrequested extras are skipped.
 	for turn := 0; c["state"] == "awaiting_answer" && turn < 5; turn++ {
 		q := c["question"].(map[string]any)
 		switch q["field"] {

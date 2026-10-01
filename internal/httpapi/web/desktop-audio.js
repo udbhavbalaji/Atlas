@@ -6,6 +6,7 @@ const atlasDesktopAudio = (() => {
   const AudioContextType = window.AudioContext || window.webkitAudioContext;
   const captureSupported = Boolean(navigator.mediaDevices?.getUserMedia && AudioContextType?.prototype.createScriptProcessor && window.WebSocket);
   let available = false;
+  let serverCapture = false;
   let backend = '';
   let state = 'idle';
   let target = null;
@@ -25,7 +26,7 @@ const atlasDesktopAudio = (() => {
   }
 
   function updateControls() {
-    const label = state === 'recording' ? 'Stop microphone' : state === 'starting' ? 'Cancel microphone' : state === 'finishing' ? 'Transcribing…' : captureSupported && available ? 'Start microphone' : 'Focus for dictation';
+    const label = state === 'recording' ? 'Stop microphone' : state === 'starting' ? 'Cancel microphone' : state === 'finishing' ? 'Transcribing…' : (serverCapture || captureSupported) && available ? 'Start microphone' : 'Focus for dictation';
     for (const id of ['listen-first', 'listen-answer']) {
       const button = voiceElement(id);
       button.textContent = label;
@@ -77,7 +78,7 @@ const atlasDesktopAudio = (() => {
       state = 'idle';
       socket?.close();
       socket = null;
-      status(message.text || provisional ? 'Transcription complete. Review the text, then send it.' : 'No speech was detected. Check the selected microphone and try again, or type your reply.');
+      status((message.text || provisional) ? 'Transcription complete. Review the text, then send it.' : 'No speech was detected. Check the selected microphone and try again, or type your reply.');
       target?.focus();
       updateControls();
     } else if (message.type === 'error') {
@@ -106,6 +107,22 @@ const atlasDesktopAudio = (() => {
     }, 12000);
     try {
       window.speechSynthesis?.cancel();
+      if (serverCapture) {
+        socket = new WebSocket(`ws://${location.host}/api/v1/audio/stream`);
+        socket.onmessage = handleMessage;
+        socket.onclose = () => { if (state !== 'idle') fail('Audio connection closed. You can retry or type your reply.'); };
+        await waitForOpen(socket);
+        if (currentAttempt !== attempt) return;
+        socket.send(JSON.stringify({type: 'start', source: 'server', sample_rate: 16000}));
+        target.readOnly = true;
+        state = 'recording';
+        clearTimeout(startTimer);
+        startTimer = null;
+        stopTimer = setTimeout(stop, 29_000);
+        status(`Recording locally with ${backend}. Click Stop microphone when done (30 second limit).`);
+        updateControls();
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}, video: false});
       if (currentAttempt !== attempt) { stream.getTracks().forEach(track => track.stop()); return; }
       media = stream;
@@ -162,7 +179,7 @@ const atlasDesktopAudio = (() => {
     if (state === 'recording') { stop(); return; }
     if (state === 'starting') { fail('Microphone start canceled.'); return; }
     if (state !== 'idle') return;
-    if (!captureSupported || !available) {
+    if ((!serverCapture && !captureSupported) || !available) {
       voiceElement(targetID).focus();
       status(backend ? 'Local transcription is not configured. Use system dictation or type; see Desktop checks.' : 'Microphone capture is unavailable here. Use system dictation or type.');
       return;
@@ -177,9 +194,10 @@ const atlasDesktopAudio = (() => {
   });
   return {toggle, updateControls, setCapabilities(value) {
     available = Boolean(value.local_transcription);
+    serverCapture = Boolean(value.server_capture);
     backend = value.backend || '';
     updateControls();
-    if (captureSupported && available) status(`Local microphone streaming is ready (${backend}). Audio is discarded after transcription.`);
+    if ((captureSupported || serverCapture) && available) status(`Local microphone streaming is ready (${backend}). Audio is discarded after transcription.`);
   }};
 })();
 

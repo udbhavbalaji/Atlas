@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +17,56 @@ import (
 type fixtureTranscriber struct {
 	mu    sync.Mutex
 	calls int
+}
+
+type serverCaptureFixture struct{}
+
+func (serverCaptureFixture) Transcribe(_ context.Context, pcm []byte, rate int) (string, error) {
+	if rate != 16000 || len(pcm) == 0 {
+		return "", context.Canceled
+	}
+	return "captured locally", nil
+}
+
+func TestAudioStreamCapturesOnServer(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "capture")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nwhile :; do dd if=/dev/zero bs=4096 count=1 2>/dev/null; sleep 0.02; done\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	audioStreamRoutesWithService(mux, &audioStreamService{transcriber: serverCaptureFixture{}, backend: "fixture", available: true, captureBinary: binary, modelSlot: make(chan struct{}, 1)})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	connection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/audio/stream", http.Header{"Origin": {server.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	_ = connection.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if err := connection.WriteJSON(map[string]any{"type": "start", "source": "server", "sample_rate": 16000}); err != nil {
+		t.Fatal(err)
+	}
+	var message struct{ Type, Text string }
+	if err := connection.ReadJSON(&message); err != nil || message.Type != "ready" {
+		t.Fatal(err, message)
+	}
+	if err := connection.ReadJSON(&message); err != nil || message.Type != "partial" || message.Text != "captured locally" {
+		t.Fatal(err, message)
+	}
+	if err := connection.WriteJSON(map[string]string{"type": "stop"}); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if err := connection.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		if message.Type == "final" {
+			if message.Text != "captured locally" {
+				t.Fatal(message)
+			}
+			break
+		}
+	}
 }
 
 func (f *fixtureTranscriber) Transcribe(_ context.Context, pcm []byte, rate int) (string, error) {

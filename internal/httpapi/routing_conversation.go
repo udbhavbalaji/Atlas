@@ -12,18 +12,19 @@ import (
 )
 
 type routingConversation struct {
-	State    string                 `json:"state"`
-	Route    routing.Result         `json:"route"`
-	Fixture  string                 `json:"fixture,omitempty"`
-	Channel  string                 `json:"channel"`
-	Draft    dispatchRequest        `json:"draft"`
-	Question *channelQuestion       `json:"question,omitempty"`
-	Proposal *store.CaptureProposal `json:"proposal,omitempty"`
-	Warnings []string               `json:"warnings"`
-	Messages []conversationTurn     `json:"messages"`
-	Saved    *store.TaskAction      `json:"saved,omitempty"`
-	Answer   *conversationAnswer    `json:"answer,omitempty"`
-	Mutation *recordMutation        `json:"mutation,omitempty"`
+	State               string                 `json:"state"`
+	Route               routing.Result         `json:"route"`
+	Fixture             string                 `json:"fixture,omitempty"`
+	Channel             string                 `json:"channel"`
+	Draft               dispatchRequest        `json:"draft"`
+	Question            *channelQuestion       `json:"question,omitempty"`
+	Proposal            *store.CaptureProposal `json:"proposal,omitempty"`
+	Warnings            []string               `json:"warnings"`
+	Messages            []conversationTurn     `json:"messages"`
+	Saved               *store.TaskAction      `json:"saved,omitempty"`
+	Answer              *conversationAnswer    `json:"answer,omitempty"`
+	Mutation            *recordMutation        `json:"mutation,omitempty"`
+	CorrectionAttempted bool                   `json:"correction_attempted,omitempty"`
 }
 
 func (c *routingConversation) prompt() string {
@@ -70,7 +71,11 @@ func (c *routingConversation) prompt() string {
 		if p.NoteBody != "" && p.Kind != "note" {
 			summary += "; note " + p.NoteBody
 		}
-		return "I have " + summary + ". Say yes to save, or tell me what to change."
+		prompt := "I have " + summary + ". Say yes to save, or tell me what to change."
+		if c.CorrectionAttempted && len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
 	}
 	if c.Question != nil {
 		return c.Question.Prompt
@@ -134,6 +139,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	c.Answer = nil
 	c.Mutation = nil
 	c.Warnings = []string{}
+	c.CorrectionAttempted = false
 	c.Draft = dispatchRequest{Version: routing.Version, RoutingToken: result.RoutingToken}
 	switch result.State {
 	case "unsupported":
@@ -173,6 +179,12 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 			seed := prepareChannel(result.Input, strings.TrimSuffix(c.Channel, "s"))
 			c.Draft = applyChannelPrefill(c.Draft, seed)
 			c.Warnings = seed.Warnings
+			if c.Draft.Note == "" && c.Channel != "notes" {
+				c.Draft.Note = "skip"
+			}
+			if c.Draft.Reminder == "" && c.Channel == "tasks" {
+				c.Draft.Reminder = "skip"
+			}
 		}
 		return c.advance(r, s)
 	}
@@ -300,6 +312,12 @@ func (c *routingConversation) correction(field, value string) bool {
 			seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
 			c.Draft = applyChannelPrefill(c.Draft, seed)
 			c.Warnings = seed.Warnings
+			if c.Draft.Note == "" && channel != "notes" {
+				c.Draft.Note = "skip"
+			}
+			if c.Draft.Reminder == "" && channel == "tasks" {
+				c.Draft.Reminder = "skip"
+			}
 		}
 		return true
 	case "title":
@@ -513,6 +531,9 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 					}
 				case "awaiting_route":
 					channel := selectedChannel(value)
+					if channel == "" {
+						channel = c.naturalRouteChoice(r.Context(), service, value)
+					}
 					if channel != "" {
 						c.Channel = channel
 						c.Draft.Channel = channel
@@ -521,6 +542,12 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 							seed := prepareChannel(c.Route.Input, strings.TrimSuffix(channel, "s"))
 							c.Draft = applyChannelPrefill(c.Draft, seed)
 							c.Warnings = seed.Warnings
+							if c.Draft.Note == "" && channel != "notes" {
+								c.Draft.Note = "skip"
+							}
+							if c.Draft.Reminder == "" && channel == "tasks" {
+								c.Draft.Reminder = "skip"
+							}
 						}
 						if err = c.advance(r, s); err != nil {
 							failure(w, err)
@@ -528,7 +555,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 						}
 					}
 				case "awaiting_answer":
-					if c.answer(in.Field, value) {
+					if c.answer(in.Field, value) || in.Field == "" && c.naturalChoiceAnswer(r.Context(), service, value) {
 						if err = c.advance(r, s); err != nil {
 							failure(w, err)
 							return
@@ -538,6 +565,13 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 					if isConfirm(value) {
 						c.State = "confirming"
 					} else if c.correction(in.Field, value) {
+						c.Warnings = nil
+						c.CorrectionAttempted = false
+						if err = c.advance(r, s); err != nil {
+							failure(w, err)
+							return
+						}
+					} else if in.Field == "" && c.naturalCorrection(r.Context(), service, value) && c.State == "awaiting_confirmation" {
 						if err = c.advance(r, s); err != nil {
 							failure(w, err)
 							return
