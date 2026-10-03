@@ -34,15 +34,19 @@ function voiceSpeakPrompt() {
 }
 
 function voiceRender(state) {
+	if (voiceElement('start-section')) voiceElement('start-section').hidden = true;
+	if (voiceElement('new-chat')) voiceElement('new-chat').hidden = false;
   voiceElement('session-id').value = state.id;
   try { localStorage.setItem(voiceStorage, state.id); } catch {}
-  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.provider || 'unknown') + ' route · session version ' + state.version);
+  const models = [state.route?.evaluation?.model, state.route?.extraction_model, state.response_model].filter(Boolean);
+  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.provider || 'unknown') + ' route · ' + models.join(' → ') + ' · session version ' + state.version);
   voiceElement('prompt').textContent = state.state === 'answered' ? '' : state.prompt;
   const transcript = voiceElement('transcript');
   transcript.replaceChildren();
   for (const turn of state.messages || []) {
     const item = document.createElement('div');
     item.className = 'voice-turn';
+    item.dataset.role = turn.role;
     const role = document.createElement('strong');
     role.textContent = turn.role === 'user' ? 'You' : 'Atlas';
     const line = document.createElement('p');
@@ -50,6 +54,7 @@ function voiceRender(state) {
     item.append(role, line);
     transcript.append(item);
   }
+  transcript.scrollTop = transcript.scrollHeight;
   const actions = voiceElement('question-actions');
   actions.replaceChildren();
   if (state.state === 'awaiting_route') {
@@ -62,7 +67,7 @@ function voiceRender(state) {
   }
   const proposal = voiceElement('proposal');
   proposal.replaceChildren();
-  if (state.proposal) {
+  if (state.proposal && !state.saved) {
     const heading = document.createElement('h3');
     heading.textContent = state.saved ? 'Saved records' : 'Review before saving';
     proposal.append(heading);
@@ -85,11 +90,6 @@ function voiceRender(state) {
     line.textContent = warning;
     proposal.append(line);
   }
-  if (state.saved) {
-    const line = document.createElement('p');
-    line.textContent = 'Saved. Task: ' + (state.saved.task_id || 'none') + ' · reminders: ' + (state.saved.reminders?.length || 0) + ' · notes: ' + (state.saved.notes?.length || 0);
-    proposal.append(line);
-  }
   if (state.answer?.sources?.length) {
     const heading = document.createElement('h3');
     heading.textContent = 'Saved records used';
@@ -104,7 +104,7 @@ function voiceRender(state) {
       proposal.append(line);
     }
   }
-  const active = !['saved', 'cancelled', 'unsupported'].includes(state.state);
+  const active = !['cancelled', 'unsupported'].includes(state.state);
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
   voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting'].includes(state.state);
   voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
@@ -128,6 +128,9 @@ function voiceUpdateControls() {
 async function voiceCall(action, speak = true) {
   if (voiceBusy) return;
   voiceBusy = true;
+  voiceStatus('Sending to Atlas…');
+  if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Sending to Atlas…';
+  if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = 'Sending to Atlas…';
   voiceUpdateControls();
   try {
     const state = await action();
@@ -208,13 +211,13 @@ if (location.pathname === '/desktop') {
     const groq = result.providers?.find(provider => provider.id === 'groq');
     const free = result.providers?.find(provider => provider.id === 'free');
     const jev = result.providers?.find(provider => provider.id === 'jev');
-    if (!voiceProviderTouched && groq?.configured) {
-      voiceElement('provider').value = 'groq';
-      voiceElement('fixture-label').hidden = true;
-    } else if (!voiceProviderTouched && jev?.configured) {
+    if (!voiceProviderTouched && jev?.configured) {
       voiceElement('provider').value = 'jev';
       voiceElement('fixture-label').hidden = true;
-      voiceElement('start-feedback').textContent = 'For free natural language, add a Groq key. OpenRouter free capacity may be unavailable.';
+      voiceElement('start-feedback').textContent = 'Jev and free OpenRouter models are ready. Free model capacity may vary.';
+    } else if (!voiceProviderTouched && groq?.configured) {
+      voiceElement('provider').value = 'groq';
+      voiceElement('fixture-label').hidden = true;
     } else if (!free?.configured && voiceElement('start-feedback')) {
       voiceElement('provider').value = 'mock';
       voiceElement('fixture-label').hidden = false;
@@ -236,6 +239,23 @@ voiceElement('start-form').onsubmit = event => {
     contextQuery: voiceElement('context').value.trim(),
     requestID: crypto.randomUUID()
   }));
+};
+if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
+  voiceClient.state = null;
+  try { localStorage.removeItem(voiceStorage); } catch {}
+  voiceElement('start-section').hidden = false;
+  voiceElement('new-chat').hidden = true;
+  voiceElement('reply-form').hidden = true;
+  voiceElement('transcript').replaceChildren();
+  voiceElement('proposal').replaceChildren();
+  voiceElement('question-actions').replaceChildren();
+  voiceElement('prompt').textContent = '';
+  voiceElement('confirm').hidden = true;
+  voiceElement('cancel').hidden = true;
+  voiceElement('repeat').hidden = true;
+  voiceElement('first').value = '';
+  voiceStatus('Start a conversation below.');
+  voiceElement('first').focus();
 };
 voiceElement('resume-form').onsubmit = event => {
   event.preventDefault();

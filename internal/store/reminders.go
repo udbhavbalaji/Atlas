@@ -23,7 +23,7 @@ const taskReminderMigration = `ALTER TABLE reminders ADD COLUMN task_id TEXT NOT
 var ErrTaskReminderConflict = errors.New("reminders can only be linked to open tasks")
 var ErrInvalidReminder = errors.New("provide a title, an RFC3339 scheduled_at with timezone, and a valid IANA timezone")
 var ErrReminderNotFound = errors.New("reminder not found")
-var ErrReminderConflict = errors.New("completed reminders cannot be rescheduled or dismissed; only due reminders can be dismissed")
+var ErrReminderConflict = errors.New("completed reminders cannot be rescheduled or dismissed")
 var ErrSnoozeTime = errors.New("snooze time must be in the future")
 
 type Reminder struct {
@@ -313,7 +313,7 @@ func (s *Store) ReminderMutationWorkflow(ctx context.Context, id, target, schedu
 		}
 		return v, nil, tx.Commit()
 	}
-	if r.Status == "completed" || (target == "dismissed" && r.Status != "due") {
+	if r.Status == "completed" {
 		return ReminderAction{}, nil, ErrReminderConflict
 	}
 	timestamp := now()

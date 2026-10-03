@@ -20,6 +20,7 @@ import (
 type routingService struct {
 	jev            routing.Evaluator
 	free           routing.Planner
+	responder      routing.Responder
 	groq           routing.Planner
 	configured     bool
 	groqConfigured bool
@@ -69,12 +70,16 @@ func (s routingService) verify(token string) (routing.Result, error) {
 func routingRoutes(mux *http.ServeMux, s *store.Store) {
 	key := os.Getenv("OPENROUTER_API_KEY")
 	groqKey := os.Getenv("GROQ_API_KEY")
-	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FreePlanner{APIKey: key}, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
+	planners := make([]routing.Planner, 0, len(routing.FreeFallbackModels))
+	for _, model := range routing.FreeFallbackModels {
+		planners = append(planners, routing.FreePlanner{APIKey: key, Model: model})
+	}
+	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FallbackPlanner{Planners: planners}, responder: routing.FreeResponder{APIKey: key}, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
 }
 func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
 	routingConversationRoutes(mux, s, service)
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
+		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "policy": routing.DefaultPolicy, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
 	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
 		var input routing.Request
@@ -218,6 +223,12 @@ func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in di
 		seed := prepareChannel(r.Input, kind)
 		out.Prefill = &seed
 		in = applyChannelPrefill(in, *out.Prefill)
+		if kind == "task" && in.Reminder == "" {
+			in.Reminder = "skip"
+		}
+		if kind != "note" && in.Note == "" {
+			in.Note = "skip"
+		}
 		out.Extraction = "local_prefill_review"
 	}
 	draft := in.Fields

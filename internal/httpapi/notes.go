@@ -44,12 +44,23 @@ func noteRoutes(mux *http.ServeMux, s *store.Store) {
 	})
 	mux.HandleFunc("PATCH /api/v1/notes/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
-			Body string `json:"body"`
+			Body  *string `json:"body"`
+			Title *string `json:"title"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		v, e := s.UpdateNote(r.Context(), r.PathValue("id"), input.Body)
+		if (input.Body == nil) == (input.Title == nil) {
+			apiError(w, 400, "invalid_note", "Provide either title or body.", false)
+			return
+		}
+		var v store.NoteAction
+		var e error
+		if input.Title != nil {
+			v, e = s.RenameNote(r.Context(), r.PathValue("id"), *input.Title)
+		} else {
+			v, e = s.UpdateNote(r.Context(), r.PathValue("id"), *input.Body)
+		}
 		if e != nil {
 			failure(w, e)
 			return

@@ -76,6 +76,76 @@ func TestFreeConversationEditsExactRecordAndConfirmsDelete(t *testing.T) {
 	}
 }
 
+func TestFreeConversationRenamesNoteFromExtractedTitleAndPreservesBody(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	created, _, err := s.CreateNoteRequest(t.Context(), "rename-note-test", "- Bread\n- Cereal", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "edit", Kind: "note", TargetID: created.NoteID, Title: "grocery list"}}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{free: planner, configured: true, secret: "test"})
+	data, _ := json.Marshal(map[string]any{"provider": "free", "version": "1", "request_id": "rename-note", "text": "Rename this notes title to grocery list.", "timezone": "UTC"})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/conversations/routing", bytes.NewReader(data)))
+	var response map[string]any
+	json.Unmarshal(w.Body.Bytes(), &response)
+	if w.Code != 201 || response["state"] != "answered" || !strings.Contains(response["prompt"].(string), "title from unset to “grocery list”") {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	state, err := s.NoteState(t.Context(), created.NoteID)
+	if err != nil || state.Note.Title != "grocery list" || state.Note.Body != "- Bread\n- Cereal" {
+		t.Fatal(state, err)
+	}
+}
+
+func TestFreeConversationNoteTitleFollowupDoesNotLoop(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	created, _, err := s.CreateNoteRequest(t.Context(), "rename-note-reply", "- Bread\n- Cereal", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "edit", Kind: "note", TargetID: created.NoteID}}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{free: planner, configured: true, secret: "test"})
+	send := func(path string, body any) map[string]any {
+		data, _ := json.Marshal(body)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest("POST", path, bytes.NewReader(data)))
+		if w.Code >= 400 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var out map[string]any
+		json.Unmarshal(w.Body.Bytes(), &out)
+		return out
+	}
+	c := send("/api/v1/conversations/routing", map[string]any{"provider": "free", "version": "1", "request_id": "rename-note-followup", "text": "Edit this note", "timezone": "UTC"})
+	if c["state"] != "awaiting_field" {
+		t.Fatal(c)
+	}
+	path := "/api/v1/conversations/routing/" + c["id"].(string) + "/reply"
+	c = send(path, map[string]any{"version": c["version"], "text": "title"})
+	if c["state"] != "awaiting_change" {
+		t.Fatal(c)
+	}
+	c = send(path, map[string]any{"version": c["version"], "text": "grocery list."})
+	if c["state"] != "answered" {
+		t.Fatal(c)
+	}
+	state, err := s.NoteState(t.Context(), created.NoteID)
+	if err != nil || state.Note.Title != "grocery list" || state.Note.Body != "- Bread\n- Cereal" {
+		t.Fatal(state, err)
+	}
+}
+
 func TestFreeConversationRejectsInventedRecord(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {

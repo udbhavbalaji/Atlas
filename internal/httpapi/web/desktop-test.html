@@ -3,11 +3,16 @@
 <body><main><header><div class="brand"><h1>Atlas<span>.</span></h1><span class="environment">DESKTOP CHECKS</span></div><a href="/desktop">Back to conversation</a></header>
 <p class="intro">Run this page inside the desktop window after building or installing Atlas.</p>
 <section class="composer"><h2>Connection and storage</h2><p>These checks use the same local service and database as the desktop app. They do not create records.</p><button id="check" class="primary">Run checks</button><pre id="results" role="status" aria-live="polite">Ready.</pre></section>
-<section class="composer"><h2>Saved-record answer</h2><p>This creates a local test conversation session and reads saved records. It does not change tasks, reminders, or notes.</p><label>Question<input id="lookup-question" value="When is my interview?"></label><button id="lookup-test" class="primary">Test lookup answer</button><pre id="lookup-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Saved-record answer and Jev context</h2><p>Ask about a saved record using the real Jev flow. Atlas selects relevant saved entities before its first decision. This reads records and uses Jev and free model requests.</p><label>Question<input id="lookup-question" value="When is my interview?"></label><button id="lookup-test" class="primary">Test Jev lookup</button><pre id="lookup-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Reminder conversation check</h2><p>This sends “Remind me to buy bread tomorrow morning at 8am”, verifies the saved local time, asks for all upcoming reminders in the same conversation, and removes the test reminder. It uses Jev and free model requests.</p><button id="reminder-send-test" class="primary">Test reminder flow</button><pre id="reminder-send-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Exact reminder time check</h2><p>This sends “Remind me to call Neha tomorrow morning at 8am.” through Jev, verifies it saves without asking for the time again, and removes the temporary reminder.</p><button id="neha-reminder-test" class="primary">Test Neha reminder</button><pre id="neha-reminder-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Note rename conversation check</h2><p>This creates a temporary note, asks Atlas to rename its title in one sentence, checks that its body is preserved, and removes the note.</p><button id="note-rename-test" class="primary">Test note rename</button><pre id="note-rename-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Note follow-up check</h2><p>This creates a temporary titled note, lists notes, opens that exact note through Jev, then asks “What does it say?” in the same conversation. It removes the note afterward.</p><button id="note-followup-test" class="primary">Test note follow-up</button><pre id="note-followup-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Free natural language check</h2><p>This sends one sentence and up to 50 saved record summaries to the selected service using your configured key. It consumes one free model request and does not change records.</p><label>Service<select id="plan-provider"><option value="groq">Groq free</option><option value="free">OpenRouter free</option></select></label><label>Sentence<input id="free-question" value="When is my interview?"></label><button id="free-test" class="primary">Test free model plan</button><pre id="free-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Atomic linked schedule</h2><p>This creates one temporary task and two linked reminders. Moving either schedule must preserve all offsets in one database transaction. The test removes its records afterward.</p><button id="schedule-workflow-test" class="primary">Run linked schedule test</button><pre id="schedule-workflow-results" role="status" aria-live="polite">Ready.</pre></section>
-<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Free natural language</strong> and ask about a saved record. Atlas should choose the lookup path; the answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Atlas to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>For a linked workflow, create a task named “Atlas rehearsal interview” with a deadline, then say “Save a note for my Atlas rehearsal interview: bring a portfolio” and “Remind me about my Atlas rehearsal interview one hour before”. Move the reminder two hours later and verify that Atlas moves the task deadline and any other active, non-repeating linked reminders by two hours in the same response. Move the task deadline and verify the reminders preserve their offsets. Rename the task and check the linked titles, edit the note, dismiss the reminder once it is due, complete the task, then ask about it again. The answer should show its completed status, linked note, and reminder.</li><li>In Jev mode, try a follow-up such as “I meant a reminder” when Atlas asks which action to take. If asked about an optional note, “I don’t need one” should skip it.</li><li>In Jev mode, start “I need to drop mummy tomorrow morning”, then at the review prompt say “I need to drop her by 7:45 am”. The task deadline should become 7:45 am tomorrow; a later reminder should be removed and explained before saving.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
+<section class="composer"><h2>Continuous conversation check</h2><p>Use <a href="/desktop">Conversation</a> in Jev mode. Create a task with a note and an explicit reminder, then ask about it in the same conversation. Reschedule it, dismiss the reminder, complete the task, and ask about it again. The reply box should stay available after saving, and each edit should name what changed.</p><p>Try “I need to prepare for my interview by tomorrow at 6pm, note that I should bring my portfolio and remind me tomorrow at 5pm”. The task, linked note, and linked reminder should save together. Then ask “When is my interview?”</p></section>
+<section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Jev</strong> and ask about a saved record. The answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Atlas to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>For a linked workflow, create a task named “Atlas rehearsal interview” with a deadline, then say “Save a note for my Atlas rehearsal interview: bring a portfolio” and “Remind me about my Atlas rehearsal interview one hour before”. Move the reminder two hours later and verify that Atlas moves the task deadline and any other active, non-repeating linked reminders by two hours in the same response. Move the task deadline and verify the reminders preserve their offsets. Rename the task and check the linked titles, edit the note, dismiss the reminder once it is due, complete the task, then ask about it again. The answer should show its completed status, linked note, and reminder.</li><li>In Jev mode, try a follow-up such as “I meant a reminder” when Atlas asks which action to take. If asked about an optional note, “I don’t need one” should skip it.</li><li>In Jev mode, start “I need to drop mummy tomorrow morning”. Atlas should not invent a 9am notification. If you want to track leaving separately, say so before confirming the drop-off task and inspect the proposed change.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
 </main><script>
 document.getElementById('check').addEventListener('click', async () => {
   const output = document.getElementById('results');
@@ -42,13 +47,86 @@ document.getElementById('lookup-test').addEventListener('click', async () => {
   const output = document.getElementById('lookup-results');
   output.textContent = 'Looking up saved records…';
   try {
-    const response = await fetch('/api/v1/conversations/routing', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider: 'mock', fixture: 'lookup', version: '1', request_id: crypto.randomUUID(), text: document.getElementById('lookup-question').value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'})});
+    const response = await fetch('/api/v1/conversations/routing', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider: 'jev', version: '1', request_id: crypto.randomUUID(), text: document.getElementById('lookup-question').value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error?.message || 'Lookup failed.');
-    output.textContent = `${result.prompt}\n\nSources: ${(result.answer?.sources || []).map(source => `${source.type}: ${source.title}`).join('; ') || 'none'}`;
+    output.textContent = `${result.prompt}\n\nJev category: ${result.route?.category || 'unclear'}\nSelected tool: ${result.route?.selected_tool || 'none'}\nSaved context given to Jev: ${(result.route?.input?.context || []).map(record => `${record.kind}: ${record.title}`).join('; ') || 'none'}\nSources: ${(result.answer?.sources || []).map(source => `${source.type}: ${source.title}`).join('; ') || 'none'}`;
   } catch (error) {
     output.textContent = error.message;
   }
+});
+document.getElementById('reminder-send-test').addEventListener('click', async () => {
+  const output = document.getElementById('reminder-send-results');
+  output.textContent = 'Sending test reminder…';
+  let reminderID = '';
+  try {
+    const response = await fetch('/api/v1/conversations/routing', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider: 'jev', version: '1', request_id: crypto.randomUUID(), text: 'Remind me to buy bread tomorrow morning at 8am.', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || 'Send failed.');
+    reminderID = result.saved?.reminders?.[0]?.id || '';
+    if (result.state !== 'saved' || !reminderID) throw new Error(`Send returned ${result.state || 'no state'} without a saved reminder.`);
+    const savedHour = new Date(result.saved.reminders[0].scheduled_at).getHours();
+    if (savedHour !== 8) throw new Error(`The reminder was saved for ${savedHour}:00 local time instead of 8 AM.`);
+    output.textContent = `Saved at 8 AM local time. Asking for upcoming reminders…`;
+    const followup = await fetch(`/api/v1/conversations/routing/${encodeURIComponent(result.id)}/reply`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({version: result.version, text: 'Can you list all my upcoming reminders please?'})});
+    const listed = await followup.json();
+    if (!followup.ok) throw new Error(listed.error?.message || 'Upcoming-reminder list failed.');
+    if (listed.state !== 'answered' || !(listed.answer?.sources || []).some(source => source.url?.endsWith(reminderID))) throw new Error('The new reminder was missing from the upcoming list.');
+    output.textContent = `Passed: ${result.prompt}\n${listed.prompt}`;
+  } catch (error) { output.textContent = `Failed: ${error.message}`; }
+  finally {
+    if (reminderID) {
+      const cleanup = await fetch(`/api/v1/reminders/${encodeURIComponent(reminderID)}`, {method: 'DELETE'});
+      output.textContent += cleanup.ok ? '\nTemporary reminder removed.' : '\nCould not remove the temporary reminder; delete it in Records and tests.';
+    }
+  }
+});
+document.getElementById('neha-reminder-test').addEventListener('click', async () => {
+ const output=document.getElementById('neha-reminder-results');output.textContent='Sending reminder through Jev…';let id='';
+ try {
+  const response=await fetch('/api/v1/conversations/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'jev',version:'1',request_id:crypto.randomUUID(),text:'Remind me to call Neha tomorrow morning at 8am.',timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error?.message||'Conversation failed.');
+  const reminder=result.saved?.reminders?.[0];id=reminder?.id||'';
+  if(result.state!=='saved'||!id||!reminder.title?.toLowerCase().includes('neha'))throw new Error('Atlas asked for more information instead of saving the reminder: '+(result.prompt||result.state));
+  const local=new Date(reminder.scheduled_at);if(local.getHours()!==8||local.getMinutes()!==0)throw new Error('Reminder saved for '+local.toLocaleString()+' instead of 8 AM.');
+  output.textContent='Passed: '+result.prompt;
+ }catch(error){output.textContent='Failed: '+error.message;}
+ finally{if(id){const removed=await fetch('/api/v1/reminders/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary reminder removed.':'\nCould not remove the temporary reminder; delete it in Records and tests.';}}
+});
+document.getElementById('note-rename-test').addEventListener('click', async () => {
+ const output=document.getElementById('note-rename-results');output.textContent='Creating a temporary note…';let id='';
+ try {
+  const body='- Bread\n- Cereal';
+  const createdResponse=await fetch('/api/v1/notes',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({body})});
+  const created=await createdResponse.json();if(!createdResponse.ok)throw new Error(created.error?.message||'Could not create test note.');id=created.note_id;
+  output.textContent='Asking Jev and the free model to rename the note…';
+  const response=await fetch('/api/v1/conversations/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'jev',version:'1',request_id:crypto.randomUUID(),text:'Rename this note with Bread and Cereal to grocery list.',timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error?.message||'Conversation failed.');
+  const savedResponse=await fetch('/api/v1/notes/'+encodeURIComponent(id));const saved=await savedResponse.json();
+  if(result.state!=='answered'||saved.note?.title!=='grocery list'||saved.note?.body!==body)throw new Error(`Unexpected result: ${result.prompt||result.state}; title: ${saved.note?.title||'unset'}`);
+  output.textContent=`Passed: ${result.prompt}\nNote body stayed intact.`;
+ }catch(error){output.textContent=`Failed: ${error.message}`;}
+ finally{if(id){const removed=await fetch('/api/v1/notes/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary note removed.':'\nCould not remove the temporary note; delete it in Records and tests.';}}
+});
+document.getElementById('note-followup-test').addEventListener('click', async () => {
+ const output=document.getElementById('note-followup-results');output.textContent='Creating a temporary titled note…';let id='';
+ const title='Atlas lookup check '+crypto.randomUUID().slice(0,8),body='Bread and cereal for the lookup check';
+ const send=async(path,payload)=>{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const result=await response.json();if(!response.ok)throw new Error(result.error?.message||'Conversation failed.');return result;};
+ try {
+  const created=await fetch('/api/v1/notes',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({body})});
+  const note=await created.json();if(!created.ok)throw new Error(note.error?.message||'Could not create note.');id=note.note_id;
+  const renamed=await fetch('/api/v1/notes/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})});if(!renamed.ok)throw new Error('Could not title the temporary note.');
+  output.textContent='Listing notes through Jev…';
+  let c=await send('/api/v1/conversations/routing',{provider:'jev',version:'1',request_id:crypto.randomUUID(),text:'show my notes again',timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'});
+  if(c.state!=='answered'||!(c.answer?.sources||[]).some(source=>source.url?.endsWith(id)))throw new Error('The note was missing from the list.');
+  const path='/api/v1/conversations/routing/'+encodeURIComponent(c.id)+'/reply';
+  c=await send(path,{version:c.version,text:'show the note titled '+title});
+  if(c.state!=='answered'||c.answer?.sources?.length!==1||!c.answer.sources[0].url?.endsWith(id))throw new Error('Atlas did not open the named note.');
+  c=await send(path,{version:c.version,text:'What does it say?'});
+  if(c.state!=='answered'||!c.prompt?.includes(body))throw new Error('The follow-up did not return the note contents.');
+  output.textContent='Passed: '+c.prompt;
+ }catch(error){output.textContent='Failed: '+error.message;}
+ finally{if(id){const removed=await fetch('/api/v1/notes/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary note removed.':'\nCould not remove the temporary note; delete it in Records and tests.';}}
 });
 document.getElementById('mutation-test').addEventListener('click', async () => {
   const output = document.getElementById('mutation-results');

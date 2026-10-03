@@ -53,7 +53,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 10 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 11 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -114,6 +114,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 9 {
 		_, err = tx.Exec(sessionMigration)
+		if err == nil {
+			version = 10
+		}
+	}
+	if err == nil && version == 10 {
+		_, err = tx.Exec("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT ''; PRAGMA user_version=11;")
 	}
 	if err == nil {
 		err = tx.Commit()

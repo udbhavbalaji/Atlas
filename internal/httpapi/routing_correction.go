@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-var spokenClock = regexp.MustCompile(`(?i)\b(?:by|at)\s+(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\b`)
+var spokenClock = regexp.MustCompile(`(?i)\b(?:by|at)\s+(\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\b`)
 var statedValue = regexp.MustCompile(`(?i)\b(?:to|as|that)\s+(.+)$`)
 
 // Jev selects which part of an existing proposal a natural-language follow-up

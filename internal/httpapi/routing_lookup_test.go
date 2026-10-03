@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"atlas/internal/provider"
 	"atlas/internal/routing"
 	"atlas/internal/store"
 	"bytes"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type lookupDecisionFixture struct{ calls int }
@@ -114,6 +116,43 @@ func TestLookupAnswersMissingAndGenericHistoryWithoutGuessing(t *testing.T) {
 	answer, err = answerLookup(t.Context(), s, state)
 	if err != nil || len(answer.Sources) != 10 {
 		t.Fatal("old reminder list was incomplete", answer, err)
+	}
+}
+
+func TestUpcomingReminderListIgnoresPoliteWordsAndPlannedTarget(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "atlas.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	now := time.Now().UTC().Truncate(time.Second)
+	soon, err := s.CreateReminder(t.Context(), "Buy bread", now.Add(24*time.Hour).Format(time.RFC3339), "Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreateReminder(t.Context(), "Call Maya", now.Add(48*time.Hour).Format(time.RFC3339), "Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreateReminder(t.Context(), "Old appointment", now.Add(-24*time.Hour).Format(time.RFC3339), "Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dismissed, err := s.CreateReminder(t.Context(), "Dismissed appointment", now.Add(36*time.Hour).Format(time.RFC3339), "Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ReminderMutation(t.Context(), dismissed.ID, "dismissed", ""); err != nil {
+		t.Fatal(err)
+	}
+	state := routing.State{Text: "Can you list all my upcoming reminders please?", Timezone: "Asia/Kolkata", ReferenceAt: now.Format(time.RFC3339), Context: []provider.ContextRecord{{ID: soon.ID, Kind: "reminder", Title: soon.Title}}}
+	for _, lookup := range []func(context.Context, *store.Store, routing.State) (conversationAnswer, error){answerLookup, func(ctx context.Context, s *store.Store, state routing.State) (conversationAnswer, error) {
+		return answerPlannedLookup(ctx, s, state, routing.ActionPlan{Action: "lookup", Kind: "reminder", TargetID: soon.ID})
+	}} {
+		answer, err := lookup(t.Context(), s, state)
+		if err != nil || len(answer.Sources) != 2 || !strings.Contains(answer.Text, "Buy bread") || !strings.Contains(answer.Text, "Call Maya") || strings.Contains(answer.Text, "Old appointment") || strings.Contains(answer.Text, "Dismissed appointment") || strings.Index(answer.Text, "Buy bread") > strings.Index(answer.Text, "Call Maya") {
+			t.Fatal(answer, err)
+		}
 	}
 }
 

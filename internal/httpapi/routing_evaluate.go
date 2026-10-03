@@ -6,7 +6,9 @@ import (
 	"atlas/internal/store"
 	"context"
 	"errors"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,6 +34,9 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 		if !service.configured {
 			return routing.Result{}, errRoutingConfiguration
 		}
+		if service.free != nil {
+			return evaluateJevPipeline(parent, s, service, input)
+		}
 		evaluator = service.jev
 	case "free":
 		if input.Fixture != "" {
@@ -56,7 +61,7 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), Context: []provider.ContextRecord{}}
+	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), RecentRecordID: input.RecentRecordID, RecentRecordKind: input.RecentRecordKind, Context: []provider.ContextRecord{}}
 	if name == "jev" || name == "free" || name == "groq" {
 		tasks, err := s.Tasks(ctx)
 		if err != nil {
@@ -84,7 +89,7 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			add(provider.ContextRecord{ID: reminder.ID, Kind: "reminder", Title: reminder.Title, Status: reminder.Status, DueAt: reminder.ScheduledAt, UpdatedAt: reminder.UpdatedAt, TaskID: reminder.TaskID, TaskTitle: reminder.TaskTitle})
 		}
 		for _, note := range notes {
-			record := provider.ContextRecord{ID: note.ID, Kind: "note", Title: lookupExcerpt(note.Body), Body: lookupExcerpt(note.Body), UpdatedAt: note.UpdatedAt}
+			record := provider.ContextRecord{ID: note.ID, Kind: "note", Title: noteLabel(note), Body: lookupExcerpt(note.Body), UpdatedAt: note.UpdatedAt}
 			for _, link := range note.Links {
 				if link.TargetType == "task" {
 					record.TaskID, record.TaskTitle = link.TargetID, link.TargetTitle
@@ -120,6 +125,8 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			return routing.Result{}, err
 		}
 		planned.Plan = routing.NormalizePlan(planned.Plan)
+		planned.Plan = routing.NormalizeEditExtraction(planned.Plan, state)
+		planned.Plan = routing.NormalizePlanTiming(planned.Plan, state)
 		if err := routing.ValidatePlan(planned.Plan, state); err != nil {
 			return routing.Result{}, err
 		}
@@ -147,8 +154,59 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	if err != nil {
 		return routing.Result{}, err
 	}
+	if name == "jev" && result.State == "needs_clarification" && evaluation.Decision.Choice != "clarify" {
+		// A broad choice can split its probability between, for example,
+		// editing an existing task and creating a new one. Ask Jev one
+		// narrower question using the same context before interrupting the user.
+		second := narrowRouteChoices(evaluation.Decision, routing.Registry())
+		if len(second) == 3 {
+			focused, focusErr := evaluator.Evaluate(ctx, state, second, "")
+			if focusErr == nil && focused.Decision.Choice != "clarify" && focused.Decision.Probabilities[focused.Decision.Choice] >= 0.65 {
+				full := map[string]float64{}
+				for _, action := range routing.Registry() {
+					full[action.ID] = focused.Decision.Probabilities[action.ID]
+				}
+				focused.Decision.Probabilities = full
+				focused.Usage.InputTokens += evaluation.Usage.InputTokens
+				focused.Usage.OutputTokens += evaluation.Usage.OutputTokens
+				if priorCost, priorErr := strconv.ParseFloat(evaluation.Usage.CostUSD, 64); priorErr == nil {
+					if focusedCost, focusCostErr := strconv.ParseFloat(focused.Usage.CostUSD, 64); focusCostErr == nil {
+						focused.Usage.CostUSD = strconv.FormatFloat(priorCost+focusedCost, 'f', 8, 64)
+					}
+				}
+				focused.ModelCalls += evaluation.ModelCalls
+				result, err = routing.Decide(input, state, focused, name, false)
+				if err != nil {
+					return routing.Result{}, err
+				}
+			}
+		}
+	}
 	result.RoutingToken = service.sign(result)
 	return result, nil
+}
+
+func narrowRouteChoices(decision routing.Choice, actions []routing.Action) []routing.Action {
+	if decision.Probabilities[decision.Choice] < 0.40 || decision.Choice == "unsupported" {
+		return nil
+	}
+	first, second := routing.Action{}, routing.Action{}
+	for _, action := range actions {
+		if action.ID == decision.Choice {
+			first = action
+		} else if action.ID != "clarify" && action.ID != "unsupported" && (second.ID == "" || decision.Probabilities[action.ID] > decision.Probabilities[second.ID]) {
+			second = action
+		}
+	}
+	if first.ID == "" || second.ID == "" || decision.Probabilities[second.ID] == 0 {
+		return nil
+	}
+	for _, action := range actions {
+		if action.ID == "clarify" {
+			return []routing.Action{first, second, action}
+		}
+	}
+	return nil
 }
 
 func routingFailure(w http.ResponseWriter, err error) {
@@ -170,6 +228,7 @@ func routingFailure(w http.ResponseWriter, err error) {
 		}
 		apiError(w, 503, "routing_unavailable", message, retryable)
 	case errors.Is(err, routing.ErrContract):
+		log.Printf("Atlas routing contract rejected: %v", err)
 		apiError(w, 422, "routing_evaluation_rejected", err.Error(), false)
 	default:
 		failure(w, err)

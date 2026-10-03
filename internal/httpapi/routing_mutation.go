@@ -35,6 +35,13 @@ type mutationCandidate struct {
 	Search string `json:"-"`
 }
 
+func noteLabel(n store.Note) string {
+	if n.Title != "" {
+		return n.Title
+	}
+	return lookupExcerpt(n.Body)
+}
+
 var mutationWords = map[string]bool{
 	"a": true, "an": true, "and": true, "at": true, "about": true, "by": true, "change": true, "delete": true, "details": true, "due": true, "edit": true, "for": true, "from": true, "i": true, "in": true, "is": true, "me": true, "move": true, "my": true, "note": true, "notes": true, "of": true, "on": true, "please": true, "remove": true, "reminder": true, "reminders": true, "rename": true, "reschedule": true, "set": true, "task": true, "tasks": true, "the": true, "this": true, "time": true, "title": true, "to": true, "update": true, "want": true, "would": true, "you": true, "complete": true, "finish": true, "reopen": true, "dismiss": true,
 }
@@ -72,7 +79,7 @@ func mutationCandidates(ctx context.Context, s *store.Store, text string) ([]mut
 		all = append(all, mutationCandidate{Kind: "reminder", ID: r.ID, Title: r.Title})
 	}
 	for _, n := range notes {
-		all = append(all, mutationCandidate{Kind: "note", ID: n.ID, Title: lookupExcerpt(n.Body), Search: n.Body})
+		all = append(all, mutationCandidate{Kind: "note", ID: n.ID, Title: noteLabel(n), Search: n.Title + " " + n.Body})
 	}
 	terms := mutationTerms(text)
 	phrase := strings.ToLower(text)
@@ -145,7 +152,7 @@ func (c *routingConversation) prepareMutation(ctx context.Context, s *store.Stor
 			if err != nil {
 				return err
 			}
-			m.Title = lookupExcerpt(current.Note.Body)
+			m.Title = noteLabel(*current.Note)
 		default:
 			return routing.ErrContract
 		}
@@ -239,10 +246,10 @@ func (c *routingConversation) prepareEditValue(text string) error {
 			m.Field, m.New = "status", "dismissed"
 		case (strings.Contains(lower, "complete") || strings.Contains(lower, "finish")) && m.Kind == "reminder":
 			m.Field, m.New = "status", "completed"
-		case m.Kind == "note":
-			m.Field = "body"
 		case strings.Contains(lower, "rename") || strings.Contains(lower, "title"):
 			m.Field = "title"
+		case m.Kind == "note":
+			m.Field = "body"
 		case strings.Contains(lower, "detail"):
 			m.Field = "details"
 		case strings.Contains(lower, "status"):
@@ -255,6 +262,9 @@ func (c *routingConversation) prepareEditValue(text string) error {
 	}
 	if m.Field == "" {
 		choices := []provider.Choice{{Value: "title", Label: "Title"}, {Value: "status", Label: "Status"}}
+		if m.Kind == "note" {
+			choices = []provider.Choice{{Value: "title", Label: "Title"}, {Value: "body", Label: "Body"}}
+		}
 		if m.Kind == "task" {
 			choices = append(choices, provider.Choice{Value: "details", Label: "Details"}, provider.Choice{Value: "due_at", Label: "Due date"})
 		}
@@ -265,7 +275,7 @@ func (c *routingConversation) prepareEditValue(text string) error {
 		c.State = "awaiting_field"
 		return nil
 	}
-	if m.New == "" && c.Route.Plan == nil {
+	if m.New == "" {
 		value := strings.TrimSpace(text)
 		if text == c.Route.Input.Text {
 			_, after, ok := strings.Cut(strings.ToLower(text), " to ")
@@ -282,6 +292,9 @@ func (c *routingConversation) prepareEditValue(text string) error {
 					m.New = instant
 				}
 			} else {
+				if m.Field == "title" {
+					value = strings.TrimSuffix(value, ".")
+				}
 				m.New = value
 			}
 		}
@@ -381,7 +394,11 @@ func (c *routingConversation) snapshotMutation(ctx context.Context, s *store.Sto
 		if err != nil {
 			return err
 		}
-		m.Old = v.Note.Body
+		if m.Field == "title" {
+			m.Old = v.Note.Title
+		} else {
+			m.Old = v.Note.Body
+		}
 	default:
 		return routing.ErrContract
 	}
@@ -522,20 +539,33 @@ func (c *routingConversation) commitMutation(ctx context.Context, s *store.Store
 			after = before
 		}
 	case "note":
-		if m.Field != "body" {
+		if m.Field != "body" && m.Field != "title" {
 			return routing.ErrContract
 		}
 		current, err := s.NoteState(ctx, m.ID)
 		if err != nil {
 			return err
 		}
-		before = current.Note.Body
+		if m.Field == "title" {
+			before = current.Note.Title
+		} else {
+			before = current.Note.Body
+		}
 		if before != m.New {
-			updated, err := s.UpdateNote(ctx, m.ID, m.New)
+			var updated store.NoteAction
+			if m.Field == "title" {
+				updated, err = s.RenameNote(ctx, m.ID, m.New)
+			} else {
+				updated, err = s.UpdateNote(ctx, m.ID, m.New)
+			}
 			if err != nil {
 				return err
 			}
-			after = updated.Note.Body
+			if m.Field == "title" {
+				after = updated.Note.Title
+			} else {
+				after = updated.Note.Body
+			}
 		} else {
 			after = before
 		}

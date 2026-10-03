@@ -45,7 +45,7 @@ func TestChannelPreparationCarriesOriginalInputAndBoundedContext(t *testing.T) {
 		t.Fatal(response)
 	}
 	seed := response.Prefill
-	if seed == nil || seed.Fields["title"] != "interview at Ather" || seed.Fields["due_at"] != "2030-01-08T15:00:00.000000000Z" || seed.Fields["reminder_at"] != "2030-01-08T15:00:00.000000000Z" || seed.Fields["note_body"] != "bring portfolio" || seed.Reminder != "add" || seed.Note != "add" {
+	if seed == nil || seed.Fields["title"] != "interview at Ather" || seed.Fields["due_at"] != "2030-01-08T15:00:00.000000000Z" || seed.Fields["reminder_at"] != "" || seed.Fields["note_body"] != "bring portfolio" || seed.Reminder != "" || seed.Note != "add" {
 		t.Fatal(seed)
 	}
 	if seed.Fields["before_task_id"] != "" || len(response.Questions) != 0 {
@@ -83,6 +83,24 @@ func TestPrefillPreservesUnresolvedTimesAndExplicitEdits(t *testing.T) {
 	state.Text = "An observation outside the local grammar"
 	seed = prepareChannel(state, "note")
 	if seed.Fields["note_body"] != state.Text {
+		t.Fatal(seed)
+	}
+}
+
+func TestTaskTimeDoesNotInventNotification(t *testing.T) {
+	state := routing.State{Text: "I need to drop mummy tomorrow morning", Timezone: "Asia/Kolkata", ReferenceAt: "2030-01-07T10:00:00Z"}
+	seed := prepareChannel(state, "task")
+	if seed.Fields["title"] != "drop mummy" || seed.Fields["reminder_at"] != "" || seed.Reminder != "" || seed.Fields["due_at"] != "" {
+		t.Fatal(seed)
+	}
+	state.Text = "I need to leave by tomorrow at 7.30am"
+	seed = prepareChannel(state, "task")
+	if seed.Fields["title"] != "leave" || seed.Fields["due_at"] != "2030-01-08T02:00:00.000000000Z" || seed.Fields["reminder_at"] != "" {
+		t.Fatal(seed)
+	}
+	state.Text = "Remind me to leave tomorrow at 7.30am"
+	seed = prepareChannel(state, "reminder")
+	if seed.Fields["reminder_at"] != "2030-01-08T02:00:00.000000000Z" {
 		t.Fatal(seed)
 	}
 }

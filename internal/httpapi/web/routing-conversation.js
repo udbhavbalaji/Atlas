@@ -15,7 +15,7 @@ function routingConversationRender(state){
  if(state.answer?.sources?.length){const h=document.createElement('h4');h.textContent='Saved records used';preview.append(h);for(const source of state.answer.sources){if(!source.url?.startsWith('/#'))continue;const link=document.createElement('a');link.href=source.url;link.textContent=source.type+': '+source.title;preview.append(link);}}
  for(const warning of state.warnings||[]){const p=document.createElement('p');p.className='meta';p.textContent=warning;preview.append(p);}
  if(state.state==='awaiting_confirmation'){for(const reply of ['yes','cancel']){const b=document.createElement('button');b.type='button';b.textContent=reply==='yes'?'Confirm and save':'Cancel';b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,text:reply});preview.append(b);}}
- $('routing-conversation-reply').hidden=['saved','cancelled','unsupported'].includes(state.state);
+ $('routing-conversation-reply').hidden=['cancelled','unsupported'].includes(state.state);
 }
 async function routingConversationCall(path,method,body){
  if(routingConversationBusy)return;routingConversationBusy=true;

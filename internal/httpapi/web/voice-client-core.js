@@ -42,7 +42,7 @@ class AtlasVoiceSession {
 
   requireActive() {
     if (!this.state?.id) throw new Error('Start or resume a conversation first.');
-    if (['saved', 'cancelled', 'unsupported'].includes(this.state.state)) throw new Error('This conversation is closed. Start a new one.');
+    if (['cancelled', 'unsupported'].includes(this.state.state)) throw new Error('This conversation is closed. Start a new one.');
   }
 
   async reply(text, field = '', value = '') {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"atlas/internal/provider"
 	"atlas/internal/routing"
 	"atlas/internal/store"
 	"context"
@@ -29,9 +30,12 @@ var lookupStopWords = map[string]bool{
 	"is": true, "it": true, "last": true, "latest": true, "list": true, "me": true, "month": true, "my": true,
 	"next": true, "note": true, "notes": true, "of": true, "old": true, "on": true,
 	"past": true, "previous": true, "remind": true, "reminder": true, "reminders": true,
+	"please": true, "could": true, "would": true, "give": true, "provide": true,
+	"scheduled": true, "active": true, "pending": true, "completed": true, "dismissed": true,
 	"recent": true, "saved": true, "show": true, "task": true, "tasks": true, "tell": true, "the": true, "this": true,
 	"there": true, "to": true, "upcoming": true, "was": true, "were": true,
 	"today": true, "tomorrow": true, "week": true, "what": true, "when": true, "where": true, "which": true, "with": true, "year": true, "yesterday": true,
+	"again": true, "does": true, "say": true, "says": true, "read": true, "contents": true, "content": true, "inside": true, "items": true, "item": true, "currently": true,
 	"you": true,
 }
 
@@ -65,6 +69,48 @@ func lookupScope(question string) string {
 	default:
 		return ""
 	}
+}
+
+func collectionLookup(question, scope string) bool {
+	if scope == "" {
+		return false
+	}
+	words := strings.FieldsFunc(strings.ToLower(question), func(r rune) bool { return !unicode.IsLetter(r) })
+	for _, word := range words {
+		if word == scope+"s" || word == "all" || word == "list" || word == "every" {
+			return true
+		}
+	}
+	return false
+}
+
+func referentialLookup(question string) bool {
+	words := strings.FieldsFunc(strings.ToLower(question), func(r rune) bool { return !unicode.IsLetter(r) })
+	for _, word := range words {
+		if word == "it" || word == "this" || word == "that" || word == "the" {
+			return true
+		}
+	}
+	return false
+}
+
+func recentAnswerLookup(ctx context.Context, s *store.Store, state routing.State) (conversationAnswer, bool, error) {
+	if state.RecentRecordID == "" || !referentialLookup(state.Text) || collectionLookup(state.Text, lookupScope(state.Text)) || len(lookupTerms(state.Text)) > 0 {
+		return conversationAnswer{}, false, nil
+	}
+	scope := lookupScope(state.Text)
+	if scope != "" && scope != state.RecentRecordKind {
+		return conversationAnswer{}, false, nil
+	}
+	plural := map[string]string{"task": "tasks", "reminder": "reminders", "note": "notes"}[state.RecentRecordKind]
+	if plural == "" {
+		return conversationAnswer{}, false, nil
+	}
+	item, err := lookupHit(ctx, s, store.SearchResult{Type: state.RecentRecordKind, ID: state.RecentRecordID, URL: "/#" + plural + "/" + state.RecentRecordID}, state.Text, state)
+	if err != nil {
+		return conversationAnswer{}, true, err
+	}
+	return conversationAnswer{Text: "I found this in Atlas: " + item.line + ".", Sources: []conversationSource{item.source}}, true, nil
 }
 
 func lookupTime(value, timezone string) string {
@@ -136,7 +182,10 @@ func lookupHit(ctx context.Context, s *store.Store, hit store.SearchResult, ques
 			item.line += fmt.Sprintf(". Linked reminder: %s (%s)", lookupTime(reminder.ScheduledAt, state.Timezone), reminder.Status)
 		}
 		for i, note := range v.Notes {
-			if i == 3 { item.line += ". More linked notes are saved"; break }
+			if i == 3 {
+				item.line += ". More linked notes are saved"
+				break
+			}
 			item.line += ". Linked note: " + lookupExcerpt(note.Body)
 		}
 		if t.Status == "completed" && t.UpdatedAt != "" {
@@ -164,8 +213,8 @@ func lookupHit(ctx context.Context, s *store.Store, hit store.SearchResult, ques
 		if err != nil {
 			return item, err
 		}
-		item.source.Title = lookupExcerpt(v.Note.Body)
-		item.line = "Note: “" + lookupExcerpt(v.Note.Body) + "”"
+		item.source.Title = noteLabel(*v.Note)
+		item.line = "Note “" + noteLabel(*v.Note) + "”: “" + lookupExcerpt(v.Note.Body) + "”"
 		if wantsWhen {
 			item.line += " (no structured event time is saved in this note)"
 		}
@@ -178,7 +227,18 @@ func answerLookup(ctx context.Context, s *store.Store, state routing.State) (con
 	question := strings.TrimSpace(state.Text)
 	scope := lookupScope(question)
 	terms := lookupTerms(question)
+	if collectionLookup(question, scope) {
+		return listLookup(ctx, s, state, scope)
+	}
+	if recent, ok, err := recentAnswerLookup(ctx, s, state); ok {
+		return recent, err
+	}
 	if len(terms) == 0 {
+		if scope == "" && state.RecentConversation != "" {
+			if record, ok := recentLookupRecord(state); ok {
+				return answerPlannedLookup(ctx, s, state, routing.ActionPlan{Action: "lookup", Kind: record.Kind, TargetID: record.ID})
+			}
+		}
 		return listLookup(ctx, s, state, scope)
 	}
 	var hits []store.SearchResult
@@ -226,7 +286,42 @@ func answerLookup(ctx context.Context, s *store.Store, state routing.State) (con
 	return answer, nil
 }
 
+// Resolve short follow-ups from the same ranked records that Jev saw. Only
+// use this when a recent phrase clearly matches one saved entity.
+func recentLookupRecord(state routing.State) (provider.ContextRecord, bool) {
+	keywords := contextKeywords("", state.RecentConversation, state.Context)
+	best := -1
+	bestScore, runnerUp := 0, 0
+	for i, record := range state.Context {
+		body := strings.ToLower(record.Title + " " + record.Body + " " + record.TaskTitle)
+		score := 0
+		for _, keyword := range keywords {
+			if strings.Contains(body, keyword.word) {
+				score += keyword.weight
+			}
+		}
+		if record.Kind == "task" {
+			score++
+		}
+		if score > bestScore {
+			runnerUp, bestScore, best = bestScore, score, i
+		} else if score > runnerUp && (best < 0 || record.TaskID != state.Context[best].ID) {
+			runnerUp = score
+		}
+	}
+	if best < 0 || bestScore < 4 || bestScore <= runnerUp {
+		return provider.ContextRecord{}, false
+	}
+	return state.Context[best], true
+}
+
 func answerPlannedLookup(ctx context.Context, s *store.Store, state routing.State, plan routing.ActionPlan) (conversationAnswer, error) {
+	if collectionLookup(state.Text, lookupScope(state.Text)) {
+		return listLookup(ctx, s, state, lookupScope(state.Text))
+	}
+	if recent, ok, err := recentAnswerLookup(ctx, s, state); ok {
+		return recent, err
+	}
 	if plan.TargetID == "" {
 		return answerLookup(ctx, s, state)
 	}
@@ -257,9 +352,14 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 		if err != nil {
 			return answer, err
 		}
-		sort.SliceStable(reminders, func(i, j int) bool { return reminders[i].ScheduledAt > reminders[j].ScheduledAt })
+		futureOnly := strings.Contains(strings.ToLower(state.Text), "upcoming") || strings.Contains(strings.ToLower(state.Text), "scheduled")
+		sort.SliceStable(reminders, func(i, j int) bool {
+			if futureOnly {
+				return reminders[i].ScheduledAt < reminders[j].ScheduledAt
+			}
+			return reminders[i].ScheduledAt > reminders[j].ScheduledAt
+		})
 		pastOnly := strings.Contains(strings.ToLower(state.Text), "old") || strings.Contains(strings.ToLower(state.Text), "past") || strings.Contains(strings.ToLower(state.Text), "previous") || strings.Contains(strings.ToLower(state.Text), "last")
-		futureOnly := strings.Contains(strings.ToLower(state.Text), "upcoming")
 		reference, err := time.Parse(time.RFC3339Nano, state.ReferenceAt)
 		if err != nil {
 			reference = time.Now()
@@ -269,7 +369,7 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 			if pastOnly && when.After(reference) {
 				continue
 			}
-			if futureOnly && when.Before(reference) {
+			if futureOnly && (when.Before(reference) || r.Status != "scheduled") {
 				continue
 			}
 			lines = append(lines, fmt.Sprintf("“%s” — %s (%s)", r.Title, lookupTime(r.ScheduledAt, state.Timezone), r.Status))
@@ -300,7 +400,7 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 			return answer, err
 		}
 		for _, n := range notes {
-			excerpt := lookupExcerpt(n.Body)
+			excerpt := noteLabel(n)
 			lines = append(lines, "“"+excerpt+"”")
 			answer.Sources = append(answer.Sources, conversationSource{Type: "note", Title: excerpt, URL: "/#notes/" + n.ID})
 			if len(lines) == 10 {
@@ -312,6 +412,10 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 		answer.Text = "I couldn't find any saved " + scope + "s."
 		return answer, nil
 	}
-	answer.Text = "Here are the most recent saved " + scope + "s:\n" + strings.Join(lines, "\n")
+	label := "the most recent saved " + scope + "s"
+	if scope == "reminder" && (strings.Contains(strings.ToLower(state.Text), "upcoming") || strings.Contains(strings.ToLower(state.Text), "scheduled")) {
+		label = "your upcoming reminders"
+	}
+	answer.Text = "Here are " + label + ":\n" + strings.Join(lines, "\n")
 	return answer, nil
 }

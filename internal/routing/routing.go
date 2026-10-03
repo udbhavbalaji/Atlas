@@ -16,6 +16,8 @@ import (
 const Version = "1"
 const RegistryVersion = "1"
 
+var DefaultPolicy = Policy{MinProbability: 0.60, MinMargin: 0.25}
+
 var ErrRequest = errors.New("invalid routing request")
 var ErrContract = errors.New("invalid routing evaluation")
 var ErrUnavailable = errors.New("routing provider unavailable; no fallback was used")
@@ -42,19 +44,26 @@ func Registry() []Action {
 }
 
 type Request struct {
-	Version      string `json:"version"`
-	RequestID    string `json:"request_id"`
-	Text         string `json:"text"`
-	Timezone     string `json:"timezone"`
-	ContextQuery string `json:"context_query"`
-	Fixture      string `json:"fixture"`
+	Version            string `json:"version"`
+	RequestID          string `json:"request_id"`
+	Text               string `json:"text"`
+	Timezone           string `json:"timezone"`
+	ContextQuery       string `json:"context_query"`
+	Fixture            string `json:"fixture"`
+	RecentConversation string `json:"recent_conversation,omitempty"`
+	RecentRecordID     string `json:"recent_record_id,omitempty"`
+	RecentRecordKind   string `json:"recent_record_kind,omitempty"`
 }
 type State struct {
-	Text             string                   `json:"text"`
-	Timezone         string                   `json:"timezone"`
-	ReferenceAt      string                   `json:"reference_at"`
-	Context          []provider.ContextRecord `json:"context"`
-	ContextTruncated bool                     `json:"context_truncated"`
+	Text               string                   `json:"text"`
+	Timezone           string                   `json:"timezone"`
+	ReferenceAt        string                   `json:"reference_at"`
+	SelectedTool       string                   `json:"selected_tool,omitempty"`
+	RecentConversation string                   `json:"recent_conversation,omitempty"`
+	RecentRecordID     string                   `json:"recent_record_id,omitempty"`
+	RecentRecordKind   string                   `json:"recent_record_kind,omitempty"`
+	Context            []provider.ContextRecord `json:"context"`
+	ContextTruncated   bool                     `json:"context_truncated"`
 }
 type Choice struct {
 	Type          string             `json:"type"`
@@ -90,6 +99,9 @@ type Result struct {
 	Mock            bool        `json:"mock"`
 	State           string      `json:"state"`
 	SelectedChannel string      `json:"selected_channel"`
+	Category        string      `json:"category,omitempty"`
+	SelectedTool    string      `json:"selected_tool,omitempty"`
+	ExtractionModel string      `json:"extraction_model,omitempty"`
 	Input           State       `json:"input"`
 	Evaluation      Evaluation  `json:"evaluation"`
 	Policy          Policy      `json:"policy"`
@@ -99,7 +111,7 @@ type Result struct {
 }
 
 func ValidateRequest(r Request) error {
-	if r.Version != Version || r.RequestID == "" || len(r.RequestID) > 128 || !utf8.ValidString(r.Text) || strings.TrimSpace(r.Text) == "" || len(r.Text) > 12000 || len([]rune(r.ContextQuery)) > 200 || !utf8.ValidString(r.ContextQuery) || r.Timezone == "" || r.Timezone == "Local" {
+	if r.Version != Version || r.RequestID == "" || len(r.RequestID) > 128 || !utf8.ValidString(r.Text) || strings.TrimSpace(r.Text) == "" || len(r.Text) > 12000 || len([]rune(r.ContextQuery)) > 200 || !utf8.ValidString(r.ContextQuery) || len([]rune(r.RecentConversation)) > 2000 || !utf8.ValidString(r.RecentConversation) || len(r.RecentRecordID) > 128 || (r.RecentRecordID == "") != (r.RecentRecordKind == "") || r.RecentRecordKind != "" && r.RecentRecordKind != "task" && r.RecentRecordKind != "reminder" && r.RecentRecordKind != "note" || r.Timezone == "" || r.Timezone == "Local" {
 		return ErrRequest
 	}
 	if _, err := time.LoadLocation(r.Timezone); err != nil {
@@ -136,7 +148,7 @@ func finiteProbability(p float64) bool {
 // Decide uses a visible, provisional policy. Probabilities are routing evidence,
 // not a guarantee of accuracy or a permission to execute tools.
 func Decide(req Request, state State, e Evaluation, name string, mock bool) (Result, error) {
-	policy := Policy{0.65, 0.15}
+	policy := DefaultPolicy
 	r := Result{Version: Version, RegistryVersion: RegistryVersion, RequestID: req.RequestID, Provider: name, Mock: mock, Input: state, Evaluation: e, Policy: policy, State: "needs_clarification"}
 	if err := ValidateChoice(e.Decision, Registry()); err != nil {
 		return r, err
