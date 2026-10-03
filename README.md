@@ -33,6 +33,10 @@ The default database is `data/atlas.db`. Configure paths and listen address with
 
 On Omarchy, run `desktop/linux/build.sh` followed by `dist/linux/atlas-desktop`, or run `desktop/linux/install.sh` to add Atlas to the user application launcher. The desktop window starts on the conversation screen, starts and stops its own local Atlas service, and stores its database under the XDG data directory. With a Groq key, its free natural language mode interprets ordinary English requests to look up, add, edit, and delete saved records; edits report their old and new values, and deletions require confirmation. Microphone text appears in the textbox while you speak. The installer can copy an existing local key and import records into an empty desktop database without overwriting an active profile. See [desktop/linux/README.md](desktop/linux/README.md) and the in-app **Desktop checks** page for requirements and verification.
 
+### macOS desktop preview
+
+On a Mac with Xcode command line tools and Go, run `desktop/macos/setup-transcription.sh` once, then `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. It uses the same conversation service and desktop test page as the Omarchy app, with a native AppKit window and local data in Application Support. See [desktop/macos/README.md](desktop/macos/README.md) for setup and current platform limits.
+
 Before adding other reasoning, voice, or notification providers, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
 ## Product intention
