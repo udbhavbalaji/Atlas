@@ -3,6 +3,7 @@
 const voiceStorage = 'atlas.voice.session.v1';
 const voiceClient = new AtlasVoiceSession(window.fetch.bind(window), voiceRender);
 const VoiceRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VoiceDesktopDictation = !VoiceRecognition && location.pathname === '/desktop';
 let voiceBusy = false;
 let voiceListening = false;
 let voiceRecognizer = null;
@@ -33,15 +34,19 @@ function voiceSpeakPrompt() {
 }
 
 function voiceRender(state) {
+	if (voiceElement('start-section')) voiceElement('start-section').hidden = true;
+	if (voiceElement('new-chat')) voiceElement('new-chat').hidden = false;
   voiceElement('session-id').value = state.id;
   try { localStorage.setItem(voiceStorage, state.id); } catch {}
-  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.mock ? 'mock route' : 'Jev route') + ' · session version ' + state.version);
-  voiceElement('prompt').textContent = state.prompt;
+  const models = [state.route?.evaluation?.model, state.route?.extraction_model, state.response_model].filter(Boolean);
+  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.provider || 'unknown') + ' route · ' + models.join(' → ') + ' · session version ' + state.version);
+  voiceElement('prompt').textContent = state.state === 'answered' ? '' : state.prompt;
   const transcript = voiceElement('transcript');
   transcript.replaceChildren();
   for (const turn of state.messages || []) {
     const item = document.createElement('div');
     item.className = 'voice-turn';
+    item.dataset.role = turn.role;
     const role = document.createElement('strong');
     role.textContent = turn.role === 'user' ? 'You' : 'Atlas';
     const line = document.createElement('p');
@@ -49,19 +54,20 @@ function voiceRender(state) {
     item.append(role, line);
     transcript.append(item);
   }
+  transcript.scrollTop = transcript.scrollHeight;
   const actions = voiceElement('question-actions');
   actions.replaceChildren();
   if (state.state === 'awaiting_route') {
-    for (const channel of ['task', 'reminder', 'note']) actions.append(voiceButton(channel, () => voiceCall(() => voiceClient.reply(channel))));
+    for (const channel of ['task', 'reminder', 'note', 'lookup', 'edit', 'delete']) actions.append(voiceButton(channel === 'lookup' ? 'Find existing records' : channel, () => voiceCall(() => voiceClient.reply(channel))));
   }
-  if (state.state === 'awaiting_answer' && state.question?.choices) {
+  if (['awaiting_answer', 'awaiting_target', 'awaiting_field'].includes(state.state) && state.question?.choices) {
     for (const choice of state.question.choices) {
       actions.append(voiceButton(choice.label, () => voiceCall(() => voiceClient.reply('', state.question.field, choice.value))));
     }
   }
   const proposal = voiceElement('proposal');
   proposal.replaceChildren();
-  if (state.proposal) {
+  if (state.proposal && !state.saved) {
     const heading = document.createElement('h3');
     heading.textContent = state.saved ? 'Saved records' : 'Review before saving';
     proposal.append(heading);
@@ -84,41 +90,60 @@ function voiceRender(state) {
     line.textContent = warning;
     proposal.append(line);
   }
-  if (state.saved) {
-    const line = document.createElement('p');
-    line.textContent = 'Saved. Task: ' + (state.saved.task_id || 'none') + ' · reminders: ' + (state.saved.reminders?.length || 0) + ' · notes: ' + (state.saved.notes?.length || 0);
-    proposal.append(line);
+  if (state.answer?.sources?.length) {
+    const heading = document.createElement('h3');
+    heading.textContent = 'Saved records used';
+    proposal.append(heading);
+    for (const source of state.answer.sources) {
+      if (!source.url?.startsWith('/#')) continue;
+      const link = document.createElement('a');
+      link.href = source.url;
+      link.textContent = `${source.type}: ${source.title}`;
+      const line = document.createElement('p');
+      line.append(link);
+      proposal.append(line);
+    }
   }
-  const active = !['saved', 'cancelled', 'unsupported'].includes(state.state);
+  const active = !['cancelled', 'unsupported'].includes(state.state);
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
-  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming'].includes(state.state);
-  voiceElement('confirm').textContent = state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
-  voiceElement('cancel').hidden = !active || state.state === 'confirming';
+  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting'].includes(state.state);
+  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
+  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'applying_edit'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
 }
 
 function voiceUpdateControls() {
   for (const button of document.querySelectorAll('#panel-voice button')) button.disabled = voiceBusy;
-  if (!VoiceRecognition) {
+  if (!VoiceRecognition && !VoiceDesktopDictation) {
     voiceElement('listen-first').disabled = true;
     voiceElement('listen-answer').disabled = true;
   }
-  voiceElement('listen-first').textContent = voiceListening ? 'Stop listening' : 'Use microphone';
-  voiceElement('listen-answer').textContent = voiceListening ? 'Stop listening' : 'Use microphone';
+  const listenLabel = VoiceDesktopDictation ? 'Focus for dictation' : voiceListening ? 'Stop listening' : 'Use microphone';
+  voiceElement('listen-first').textContent = listenLabel;
+  voiceElement('listen-answer').textContent = listenLabel;
+  window.atlasDesktopAudio?.updateControls();
 }
 
 async function voiceCall(action, speak = true) {
   if (voiceBusy) return;
   voiceBusy = true;
+  voiceStatus('Sending to Atlas…');
+  if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Sending to Atlas…';
+  if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = 'Sending to Atlas…';
   voiceUpdateControls();
   try {
     const state = await action();
     voiceElement('answer').value = '';
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
+    if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
     if (speak) voiceSpeakPrompt();
-    if (state.saved && typeof load === 'function') await load();
+    if ((state.saved || state.mutation && state.state === 'answered') && typeof load === 'function') await load();
   } catch (error) {
-    voiceStatus(error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : ''));
+    const message = error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : '');
+    voiceStatus(message);
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = message;
+    if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = message;
   } finally {
     voiceBusy = false;
     voiceUpdateControls();
@@ -126,7 +151,15 @@ async function voiceCall(action, speak = true) {
 }
 
 function voiceListen(targetID) {
-  if (!VoiceRecognition) return;
+  if (!VoiceRecognition) {
+    if (VoiceDesktopDictation) {
+      voiceElement(targetID).focus();
+      voiceElement('mic-status').textContent = /Mac/.test(navigator.platform)
+        ? 'Use your Mac Dictation shortcut, then review the text before sending.'
+        : 'On Omarchy, hold F9 or toggle Super+Ctrl+X to dictate. Review the text before sending.';
+    }
+    return;
+  }
   if (voiceListening) { voiceRecognizer?.stop(); return; }
   if (voiceBusy) return;
   window.speechSynthesis?.cancel();
@@ -168,9 +201,32 @@ function voiceListen(targetID) {
   catch { voiceRecognizer = null; voiceElement('mic-status').textContent = 'Microphone input could not start. You can type your answer.'; }
 }
 
+let voiceProviderTouched = false;
 voiceElement('provider').onchange = () => {
+  voiceProviderTouched = true;
   voiceElement('fixture-label').hidden = voiceElement('provider').value !== 'mock';
 };
+if (location.pathname === '/desktop') {
+  fetch('/api/v1/routing').then(response => response.json()).then(result => {
+    const groq = result.providers?.find(provider => provider.id === 'groq');
+    const free = result.providers?.find(provider => provider.id === 'free');
+    const jev = result.providers?.find(provider => provider.id === 'jev');
+    if (!voiceProviderTouched && jev?.configured) {
+      voiceElement('provider').value = 'jev';
+      voiceElement('fixture-label').hidden = true;
+      voiceElement('start-feedback').textContent = 'Jev and free OpenRouter models are ready. Free model capacity may vary.';
+    } else if (!voiceProviderTouched && groq?.configured) {
+      voiceElement('provider').value = 'groq';
+      voiceElement('fixture-label').hidden = true;
+    } else if (!free?.configured && voiceElement('start-feedback')) {
+      voiceElement('provider').value = 'mock';
+      voiceElement('fixture-label').hidden = false;
+      voiceElement('start-feedback').textContent = 'Natural language mode needs a Groq or OpenRouter key. Local test mode is available.';
+    }
+  }).catch(() => {
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Could not check conversation configuration.';
+  });
+}
 voiceElement('start-form').onsubmit = event => {
   event.preventDefault();
   const text = voiceElement('first').value.trim();
@@ -183,6 +239,23 @@ voiceElement('start-form').onsubmit = event => {
     contextQuery: voiceElement('context').value.trim(),
     requestID: crypto.randomUUID()
   }));
+};
+if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
+  voiceClient.state = null;
+  try { localStorage.removeItem(voiceStorage); } catch {}
+  voiceElement('start-section').hidden = false;
+  voiceElement('new-chat').hidden = true;
+  voiceElement('reply-form').hidden = true;
+  voiceElement('transcript').replaceChildren();
+  voiceElement('proposal').replaceChildren();
+  voiceElement('question-actions').replaceChildren();
+  voiceElement('prompt').textContent = '';
+  voiceElement('confirm').hidden = true;
+  voiceElement('cancel').hidden = true;
+  voiceElement('repeat').hidden = true;
+  voiceElement('first').value = '';
+  voiceStatus('Start a conversation below.');
+  voiceElement('first').focus();
 };
 voiceElement('resume-form').onsubmit = event => {
   event.preventDefault();
@@ -197,7 +270,9 @@ voiceElement('cancel').onclick = () => voiceCall(() => voiceClient.cancel());
 voiceElement('repeat').onclick = voiceSpeakPrompt;
 voiceElement('listen-first').onclick = () => voiceListen('first');
 voiceElement('listen-answer').onclick = () => voiceListen('answer');
-if (!VoiceRecognition) voiceElement('mic-status').textContent = 'This browser has no speech recognition API. Type a transcript to test the same conversation.';
+if (!VoiceRecognition) voiceElement('mic-status').textContent = VoiceDesktopDictation
+  ? (/Mac/.test(navigator.platform) ? 'Use macOS Dictation in a text box, then review before sending.' : 'Omarchy dictation is ready: focus a text box and hold F9, or toggle Super+Ctrl+X.')
+  : 'This browser has no speech recognition API. Type a transcript to test the same conversation.';
 if (!('speechSynthesis' in window)) voiceElement('speak').disabled = true;
 voiceUpdateControls();
 try {

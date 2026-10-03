@@ -46,7 +46,7 @@ var linkedClause = regexp.MustCompile(`(?i)(?:[;,]\s*|\s+and\s+)(?:remind me(?: 
 
 var imperative = regexp.MustCompile(`(?i)^(?:please\s+)?(?:call|buy|pay|email|send|finish|submit|review|book|schedule|take|walk|water|pick up|collect|check|read|write|prepare|do|clean|visit|meet|bring|order|renew|cancel|follow up|plan|test|update|build|fix|make|get|go|learn|practice|exercise|drink|return|ask|contact|wash|feed|pack|file|complete|charge|print)\b`)
 var unsupportedAction = regexp.MustCompile(`(?i)\b(?:and|then|also) (?:call|buy|pay|email|send|finish|submit|book|create|add|remind)\b|^(?:don't|do not|never)\b|[;\n]|\.\s+(?:call|buy|pay|email|send|finish|submit|book|create|add|remind)\b`)
-var timingStart = regexp.MustCompile(`(?i)\b(?:by\s+|due\s+|(?:the )?end of (?:the |this )?(?:day|today|tomorrow|week|month|business day|work day|workday)\b|(?:eod|eow|eom|cob)\b|close of business\b|day after tomorrow\b|tomorrow\b|today\b|tonight\b|every\b|daily\b|weekly\b|monthly\b|weekdays\b|weekends\b|yearly\b|annually\b|biweekly\b|once a month\b|(?:next\s+|on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{4}-\d{2}-\d{2}\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d|(?:in|after)\s+(?:half (?:an? )?hour|a half hour|a quarter (?:of an? )?hour|quarter of an? hour|(?:a )?couple(?: of)? (?:seconds?|minutes?|hours?|days?|weeks?))\b|(?:in|after)\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\b|\d{1,2}(?::\d{2})?\s*(?:am|pm)\b|\d{1,2}:\d{2}\b|at\s+(?:\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|noon\b|midnight\b)|later\b|next week\b|next month\b|after lunch\b|(?:this|next) (?:morning|evening|afternoon|night)\b|on\s+\d)`)
+var timingStart = regexp.MustCompile(`(?i)\b(?:by\s+|due\s+|(?:the )?end of (?:the |this )?(?:day|today|tomorrow|week|month|business day|work day|workday)\b|(?:eod|eow|eom|cob)\b|close of business\b|day after tomorrow\b|tomorrow\b|today\b|tonight\b|every\b|daily\b|weekly\b|monthly\b|weekdays\b|weekends\b|yearly\b|annually\b|biweekly\b|once a month\b|(?:next\s+|on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\d{4}-\d{2}-\d{2}\b|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d|(?:in|after)\s+(?:half (?:an? )?hour|a half hour|a quarter (?:of an? )?hour|quarter of an? hour|(?:a )?couple(?: of)? (?:seconds?|minutes?|hours?|days?|weeks?))\b|(?:in|after)\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:seconds?|minutes?|hours?|days?|weeks?)\b|\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)\b|\d{1,2}[:.]\d{2}\b|at\s+(?:\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|noon\b|midnight\b)|later\b|next week\b|next month\b|after lunch\b|(?:this|next) (?:morning|evening|afternoon|night)\b|on\s+\d)`)
 
 func Interpret(text, zone string, reference time.Time) (Result, error) {
 	text = strings.TrimSpace(text)
@@ -69,8 +69,13 @@ func Interpret(text, zone string, reference time.Time) (Result, error) {
 	}
 	action := command
 	if m := noteClause.FindStringSubmatchIndex(action); m != nil {
-		input.NoteBody = strings.TrimSpace(action[m[2]:m[3]])
+		noteText := strings.TrimSpace(action[m[2]:m[3]])
 		action = strings.TrimSpace(action[:m[0]])
+		if reminder := linkedClause.FindStringIndex(noteText); reminder != nil {
+			action += noteText[reminder[0]:]
+			noteText = strings.TrimSpace(noteText[:reminder[0]])
+		}
+		input.NoteBody = noteText
 	}
 	explicitTask := false
 	event := eventPrefix.MatchString(action)
@@ -108,7 +113,11 @@ func Interpret(text, zone string, reference time.Time) (Result, error) {
 			}
 		}
 	}
-	if start := timingStart.FindStringIndex(action); start != nil {
+	start := timingStart.FindStringIndex(action)
+	if start == nil {
+		start = dayMonthDate.FindStringIndex(action)
+	}
+	if start != nil {
 		suffix := strings.TrimSpace(action[start[0]:])
 		if primaryTime == "" {
 			primaryTime = suffix

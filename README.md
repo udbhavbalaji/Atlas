@@ -12,7 +12,7 @@ Atlas owns context, canonical records, execution, scheduling, policy, and audit 
 
 ## Project status
 
-Atlas has a runnable Go foundation with SQLite-backed tasks, reminders, notes, durable routing conversations, and a testing webpage. A native SwiftUI iPhone client is in `ios/`; it provides typed and push-to-talk conversation with read-only saved-item views. Fixed-time and recurring reminders still deliver to a durable webpage inbox. iPhone device build, private remote access setup, and notification delivery remain to be verified or configured.
+Atlas has a runnable Go service with SQLite-backed tasks, reminders, notes, durable routing conversations, and a testing webpage. The Omarchy and macOS desktop apps use the same conversation service; the native SwiftUI iPhone client in `ios/` connects to that service too. Atlas can look up, create, edit, and delete saved records through conversation, with linked scheduling updates and confirmation before deletion. Fixed-time and recurring reminders deliver to the webpage inbox. The iPhone device build, private remote access setup, and notification delivery remain to be verified or configured.
 
 ## Run locally
 
@@ -31,7 +31,15 @@ make check
 
 The default database is `data/atlas.db`. Configure paths and listen address with `go run ./cmd/atlas -db /path/to/atlas.db -addr 127.0.0.1:8080`. Records survive service restarts. See [API.md](API.md) for structured responses, creation retries, schemas, and the webpage API lab tab. [DEVELOPMENT.md](DEVELOPMENT.md) covers current limits and the feature → development → main branching workflow.
 
-Before wiring in Jev, Hermes, voice runtimes, notification providers, or other integrations, verify their actual APIs, licensing, hosting requirements, and tool semantics.
+### Omarchy desktop preview
+
+On Omarchy, run `desktop/linux/build.sh` followed by `dist/linux/atlas-desktop`, or run `desktop/linux/install.sh` to add Atlas to the user application launcher. The desktop window starts on the conversation screen, starts and stops its own local Atlas service, and stores its database under the XDG data directory. With a Groq key, its free natural language mode interprets ordinary English requests to look up, add, edit, and delete saved records; edits report their old and new values, and deletions require confirmation. Microphone text appears in the textbox while you speak. The installer can copy an existing local key and import records into an empty desktop database without overwriting an active profile. See [desktop/linux/README.md](desktop/linux/README.md) and the in-app **Desktop checks** page for requirements and verification.
+
+### macOS desktop preview
+
+On a Mac with Xcode command line tools and Go, run `desktop/macos/setup-transcription.sh` once, then `desktop/macos/build.sh` and open `dist/macos/Atlas.app`. It uses the same conversation service and desktop test page as the Omarchy app, with a native AppKit window and local data in Application Support. See [desktop/macos/README.md](desktop/macos/README.md) for setup and current platform limits.
+
+Before adding other reasoning, voice, or notification providers, verify their actual APIs, licensing, hosting requirements, and tool semantics.
 
 ## Product intention
 
@@ -352,7 +360,7 @@ Deadlines do not trigger notifications. Standalone reminder delivery, snoozing, 
 5. For restart recovery, schedule a reminder, stop Atlas before its time, and restart after that time. It should appear once in the inbox, with one delivered record in Delivery history.
 6. Close and reopen the webpage; due inbox entries remain until you act on them.
 
-Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks; reminders added from a task are explicitly linked. Reminder times remain independent of deadlines. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Snooze times must be in the future.
+Delivery currently means the webpage inbox, not an OS or phone push notification. Standalone reminders are independent of tasks; reminders added from a task are explicitly linked. One-time reminders linked to an open task with a deadline form a schedule group: moving either side shifts the deadline and every active, non-repeating linked reminder by the same duration in one transaction. Atlas must be running for delivery and catches up after downtime. Past scheduled times are allowed and delivered on the next scheduler tick. Explicit snooze times must be in the future.
 
 ### Test task-linked reminders
 
@@ -363,7 +371,7 @@ Delivery currently means the webpage inbox, not an OS or phone push notification
 5. Delete a task with a pending reminder. Its reminder is cancelled; history retains the task title and marks it deleted.
 6. Completing only the reminder leaves the task open. Standalone reminders are unaffected by task changes.
 
-Task deadlines and reminder times remain separate; changing a deadline does not automatically reschedule a reminder.
+Move a linked one-time reminder and confirm the task deadline and sibling linked reminders preserve their offsets. Move the task deadline and confirm the active linked reminders move by the same duration. The response reports every derived change. Standalone, repeating, completed, and dismissed reminders do not move.
 
 On linked reminders (including reminder history), **Complete task too** completes the linked open task and cancels its active reminders atomically. It is also available under the task’s Linked reminders. Completing only a reminder leaves the task open.
 

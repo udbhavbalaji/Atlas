@@ -7,8 +7,13 @@ struct Conversation: Decodable {
     let prompt: String
     let question: ConversationQuestion?
     let proposal: CaptureProposal?
+    let mutation: ConversationMutation?
     let warnings: [String]
     let messages: [ConversationMessage]
+}
+
+struct ConversationMutation: Decodable {
+    let action: String
 }
 
 struct ConversationMessage: Decodable, Identifiable {

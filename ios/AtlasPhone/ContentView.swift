@@ -87,7 +87,7 @@ struct ContentView: View {
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .tracking(-1.7)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Tell Atlas what you want to do, remember, or be reminded about. You’ll review it before anything is saved.")
+            Text("Ask about what you’ve saved, or tell Atlas what to add or change. Atlas confirms before deleting.")
                 .foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
             editor(text: Binding(get: { store.draft }, set: { store.setDraft($0) }), hint: "I need to call Maya tomorrow evening…")
@@ -111,10 +111,9 @@ struct ContentView: View {
                 Text("CONVERSATION")
                     .font(.caption2.weight(.bold)).tracking(2).foregroundStyle(Palette.mint)
                 Spacer()
-                if store.isClosed {
-                    Button("New") { store.newConversation() }
-                        .font(.subheadline.weight(.semibold))
-                }
+                Button("New") { store.newConversation() }
+                    .font(.subheadline.weight(.semibold))
+                    .disabled(store.busy)
             }
             ForEach(Array(conversation.messages.enumerated()), id: \.offset) { _, turn in
                 VStack(alignment: .leading, spacing: 5) {
@@ -127,26 +126,28 @@ struct ContentView: View {
                 .background(turn.role == "user" ? Palette.elevated : Palette.surface)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
             }
-            VStack(alignment: .leading, spacing: 12) {
-                Text("ATLAS ASKS")
-                    .font(.caption2.weight(.bold)).tracking(1.8).foregroundStyle(Palette.mint)
-                Text(conversation.prompt)
-                    .font(.title3.weight(.medium))
-                    .fixedSize(horizontal: false, vertical: true)
-                if conversation.state == "awaiting_answer" {
-                    let choices = conversation.question?.choices ?? []
-                    if !choices.isEmpty {
-                        Text("You can say: " + choices.map(\.label).joined(separator: " · "))
-                            .font(.footnote).foregroundStyle(Palette.muted)
+            if !["saved", "answered"].contains(conversation.state) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("ATLAS ASKS")
+                        .font(.caption2.weight(.bold)).tracking(1.8).foregroundStyle(Palette.mint)
+                    Text(conversation.prompt)
+                        .font(.title3.weight(.medium))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if conversation.state == "awaiting_answer" {
+                        let choices = conversation.question?.choices ?? []
+                        if !choices.isEmpty {
+                            Text("You can say: " + choices.map(\.label).joined(separator: " · "))
+                                .font(.footnote).foregroundStyle(Palette.muted)
+                        }
                     }
                 }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.elevated)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.elevated)
-            .clipShape(RoundedRectangle(cornerRadius: 20))
 
-            if let proposal = conversation.proposal { proposalView(proposal, warnings: conversation.warnings) }
+            if let proposal = conversation.proposal, conversation.state == "awaiting_confirmation" { proposalView(proposal, warnings: conversation.warnings) }
             else if !conversation.warnings.isEmpty {
                 ForEach(conversation.warnings, id: \.self) { Text($0).font(.footnote).foregroundStyle(.orange) }
             }
@@ -154,8 +155,8 @@ struct ContentView: View {
                 Label("Saved to Atlas", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(Palette.mint).font(.headline)
             }
-            if !["saved", "cancelled", "unsupported"].contains(conversation.state) {
-                editor(text: Binding(get: { store.answer }, set: { store.setAnswer($0) }), hint: conversation.state == "confirming" ? "Say yes to retry saving" : conversation.state == "awaiting_confirmation" ? "Say yes to save, or tell Atlas what to change" : "Answer Atlas")
+            if !store.isClosed {
+                editor(text: Binding(get: { store.answer }, set: { store.setAnswer($0) }), hint: replyHint(conversation.state))
                 HStack {
                     microphoneButton
                     Spacer()
@@ -166,6 +167,16 @@ struct ContentView: View {
             }
             Text(speech.message)
                 .font(.footnote).foregroundStyle(Palette.muted)
+        }
+    }
+
+    private func replyHint(_ state: String) -> String {
+        switch state {
+        case "confirming", "deleting": return "Say yes to retry the action"
+        case "awaiting_confirmation": return "Say yes to save, or tell Atlas what to change"
+        case "awaiting_delete_confirmation": return "Say yes to delete, or cancel"
+        case "saved", "answered": return "Ask Atlas something else…"
+        default: return "Answer Atlas"
         }
     }
 

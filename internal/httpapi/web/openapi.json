@@ -5701,7 +5701,8 @@
               "",
               "tasks",
               "reminders",
-              "notes"
+              "notes",
+              "lookup"
             ]
           },
           "input": {
@@ -5888,14 +5889,16 @@
             "enum": [
               "tasks",
               "reminders",
-              "notes"
+              "notes",
+              "lookup"
             ]
           },
           "state": {
             "type": "string",
             "enum": [
               "needs_fields",
-              "awaiting_confirmation"
+              "awaiting_confirmation",
+              "answered"
             ]
           },
           "source": {
@@ -5905,7 +5908,8 @@
             "type": "string",
             "enum": [
               "explicit_fields",
-              "local_prefill_review"
+              "local_prefill_review",
+              "saved_record_lookup"
             ]
           },
           "questions": {
@@ -5923,6 +5927,27 @@
                 "type": "null"
               }
             ]
+          },
+          "answer": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "text": {"type": "string"},
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {"type": "string", "enum": ["task", "reminder", "note"]},
+                    "title": {"type": "string"},
+                    "url": {"type": "string"}
+                  },
+                  "required": ["type", "title", "url"]
+                }
+              }
+            },
+            "required": ["text", "sources"]
           },
           "persisted": {
             "const": false

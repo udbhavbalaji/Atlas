@@ -13,7 +13,7 @@ final class ConversationStore: ObservableObject {
     @Published var message = ""
 
     private var api: AtlasAPI { AtlasAPI(server: server) }
-    var isClosed: Bool { ["saved", "cancelled", "unsupported"].contains(conversation?.state ?? "") }
+    var isClosed: Bool { ["cancelled", "unsupported"].contains(conversation?.state ?? "") }
 
     func setServer(_ value: String) async {
         guard let normalized = AtlasAPI.normalizedServer(value) else {
@@ -84,7 +84,6 @@ final class ConversationStore: ObservableObject {
     }
 
     func newConversation() {
-        guard isClosed || conversation == nil else { return }
         conversation = nil
         setAnswer("")
         UserDefaults.standard.removeObject(forKey: "atlas.session")
@@ -107,7 +106,9 @@ final class ConversationStore: ObservableObject {
             UserDefaults.standard.set(next.id, forKey: "atlas.session")
             connected = true
             message = next.state == "saved" ? "Saved to Atlas." : ""
-            if next.state == "saved" { await refreshSnapshot() }
+            if next.state == "saved" || (next.state == "answered" && next.mutation != nil) {
+                await refreshSnapshot()
+            }
         } catch {
             message = error.localizedDescription
             if error is URLError { connected = false }

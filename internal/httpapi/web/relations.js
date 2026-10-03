@@ -1,6 +1,6 @@
 'use strict';
 let recordRelations=[];
-function relationRecords(){return [...tasks.map(t=>({type:'task',id:t.id,title:t.title})),...reminders.map(r=>({type:'reminder',id:r.id,title:r.title})),...notes.map(n=>({type:'note',id:n.id,title:n.body.slice(0,100)}))];}
+function relationRecords(){return [...tasks.map(t=>({type:'task',id:t.id,title:t.title})),...reminders.map(r=>({type:'reminder',id:r.id,title:r.title})),...notes.map(n=>({type:'note',id:n.id,title:n.title||n.body.slice(0,100)}))];}
 function relationPath(r){return 'relations/'+r.from.type+'/'+r.from.id+'/'+r.to.type+'/'+r.to.id;}
 function renderRelations(){
  const records=relationRecords();
