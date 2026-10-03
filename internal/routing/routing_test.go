@@ -16,7 +16,7 @@ func TestRoutingDecisions(t *testing.T) {
 	if err := ValidateRequest(request); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ fixture, state, channel string }{{"task", "routed", "tasks"}, {"reminder", "routed", "reminders"}, {"note", "routed", "notes"}, {"ambiguous", "needs_clarification", ""}, {"clarify", "needs_clarification", ""}, {"unsupported", "unsupported", ""}} {
+	for _, tc := range []struct{ fixture, state, channel string }{{"task", "routed", "tasks"}, {"reminder", "routed", "reminders"}, {"note", "routed", "notes"}, {"lookup", "routed", "lookup"}, {"ambiguous", "needs_clarification", ""}, {"clarify", "needs_clarification", ""}, {"unsupported", "unsupported", ""}} {
 		e, err := (Mock{}).Evaluate(t.Context(), State{}, Registry(), tc.fixture)
 		if err != nil {
 			t.Fatal(err)
@@ -36,6 +36,42 @@ func TestRoutingDecisions(t *testing.T) {
 	request.Timezone = "Local"
 	if ValidateRequest(request) == nil {
 		t.Fatal("local timezone accepted")
+	}
+}
+
+func TestClearModerateProbabilityEditRoutes(t *testing.T) {
+	request := Request{Version: Version, RequestID: "edit", Text: "Reschedule my interview to 4 October at 7pm", Timezone: "Asia/Kolkata"}
+	decision, err := (Mock{}).Evaluate(t.Context(), State{}, Registry(), "edit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := range decision.Decision.Probabilities {
+		decision.Decision.Probabilities[id] = 0
+	}
+	decision.Decision.Probabilities["edit"] = 0.64
+	decision.Decision.Probabilities["task"] = 0.28
+	decision.Decision.Probabilities["clarify"] = 0.04
+	decision.Decision.Probabilities["unsupported"] = 0.04
+	result, err := Decide(request, State{}, decision, "jev", false)
+	if err != nil || result.State != "routed" || result.SelectedChannel != "edit" {
+		t.Fatal(result, err)
+	}
+}
+
+func TestJevAcceptsRoundedProbabilitiesAndMissingConfidence(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probabilities := map[string]float64{}
+		for _, action := range Registry() {
+			probabilities[action.ID] = 0
+		}
+		probabilities["edit"] = 0.79
+		probabilities["task"] = 0.20
+		json.NewEncoder(w).Encode(map[string]any{"model": OpenRouterModel, "answers": map[string]any{"primary_action": map[string]any{"type": "choice", "choice": "edit", "probabilities": probabilities}}})
+	}))
+	defer server.Close()
+	evaluation, err := (Jev{APIKey: "test", Endpoint: server.URL}).Evaluate(t.Context(), State{Text: "Reschedule my interview"}, Registry(), "")
+	if err != nil || math.Abs(evaluation.Decision.Probabilities["edit"]+evaluation.Decision.Probabilities["task"]-1) > 0.0001 || evaluation.Decision.Confidence <= 0 {
+		t.Fatal(evaluation, err)
 	}
 }
 

@@ -49,6 +49,25 @@ func TestTaskAPI(t *testing.T) {
 	}
 }
 
+func TestDesktopConversationPage(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "atlas.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h := Handler(s)
+	for _, path := range []string{"/desktop", "/desktop.css", "/voice-client-core.js", "/voice-client.js", "/desktop-test"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 {
+			t.Fatalf("%s: HTTP %d", path, w.Code)
+		}
+		if path == "/desktop" && (!strings.Contains(w.Body.String(), "voice-confirm") || !strings.Contains(w.Body.String(), "voice-start-form")) {
+			t.Fatal("desktop page is missing conversation controls")
+		}
+	}
+}
+
 func TestTaskLifecycleAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "atlas.db")
 	s, err := store.Open(path)

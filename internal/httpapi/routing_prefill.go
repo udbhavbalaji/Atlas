@@ -3,9 +3,12 @@ package httpapi
 import (
 	"atlas/internal/interpret"
 	"atlas/internal/routing"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var explicitReminderRequest = regexp.MustCompile(`(?i)\b(?:remind me|set (?:a )?reminder|notify me|don't forget|remember to)\b`)
 
 type channelPrefill struct {
 	Fields     map[string]string `json:"fields"`
@@ -54,6 +57,23 @@ func prepareChannel(state routing.State, kind string) channelPrefill {
 		put("due_at", parsed.Draft.DueAt, "deadline from the original sentence")
 	}
 	reminderAt := parsed.Draft.ReminderAt
+	if kind == "task" && reminderAt != "" && !explicitReminderRequest.MatchString(state.Text) {
+		// The local parser treats any timed action as a reminder, including
+		// approximate phrases such as "tomorrow morning". A notification
+		// must be requested explicitly; an exact time can still be a deadline.
+		reminderAt = ""
+		if parsed.Draft.DueAt == "" {
+			approximate := false
+			for _, assumption := range parsed.Assumptions {
+				if strings.Contains(assumption, "review this default") {
+					approximate = true
+				}
+			}
+			if !approximate {
+				put("due_at", parsed.Draft.ReminderAt, "exact task time from the original sentence")
+			}
+		}
+	}
 	if kind == "reminder" && reminderAt == "" {
 		reminderAt = parsed.Draft.DueAt
 	}
@@ -75,7 +95,12 @@ func prepareChannel(state routing.State, kind string) channelPrefill {
 			seed.Warnings = append(seed.Warnings, q.Message)
 		}
 	}
-	seed.Warnings = append(seed.Warnings, parsed.Assumptions...)
+	for _, assumption := range parsed.Assumptions {
+		if kind == "task" && !explicitReminderRequest.MatchString(state.Text) && (strings.Contains(assumption, "linked reminder") || strings.Contains(assumption, "action with a time creates")) {
+			continue
+		}
+		seed.Warnings = append(seed.Warnings, assumption)
+	}
 	return seed
 }
 

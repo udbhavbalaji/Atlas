@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +22,8 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	path := flag.String("db", "data/atlas.db", "SQLite database path")
 	openRouterKeyFile := flag.String("openrouter-key-file", "data/openrouter.key", "Optional private file containing only the OpenRouter key; environment takes precedence")
+	groqKeyFile := flag.String("groq-key-file", "data/groq.key", "Optional private file containing only the Groq key; environment takes precedence")
+	announceURL := flag.Bool("announce-url", false, "Print the bound local URL for a desktop launcher")
 	flag.Parse()
 	if os.Getenv("OPENROUTER_API_KEY") == "" && *openRouterKeyFile != "" {
 		key, err := os.ReadFile(*openRouterKeyFile)
@@ -36,6 +40,21 @@ func main() {
 			}
 		}
 	}
+	if os.Getenv("GROQ_API_KEY") == "" && *groqKeyFile != "" {
+		key, err := os.ReadFile(*groqKeyFile)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Fatal("Could not read the configured Groq key file")
+		}
+		if err == nil {
+			value := strings.TrimSpace(string(key))
+			if strings.ContainsAny(value, "\r\n\t ") {
+				log.Fatal("Groq key file must contain only the key")
+			}
+			if err = os.Setenv("GROQ_API_KEY", value); err != nil {
+				log.Fatal("Could not configure the Groq key")
+			}
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(*path), 0700); err != nil {
 		log.Fatal(err)
 	}
@@ -44,7 +63,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer s.Close()
-	server := &http.Server{Addr: *addr, Handler: httpapi.Handler(s), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: *addr, Handler: httpapi.Handler(s), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 180 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	workerDone := make(chan struct{})
@@ -73,8 +92,17 @@ func main() {
 			log.Print(err)
 		}
 	}()
-	log.Printf("Atlas listening on http://%s", *addr)
-	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer listener.Close()
+	url := "http://" + listener.Addr().String()
+	log.Printf("Atlas listening on %s", url)
+	if *announceURL {
+		fmt.Printf("ATLAS_URL=%s\n", url)
+	}
+	if err = server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 	stop()

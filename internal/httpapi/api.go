@@ -21,7 +21,8 @@ func Handler(s *store.Store) http.Handler {
 	routingRoutes(mux, s)
 	dependencyRoutes(mux, s)
 	relationRoutes(mux, s)
-	for path, file := range map[string]string{"/": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
+	audioStreamRoutes(mux)
+	for path, file := range map[string]string{"/": "index.html", "/desktop": "desktop.html", "/desktop-test": "desktop-test.html", "/app.js": "app.js", "/styles.css": "styles.css", "/desktop.css": "desktop.css", "/desktop-audio.js": "desktop-audio.js", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
 		pattern := "GET " + path
 		if path == "/" {
 			pattern = "GET /{$}"
@@ -33,10 +34,10 @@ func Handler(s *store.Store) http.Handler {
 				return
 			}
 			content := "text/javascript; charset=utf-8"
-			if file == "index.html" {
+			if file == "index.html" || file == "desktop.html" || file == "desktop-test.html" {
 				content = "text/html; charset=utf-8"
 			}
-			if file == "styles.css" {
+			if file == "styles.css" || file == "desktop.css" {
 				content = "text/css; charset=utf-8"
 			}
 			if file == "openapi.json" {
@@ -126,7 +127,7 @@ func Handler(s *store.Store) http.Handler {
 		}
 		respond(w, 200, v)
 	})
-	for path, methods := range map[string]string{"/api/v1/reminders/{id}/occurrences/{occurrence}/acknowledge": "POST", "/api/v1/tasks": "GET, HEAD, POST", "/api/v1/tasks/{id}": "GET, HEAD, PATCH, DELETE", "/api/v1/tasks/{id}/complete": "POST", "/api/v1/activity": "GET, HEAD", "/api/v1/reminders": "GET, HEAD, POST", "/api/v1/reminders/{id}": "GET, HEAD, PATCH", "/api/v1/deliveries": "GET, HEAD", "/api/v1/reminders/{id}/snooze": "POST", "/api/v1/reminders/{id}/dismiss": "POST", "/api/v1/reminders/{id}/complete": "POST"} {
+	for path, methods := range map[string]string{"/api/v1/reminders/{id}/occurrences/{occurrence}/acknowledge": "POST", "/api/v1/tasks": "GET, HEAD, POST", "/api/v1/tasks/{id}": "GET, HEAD, PATCH, DELETE", "/api/v1/tasks/{id}/complete": "POST", "/api/v1/activity": "GET, HEAD", "/api/v1/reminders": "GET, HEAD, POST", "/api/v1/reminders/{id}": "GET, HEAD, PATCH, DELETE", "/api/v1/deliveries": "GET, HEAD", "/api/v1/reminders/{id}/snooze": "POST", "/api/v1/reminders/{id}/dismiss": "POST", "/api/v1/reminders/{id}/complete": "POST"} {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", methods)
 			apiError(w, 405, "method_not_allowed", "Method is not supported for this endpoint.", false)

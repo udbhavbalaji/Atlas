@@ -18,9 +18,13 @@ import (
 )
 
 type routingService struct {
-	jev        routing.Evaluator
-	configured bool
-	secret     string
+	jev            routing.Evaluator
+	free           routing.Planner
+	responder      routing.Responder
+	groq           routing.Planner
+	configured     bool
+	groqConfigured bool
+	secret         string
 }
 type routingReceipt struct {
 	Result    routing.Result `json:"result"`
@@ -65,12 +69,17 @@ func (s routingService) verify(token string) (routing.Result, error) {
 
 func routingRoutes(mux *http.ServeMux, s *store.Store) {
 	key := os.Getenv("OPENROUTER_API_KEY")
-	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, configured: key != "", secret: rand.Text()})
+	groqKey := os.Getenv("GROQ_API_KEY")
+	planners := make([]routing.Planner, 0, len(routing.FreeFallbackModels))
+	for _, model := range routing.FreeFallbackModels {
+		planners = append(planners, routing.FreePlanner{APIKey: key, Model: model})
+	}
+	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FallbackPlanner{Planners: planners}, responder: routing.FreeResponder{APIKey: key}, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
 }
 func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
 	routingConversationRoutes(mux, s, service)
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}}, "policy": routing.Policy{MinProbability: 0.65, MinMargin: 0.15}, "context_budget": map[string]int{"queries": 1, "records": 5}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
+		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "policy": routing.DefaultPolicy, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
 	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
 		var input routing.Request
@@ -161,12 +170,13 @@ type channelResponse struct {
 	Extraction string                 `json:"extraction"`
 	Questions  []channelQuestion      `json:"questions"`
 	Proposal   *store.CaptureProposal `json:"proposal"`
+	Answer     *conversationAnswer    `json:"answer,omitempty"`
 	Persisted  bool                   `json:"persisted"`
 }
 type channelHandler func(context.Context, *store.Store, routing.Result, dispatchRequest) (channelResponse, error)
 
 func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result, channel string, input dispatchRequest) (channelResponse, error) {
-	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel}
+	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel}
 	handler, ok := handlers[channel]
 	if !ok {
 		return channelResponse{}, routing.ErrRequest
@@ -178,6 +188,22 @@ func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result,
 		return channelResponse{}, routing.ErrRequest
 	}
 	return handler(ctx, s, result, input)
+}
+func lookupChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	var answer conversationAnswer
+	var err error
+	if r.Plan != nil {
+		answer, err = answerPlannedLookup(ctx, s, r.Input, *r.Plan)
+	} else {
+		answer, err = answerLookup(ctx, s, r.Input)
+	}
+	if err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "lookup", State: "answered", Source: r.Input.Text, Input: r.Input, Extraction: "saved_record_lookup", Questions: []channelQuestion{}, Answer: &answer}, nil
 }
 func taskChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
 	return captureChannel(ctx, s, r, in, "tasks", "task")
@@ -197,6 +223,12 @@ func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in di
 		seed := prepareChannel(r.Input, kind)
 		out.Prefill = &seed
 		in = applyChannelPrefill(in, *out.Prefill)
+		if kind == "task" && in.Reminder == "" {
+			in.Reminder = "skip"
+		}
+		if kind != "note" && in.Note == "" {
+			in.Note = "skip"
+		}
 		out.Extraction = "local_prefill_review"
 	}
 	draft := in.Fields
@@ -256,6 +288,18 @@ func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in di
 		for _, record := range r.Input.Context {
 			if record.ID == draft.BeforeTaskID {
 				allowed = true
+			}
+		}
+		if !allowed {
+			return out, routing.ErrRequest
+		}
+	}
+	if draft.LinkedTaskID != "" {
+		allowed := false
+		for _, record := range r.Input.Context {
+			if record.ID == draft.LinkedTaskID && record.Kind == "task" {
+				allowed = true
+				break
 			}
 		}
 		if !allowed {

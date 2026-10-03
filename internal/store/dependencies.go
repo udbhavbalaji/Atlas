@@ -136,6 +136,23 @@ func (s *Store) SetDependency(ctx context.Context, before, after string, attach 
 
 // CapturePreview binds the proposal to the current target snapshot without writes.
 func (s *Store) CapturePreview(ctx context.Context, input CaptureInput) (CaptureProposal, error) {
+	if input.LinkedTaskID != "" {
+		if input.BeforeTaskID != "" || !taskIDPattern.MatchString(input.LinkedTaskID) {
+			return CaptureProposal{}, ErrCaptureContext
+		}
+		target, e := s.TaskState(ctx, input.LinkedTaskID)
+		if e != nil {
+			return CaptureProposal{}, e
+		}
+		if input.Kind == "reminder" && target.Task.Status != "open" {
+			return CaptureProposal{}, ErrTaskReminderConflict
+		}
+		p, e := PreviewCapture(input)
+		if e == nil {
+			p.Reference = target.Task
+		}
+		return p, e
+	}
 	if input.BeforeTaskID == "" {
 		return PreviewCapture(input)
 	}

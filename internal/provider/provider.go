@@ -23,7 +23,12 @@ type ContextRequest struct {
 }
 type ContextRecord struct {
 	ID        string `json:"id"`
+	Kind      string `json:"kind,omitempty"`
 	Title     string `json:"title"`
+	Body      string `json:"body,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	TaskTitle string `json:"task_title,omitempty"`
+	Status    string `json:"status,omitempty"`
 	DueAt     string `json:"due_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -197,7 +202,7 @@ func Run(ctx context.Context, s *store.Store, p Provider, req Request) (Result, 
 				if task.Status != "open" {
 					continue
 				}
-				pack.Records = append(pack.Records, ContextRecord{task.ID, task.Title, task.DueAt, task.UpdatedAt})
+				pack.Records = append(pack.Records, ContextRecord{ID: task.ID, Title: task.Title, DueAt: task.DueAt, UpdatedAt: task.UpdatedAt})
 			}
 			req.Context = []ContextResult{pack}
 			continue

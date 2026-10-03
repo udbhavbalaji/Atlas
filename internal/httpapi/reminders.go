@@ -6,6 +6,14 @@ import (
 )
 
 func reminderRoutes(mux *http.ServeMux, s *store.Store) {
+	mux.HandleFunc("DELETE /api/v1/reminders/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, err := s.DeleteReminder(r.Context(), r.PathValue("id"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, 200, v)
+	})
 	mux.HandleFunc("PATCH /api/v1/reminders/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			TaskID *string `json:"task_id"`
