@@ -22,7 +22,8 @@ func Handler(s *store.Store) http.Handler {
 	dependencyRoutes(mux, s)
 	relationRoutes(mux, s)
 	audioStreamRoutes(mux)
-	for path, file := range map[string]string{"/": "index.html", "/desktop": "desktop.html", "/desktop-test": "desktop-test.html", "/app.js": "app.js", "/styles.css": "styles.css", "/desktop.css": "desktop.css", "/desktop-audio.js": "desktop-audio.js", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
+	planningRoutes(mux)
+	for path, file := range map[string]string{"/": "index.html", "/desktop": "desktop.html", "/desktop-test": "desktop-test.html", "/planning-test": "planning-test.html", "/planning-test.js": "planning-test.js", "/app.js": "app.js", "/styles.css": "styles.css", "/desktop.css": "desktop.css", "/desktop-audio.js": "desktop-audio.js", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
 		pattern := "GET " + path
 		if path == "/" {
 			pattern = "GET /{$}"
@@ -34,7 +35,7 @@ func Handler(s *store.Store) http.Handler {
 				return
 			}
 			content := "text/javascript; charset=utf-8"
-			if file == "index.html" || file == "desktop.html" || file == "desktop-test.html" {
+			if file == "index.html" || file == "desktop.html" || file == "desktop-test.html" || file == "planning-test.html" {
 				content = "text/html; charset=utf-8"
 			}
 			if file == "styles.css" || file == "desktop.css" {
