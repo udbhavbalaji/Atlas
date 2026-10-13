@@ -8,6 +8,7 @@ import (
 )
 
 var explicitClockPattern = regexp.MustCompile(`(?i)\b(1[0-2]|0?[1-9])(?:[:.](\d{2}))?\s*([ap])\.?m\.?`)
+var explicitInstantPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})`)
 
 // Models sometimes place a standalone reminder time in the task-only due_at
 // slot. Normalize by the selected action before checking the user's clock.
@@ -15,7 +16,40 @@ func NormalizePlanTiming(plan ActionPlan, state State) ActionPlan {
 	if plan.Action == "reminder" && plan.ReminderAt == "" && plan.DueAt != "" {
 		plan.ReminderAt, plan.DueAt = plan.DueAt, ""
 	}
+	if instant, ok := explicitInstant(state.Text); ok {
+		// A complete instant in the user's own words is more precise than an
+		// extracted timestamp. Keep any linked reminder's offset from the
+		// model's proposed task deadline when correcting that deadline.
+		switch plan.Action {
+		case "task":
+			if plan.DueAt != "" {
+				if previous, err := time.Parse(time.RFC3339Nano, plan.DueAt); err == nil && plan.ReminderAt != "" {
+					if reminder, err := time.Parse(time.RFC3339Nano, plan.ReminderAt); err == nil {
+						plan.ReminderAt = instant.Add(reminder.Sub(previous)).Format(time.RFC3339Nano)
+					}
+				}
+				plan.DueAt = instant.Format(time.RFC3339Nano)
+			}
+		case "reminder":
+			if plan.ReminderAt != "" {
+				plan.ReminderAt = instant.Format(time.RFC3339Nano)
+			}
+		case "edit":
+			if (plan.Field == "due_at" || plan.Field == "scheduled_at") && plan.Value != "" {
+				plan.Value = instant.Format(time.RFC3339Nano)
+			}
+		}
+	}
 	return normalizeExplicitClock(plan, state)
+}
+
+func explicitInstant(text string) (time.Time, bool) {
+	matches := explicitInstantPattern.FindAllString(text, -1)
+	if len(matches) != 1 {
+		return time.Time{}, false
+	}
+	instant, err := time.Parse(time.RFC3339Nano, matches[0])
+	return instant, err == nil
 }
 
 func explicitClock(text string) (int, int, bool) {

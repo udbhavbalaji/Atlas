@@ -48,3 +48,27 @@ func TestReminderDueSlotNormalizesToRequestedLocalClock(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExplicitOffsetInstantOverridesExtractedClock(t *testing.T) {
+	state := State{Text: "Move the Atlas demo deadline to 2026-10-16T18:00:00+05:30.", Timezone: "Asia/Kolkata", ReferenceAt: "2026-10-12T12:00:00Z"}
+	plan := NormalizePlanTiming(ActionPlan{Action: "edit", Kind: "task", Field: "due_at", Value: "2026-10-16T07:00:00Z"}, state)
+	if plan.Value != "2026-10-16T18:00:00+05:30" {
+		t.Fatalf("explicit offset was lost: %q", plan.Value)
+	}
+
+	state.Text = "Create a task due 2026-10-16T18:00:00+05:30 with a reminder one hour earlier"
+	created := NormalizePlanTiming(ActionPlan{Action: "task", Kind: "task", Title: "Atlas demo", DueAt: "2026-10-16T07:00:00Z", ReminderAt: "2026-10-16T06:00:00Z"}, state)
+	due, err := time.Parse(time.RFC3339Nano, created.DueAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reminder, err := time.Parse(time.RFC3339Nano, created.ReminderAt)
+	if err != nil || due.Sub(reminder) != time.Hour || due.Hour() != 18 {
+		t.Fatal(created, err)
+	}
+
+	state.Text = "Choose between 2026-10-16T18:00:00+05:30 and 2026-10-17T18:00:00+05:30"
+	if _, ok := explicitInstant(state.Text); ok {
+		t.Fatal("ambiguous timestamps must not be chosen")
+	}
+}
