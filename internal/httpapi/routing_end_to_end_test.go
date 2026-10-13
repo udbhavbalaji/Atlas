@@ -104,9 +104,17 @@ func TestConversationContinuesAfterSavingAndUsesLinkedRecords(t *testing.T) {
 	if err != nil || len(state.Reminders) != 1 || len(state.Notes) != 1 {
 		t.Fatal("linked records missing", state, c["proposal"], err)
 	}
+	reply("What did I note for that one?")
+	if c["state"] != "answered" || !strings.Contains(c["prompt"].(string), "portfolio") {
+		t.Fatalf("linked note recall from recent task: %#v", c)
+	}
 	reply("When is my interview?")
 	if c["state"] != "answered" || !strings.Contains(c["prompt"].(string), "interview") {
 		t.Fatalf("lookup after save: %#v", c)
+	}
+	input := c["route"].(map[string]any)["input"].(map[string]any)
+	if input["recent_record_id"] != state.Notes[0].ID || input["recent_record_kind"] != "note" {
+		t.Fatalf("recalled note was not carried into follow-up context: %#v", input)
 	}
 	newDue := due.Add(24 * time.Hour)
 	reply("Reschedule my interview to " + newDue.Format(time.RFC3339))

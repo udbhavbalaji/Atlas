@@ -31,8 +31,8 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 	categories := []routing.Action{
 		{ID: "create", Description: "Save a new task, reminder, note, or linked combination of them."},
 		{ID: "read", Description: "Answer a question about saved tasks, reminders, or notes, including questions beginning when, what, where, which, or did I. Use the recent conversation to resolve references such as it, that, or my friend. Includes completed and old records."},
-		{ID: "change", Description: "Change an existing task, reminder, or note, including its date, status, title, or text."},
-		{ID: "remove", Description: "Delete an existing saved record."},
+		{ID: "change", Description: "Change an existing task, reminder, or note, including its date, status, title, or text. Resolve short references such as it, that one, the same thing, or the reminder from the recent record and conversation."},
+		{ID: "remove", Description: "Delete an existing saved record. Resolve short references from the recent record and conversation when they identify one record."},
 		{ID: "clarify", Description: "The user's intent cannot be determined from this request."},
 		{ID: "unsupported", Description: "The user requests an external action or a capability Atlas does not have."},
 	}
@@ -278,9 +278,9 @@ func pipelineTools(category string) []routing.Action {
 			verb = "delete"
 		}
 		return []routing.Action{
-			{ID: verb + "_task", Description: verb + " an existing task, including related records when the store's workflow requires it."},
-			{ID: verb + "_reminder", Description: verb + " an existing reminder."},
-			{ID: verb + "_note", Description: verb + " an existing note."},
+			{ID: verb + "_task", Description: verb + " an existing task, including a recently discussed task and related records when the store's workflow requires it."},
+			{ID: verb + "_reminder", Description: verb + " an existing reminder, including a recently discussed reminder."},
+			{ID: verb + "_note", Description: verb + " an existing note, including a recently discussed note."},
 			{ID: "clarify", Description: "The target record type is genuinely unclear."},
 		}
 	}
@@ -352,16 +352,36 @@ func pipelineContext(ctx context.Context, s *store.Store, text, recent, tool str
 	}
 	terms := contextKeywords(text, recent, all)
 	preferred := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(tool, "lookup_"), "edit_"), "delete_")
+	hasCurrentTerms := false
+	for _, term := range terms {
+		if term.weight >= 12 {
+			hasCurrentTerms = true
+			break
+		}
+	}
 	score := func(r provider.ContextRecord) int {
 		n := 0
 		if preferred == r.Kind {
 			n += 3
 		}
-		body := strings.ToLower(r.Title + " " + r.Body + " " + r.TaskTitle)
+		body := strings.ToLower(r.Kind + " " + r.Title + " " + r.Body + " " + r.TaskTitle)
+		currentScore, recentScore := 0, 0
 		for _, term := range terms {
 			if strings.Contains(body, term.word) {
-				n += term.weight
+				if term.weight >= 12 {
+					currentScore += term.weight
+				} else {
+					recentScore += term.weight
+				}
 			}
+		}
+		n += currentScore
+		if !hasCurrentTerms {
+			n += recentScore
+		} else if recentScore > 3 {
+			n += 3
+		} else {
+			n += recentScore
 		}
 		return n
 	}
@@ -383,6 +403,20 @@ type contextKeyword struct {
 	weight int
 }
 
+// Small vocabulary bridges cover common conversational paraphrases without
+// spending another model call. They only affect record ranking; the router and
+// planner still decide the operation and validate the exact target.
+var contextWordAliases = map[string]string{
+	"alert":        "reminder",
+	"annotation":   "note",
+	"dental":       "dentist",
+	"notification": "reminder",
+	"ping":         "reminder",
+	"scribble":     "note",
+	"shopping":     "grocery",
+	"scrap":        "note",
+}
+
 // Distinctive words in the current request outrank generic verbs. Prior chat
 // supplies weaker carry-over terms for pronouns and short follow-up questions.
 func contextKeywords(text, recent string, records []provider.ContextRecord) []contextKeyword {
@@ -396,7 +430,12 @@ func contextKeywords(text, recent string, records []provider.ContextRecord) []co
 		weight int
 	}{{text, 12}, {recent, 3}} {
 		for _, word := range words(source.value) {
-			if len([]rune(word)) < 3 || lookupStopWords[word] || stop[word] {
+			aliased := false
+			if alias := contextWordAliases[word]; alias != "" {
+				word = alias
+				aliased = true
+			}
+			if len([]rune(word)) < 3 || !aliased && (lookupStopWords[word] || stop[word]) {
 				continue
 			}
 			if source.weight > weights[word] {
@@ -408,7 +447,7 @@ func contextKeywords(text, recent string, records []provider.ContextRecord) []co
 	for word, weight := range weights {
 		frequency := 0
 		for _, record := range records {
-			if strings.Contains(strings.ToLower(record.Title+" "+record.Body+" "+record.TaskTitle), word) {
+			if strings.Contains(strings.ToLower(record.Kind+" "+record.Title+" "+record.Body+" "+record.TaskTitle), word) {
 				frequency++
 			}
 		}

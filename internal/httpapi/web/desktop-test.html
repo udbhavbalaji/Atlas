@@ -12,6 +12,7 @@
 <section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Atomic linked schedule</h2><p>This creates one temporary task and two linked reminders. Moving either schedule must preserve all offsets in one database transaction. The test removes its records afterward.</p><button id="schedule-workflow-test" class="primary">Run linked schedule test</button><pre id="schedule-workflow-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Continuous conversation check</h2><p>Use <a href="/desktop">Conversation</a> in Jev mode. Create a task with a note and an explicit reminder, then ask about it in the same conversation. Reschedule it, dismiss the reminder, complete the task, and ask about it again. The reply box should stay available after saving, and each edit should name what changed.</p><p>Try “I need to prepare for my interview by tomorrow at 6pm, note that I should bring my portfolio and remind me tomorrow at 5pm”. The task, linked note, and linked reminder should save together. Then ask “When is my interview?”</p></section>
+<section class="composer"><h2>Ambiguous follow-up workbench</h2><p>Exercise one mixed-workflow conversation a turn at a time. Start with a saved-record question, then try short follow-ups such as “move it to Friday”, “what did I write down for that?”, “the reminder instead”, or “back to the grocery list”. The trace shows the recent record and ranked context Atlas supplied to orchestration. Each send uses the configured Jev flow.</p><label>Next sentence<input id="context-workbench-input" value="When is my interview?"></label><div><button id="context-workbench-send" class="primary">Start conversation</button> <button id="context-workbench-reset" type="button">Start over</button></div><pre id="context-workbench-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Jev</strong> and ask about a saved record. The answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Atlas to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>For a linked workflow, create a task named “Atlas rehearsal interview” with a deadline, then say “Save a note for my Atlas rehearsal interview: bring a portfolio” and “Remind me about my Atlas rehearsal interview one hour before”. Move the reminder two hours later and verify that Atlas moves the task deadline and any other active, non-repeating linked reminders by two hours in the same response. Move the task deadline and verify the reminders preserve their offsets. Rename the task and check the linked titles, edit the note, dismiss the reminder once it is due, complete the task, then ask about it again. The answer should show its completed status, linked note, and reminder.</li><li>In Jev mode, try a follow-up such as “I meant a reminder” when Atlas asks which action to take. If asked about an optional note, “I don’t need one” should skip it.</li><li>In Jev mode, start “I need to drop mummy tomorrow morning”. Atlas should not invent a 9am notification. If you want to track leaving separately, say so before confirming the drop-off task and inspect the proposed change.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
 </main><script>
 document.getElementById('check').addEventListener('click', async () => {
@@ -223,6 +224,33 @@ document.getElementById('schedule-workflow-test').addEventListener('click', asyn
   } finally {
     for (const id of reminderIDs) if (id) await fetch(`/api/v1/reminders/${id}`, {method: 'DELETE'});
     if (taskID) await fetch(`/api/v1/tasks/${taskID}`, {method: 'DELETE'});
+  }
+});
+let contextWorkbench = null;
+document.getElementById('context-workbench-reset').addEventListener('click', () => {
+  contextWorkbench = null;
+  document.getElementById('context-workbench-send').textContent = 'Start conversation';
+  document.getElementById('context-workbench-results').textContent = 'Ready.';
+});
+document.getElementById('context-workbench-send').addEventListener('click', async () => {
+  const input = document.getElementById('context-workbench-input');
+  const output = document.getElementById('context-workbench-results');
+  const text = input.value.trim();
+  if (!text) { output.textContent = 'Enter a sentence.'; return; }
+  output.textContent = 'Routing with conversation context…';
+  try {
+    const path = contextWorkbench ? `/api/v1/conversations/routing/${encodeURIComponent(contextWorkbench.id)}/reply` : '/api/v1/conversations/routing';
+    const body = contextWorkbench ? {version: contextWorkbench.version, text} : {provider: 'jev', version: '1', request_id: crypto.randomUUID(), text, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'};
+    const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || 'Conversation failed.');
+    contextWorkbench = result;
+    const state = result.route?.input || {};
+    output.textContent = `${result.prompt}\n\nState: ${result.state}\nCategory/tool: ${result.route?.category || 'unclear'} / ${result.route?.selected_tool || 'none'}\nRecent record: ${state.recent_record_kind || 'none'} ${state.recent_record_id || ''}\nRanked context:\n${(state.context || []).map((record, index) => `${index + 1}. ${record.kind}: ${record.title}`).join('\n') || 'none'}\n\nRecent conversation sent to orchestration:\n${state.recent_conversation || 'none'}`;
+    document.getElementById('context-workbench-send').textContent = 'Send follow-up';
+    input.select();
+  } catch (error) {
+    output.textContent = `Failed: ${error.message}`;
   }
 });
 </script></body></html>

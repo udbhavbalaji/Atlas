@@ -351,6 +351,38 @@ func recentAnswerRecord(answer *conversationAnswer) (string, string) {
 	}
 	return id, source.Type
 }
+
+// conversationFocusRecord returns the entity the user most recently acted on,
+// not merely the entity returned by a lookup. Keeping saves and edits in the
+// same focus path is what lets ordinary follow-ups such as "move it", "what
+// does that say?", or "delete that reminder" cross workflow boundaries
+// without forcing the user to repeat a title.
+func conversationFocusRecord(c routingConversation) (string, string) {
+	if c.Mutation != nil && c.Mutation.ID != "" && c.Mutation.Kind != "" && c.Mutation.Action != "delete" {
+		return c.Mutation.ID, c.Mutation.Kind
+	}
+	if id, kind := recentAnswerRecord(c.Answer); id != "" {
+		return id, kind
+	}
+	if c.Saved == nil || c.Proposal == nil {
+		return "", ""
+	}
+	switch c.Proposal.Input.Kind {
+	case "task":
+		if c.Saved.TaskID != "" {
+			return c.Saved.TaskID, "task"
+		}
+	case "reminder":
+		if len(c.Saved.Reminders) == 1 {
+			return c.Saved.Reminders[0].ID, "reminder"
+		}
+	case "note":
+		if len(c.Saved.Notes) == 1 {
+			return c.Saved.Notes[0].ID, "note"
+		}
+	}
+	return "", ""
+}
 func isConfirm(value string) bool {
 	switch normalizedReply(value) {
 	case "yes", "yes save it", "save it", "confirm", "confirm and save":
@@ -685,7 +717,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			} else {
 				switch c.State {
 				case "answered", "saved":
-					previousID, previousKind := recentAnswerRecord(c.Answer)
+					previousID, previousKind := conversationFocusRecord(c)
 					result, routeErr := evaluateRouting(r.Context(), s, service, c.Route.Provider, routing.Request{Version: routing.Version, RequestID: d.ID + "." + strconv.Itoa(d.Version+1), Text: value, Timezone: c.Route.Input.Timezone, RecentConversation: recentConversation(c.Messages), RecentRecordID: previousID, RecentRecordKind: previousKind, Fixture: c.Fixture})
 					if routeErr != nil {
 						routingFailure(w, routeErr)
@@ -783,7 +815,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			}
 		}
 		if c.State == "confirming" {
-			saved, _, commitErr := s.CommitCapture(r.Context(), "routing.session."+d.ID, c.Proposal.Input)
+			saved, _, commitErr := s.CommitCapture(r.Context(), routingCaptureRequestID(d), c.Proposal.Input)
 			if errors.Is(commitErr, store.ErrCaptureContext) {
 				if err = c.advance(r, s); err != nil {
 					failure(w, err)
@@ -843,7 +875,7 @@ func autoCapture(r *http.Request, s *store.Store, service routingService, d stor
 	if err != nil {
 		return d, c, err
 	}
-	saved, _, err := s.CommitCapture(r.Context(), "routing.session."+d.ID, c.Proposal.Input)
+	saved, _, err := s.CommitCapture(r.Context(), routingCaptureRequestID(d), c.Proposal.Input)
 	if errors.Is(err, store.ErrCaptureContext) {
 		if err = c.advance(r, s); err != nil {
 			return d, c, err
@@ -860,4 +892,8 @@ func autoCapture(r *http.Request, s *store.Store, service routingService, d stor
 	c.appendAssistant(r, service)
 	d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
 	return d, c, err
+}
+
+func routingCaptureRequestID(d store.SessionDocument) string {
+	return "routing.session." + d.ID + "." + strconv.Itoa(d.Version)
 }

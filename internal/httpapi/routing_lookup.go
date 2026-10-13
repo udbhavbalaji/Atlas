@@ -32,11 +32,11 @@ var lookupStopWords = map[string]bool{
 	"past": true, "previous": true, "remind": true, "reminder": true, "reminders": true,
 	"please": true, "could": true, "would": true, "give": true, "provide": true,
 	"scheduled": true, "active": true, "pending": true, "completed": true, "dismissed": true,
-	"recent": true, "saved": true, "show": true, "task": true, "tasks": true, "tell": true, "the": true, "this": true,
+	"recent": true, "saved": true, "show": true, "task": true, "tasks": true, "tell": true, "the": true, "this": true, "that": true,
 	"there": true, "to": true, "upcoming": true, "was": true, "were": true,
 	"today": true, "tomorrow": true, "week": true, "what": true, "when": true, "where": true, "which": true, "with": true, "year": true, "yesterday": true,
 	"again": true, "does": true, "say": true, "says": true, "read": true, "contents": true, "content": true, "inside": true, "items": true, "item": true, "currently": true,
-	"you": true,
+	"you": true, "one": true, "same": true, "thing": true,
 }
 
 func lookupTerms(question string) []string {
@@ -99,18 +99,65 @@ func recentAnswerLookup(ctx context.Context, s *store.Store, state routing.State
 		return conversationAnswer{}, false, nil
 	}
 	scope := lookupScope(state.Text)
-	if scope != "" && scope != state.RecentRecordKind {
-		return conversationAnswer{}, false, nil
+	id, kind := state.RecentRecordID, state.RecentRecordKind
+	if scope != "" && scope != kind {
+		var ok bool
+		id, kind, ok = recentLinkedRecord(ctx, s, id, kind, scope)
+		if !ok {
+			return conversationAnswer{}, false, nil
+		}
 	}
-	plural := map[string]string{"task": "tasks", "reminder": "reminders", "note": "notes"}[state.RecentRecordKind]
+	plural := map[string]string{"task": "tasks", "reminder": "reminders", "note": "notes"}[kind]
 	if plural == "" {
 		return conversationAnswer{}, false, nil
 	}
-	item, err := lookupHit(ctx, s, store.SearchResult{Type: state.RecentRecordKind, ID: state.RecentRecordID, URL: "/#" + plural + "/" + state.RecentRecordID}, state.Text, state)
+	item, err := lookupHit(ctx, s, store.SearchResult{Type: kind, ID: id, URL: "/#" + plural + "/" + id}, state.Text, state)
 	if err != nil {
 		return conversationAnswer{}, true, err
 	}
 	return conversationAnswer{Text: "I found this in Atlas: " + item.line + ".", Sources: []conversationSource{item.source}}, true, nil
+}
+
+func recentLinkedRecord(ctx context.Context, s *store.Store, id, kind, scope string) (string, string, bool) {
+	switch kind {
+	case "task":
+		state, err := s.TaskState(ctx, id)
+		if err != nil {
+			return "", "", false
+		}
+		if scope == "note" && len(state.Notes) == 1 {
+			return state.Notes[0].ID, "note", true
+		}
+		if scope == "reminder" && len(state.Reminders) == 1 {
+			return state.Reminders[0].ID, "reminder", true
+		}
+	case "reminder":
+		state, err := s.ReminderState(ctx, id)
+		if err != nil {
+			return "", "", false
+		}
+		if scope == "note" && len(state.Notes) == 1 {
+			return state.Notes[0].ID, "note", true
+		}
+		if scope == "task" && state.Task != nil {
+			return state.Task.ID, "task", true
+		}
+	case "note":
+		state, err := s.NoteState(ctx, id)
+		if err != nil || state.Note == nil {
+			return "", "", false
+		}
+		matches := []store.NoteLink{}
+		for _, link := range state.Note.Links {
+			if link.TargetExists && link.TargetType == scope {
+				matches = append(matches, link)
+			}
+		}
+		if len(matches) == 1 {
+			return matches[0].TargetID, scope, true
+		}
+	}
+	return "", "", false
 }
 
 func lookupTime(value, timezone string) string {

@@ -80,3 +80,32 @@ func TestGroqPlannerUsesStructuredSchemaWithoutOpenRouterRouting(t *testing.T) {
 		t.Fatal(result, err)
 	}
 }
+
+func TestGroundPlanUsesRankedContextOnlyForReferentialRequests(t *testing.T) {
+	state := State{Text: "What's on that list?", SelectedTool: "lookup_note", RecentRecordID: "note-current", RecentRecordKind: "note", Context: []provider.ContextRecord{{ID: "note-current", Kind: "note"}, {ID: "note-old", Kind: "note"}}}
+	plan := groundPlan(ActionPlan{Action: "lookup", Kind: "note"}, state)
+	if plan.TargetID != "note-current" {
+		t.Fatalf("referential request did not use the recent record: %#v", plan)
+	}
+	state.Context[0], state.Context[1] = state.Context[1], state.Context[0]
+	if plan = groundPlan(ActionPlan{Action: "edit", Kind: "note", Field: "title", Value: "New title"}, state); plan.TargetID != "" {
+		t.Fatalf("a different top result was ignored: %#v", plan)
+	}
+	state.Context[0], state.Context[1] = state.Context[1], state.Context[0]
+	state.RecentRecordID = ""
+	if plan = groundPlan(ActionPlan{Action: "edit", Kind: "note", Field: "title", Value: "New title"}, state); plan.TargetID != "" {
+		t.Fatalf("unanchored follow-up selected a mutation target: %#v", plan)
+	}
+	state.RecentRecordID = "note-current"
+	state.Text = "List all notes"
+	if plan = groundPlan(ActionPlan{Action: "lookup", Kind: "note"}, state); plan.TargetID != "" {
+		t.Fatalf("collection request was collapsed to one record: %#v", plan)
+	}
+	state.Text = "Show the note about groceries"
+	if plan = groundPlan(ActionPlan{Action: "lookup", Kind: "note", TargetQuery: "groceries"}, state); plan.TargetID != "" || plan.TargetQuery != "groceries" {
+		t.Fatalf("explicit query was overridden: %#v", plan)
+	}
+	if plan = groundPlan(ActionPlan{Action: "lookup", Kind: "note", TargetID: "note-old"}, state); plan.TargetID != "note-old" {
+		t.Fatalf("explicit grounded ID was overridden: %#v", plan)
+	}
+}

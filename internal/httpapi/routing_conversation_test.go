@@ -84,6 +84,59 @@ func TestRoutingConversationQuestioningAndConfirmation(t *testing.T) {
 	}
 }
 
+func TestRoutingConversationCanSaveMultipleRecordsInOneSession(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h := Handler(s)
+	send := func(path string, body any) (int, map[string]any) {
+		payload, _ := json.Marshal(body)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("POST", path, bytes.NewReader(payload)))
+		var out map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err, w.Body.String())
+		}
+		return w.Code, out
+	}
+	code, conversation := send("/api/v1/conversations/routing", map[string]any{
+		"provider": "mock", "version": "1", "request_id": "multi-save", "text": "Create Alpha", "timezone": "UTC", "fixture": "task",
+	})
+	if code != 201 || conversation["state"] != "awaiting_confirmation" {
+		t.Fatal(code, conversation)
+	}
+	id := conversation["id"].(string)
+	reply := func(text string) {
+		code, next := send("/api/v1/conversations/routing/"+id+"/reply", map[string]any{"version": conversation["version"], "text": text})
+		if code != 200 {
+			t.Fatal(code, next)
+		}
+		conversation = next
+	}
+	reply("yes")
+	if conversation["state"] != "saved" {
+		t.Fatal(conversation)
+	}
+	reply("Create Beta")
+	if conversation["state"] != "awaiting_confirmation" {
+		t.Fatal(conversation)
+	}
+	reply("yes")
+	if conversation["state"] != "saved" {
+		t.Fatal(conversation)
+	}
+	tasks, err := s.Tasks(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 2 || tasks[0].Title != "Create Beta" || tasks[1].Title != "Create Alpha" {
+		t.Fatal(tasks)
+	}
+}
+
 func TestRoutingConversationAmbiguityTimeAndCancel(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {

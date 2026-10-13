@@ -61,7 +61,7 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	}
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), RecentRecordID: input.RecentRecordID, RecentRecordKind: input.RecentRecordKind, Context: []provider.ContextRecord{}}
+	state := routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), RecentConversation: input.RecentConversation, RecentRecordID: input.RecentRecordID, RecentRecordKind: input.RecentRecordKind, Context: []provider.ContextRecord{}}
 	if name == "jev" || name == "free" || name == "groq" {
 		tasks, err := s.Tasks(ctx)
 		if err != nil {
