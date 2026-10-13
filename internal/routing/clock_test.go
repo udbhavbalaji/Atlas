@@ -72,3 +72,15 @@ func TestExplicitOffsetInstantOverridesExtractedClock(t *testing.T) {
 		t.Fatal("ambiguous timestamps must not be chosen")
 	}
 }
+
+func TestExplicitOffsetDoesNotOverrideDifferentRelativeDay(t *testing.T) {
+	state := State{
+		Text:        "Move the task to tomorrow; its old deadline was 2026-10-16T18:00:00+05:30",
+		Timezone:    "Asia/Kolkata",
+		ReferenceAt: "2026-10-16T12:00:00+05:30",
+	}
+	plan := NormalizePlanTiming(ActionPlan{Action: "edit", Kind: "task", Field: "due_at", Value: "2026-10-17T18:00:00+05:30"}, state)
+	if plan.Value != "2026-10-17T18:00:00+05:30" {
+		t.Fatalf("old deadline overrode requested day: %q", plan.Value)
+	}
+}

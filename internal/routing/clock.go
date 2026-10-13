@@ -17,6 +17,11 @@ func NormalizePlanTiming(plan ActionPlan, state State) ActionPlan {
 		plan.ReminderAt, plan.DueAt = plan.DueAt, ""
 	}
 	if instant, ok := explicitInstant(state.Text); ok {
+		// If the request also names a relative day, do not let a timestamp
+		// describing an old value override a different requested day.
+		if day, hasDay := relativeDate(state); hasDay && !sameLocalDate(instant.Format(time.RFC3339Nano), day, state.Timezone) {
+			return normalizeExplicitClock(plan, state)
+		}
 		// A complete instant in the user's own words is more precise than an
 		// extracted timestamp. Keep any linked reminder's offset from the
 		// model's proposed task deadline when correcting that deadline.
