@@ -228,3 +228,8 @@ Use feature branches from `development`; tested work may merge into `development
 3. Enter a context search for an existing dated interview. The channel form displays supplied records and explicit Copy context title/deadline and prerequisite buttons. Copy values, edit them, preview; source and context remain in the structured channel response. Searching by itself must not copy or link a record.
 4. Edit or clear a seeded field after preparation. Normal Dispatch / preview must preserve that change. Skip reminder/note must remove those effects. Unchanged suggested/copied date controls must retain their original instant.
 5. Reminder fixtures can seed reminder title/time/repeat; Note fixtures can seed parsed note contents or retain the sentence verbatim. Mock routing remains fixture-driven; prefill is a separate local helper and makes no Jev calls.
+
+The opt-in, preview-only structured planning follow-up is documented in
+[PLANNING.md](PLANNING.md). Its focused testing page is `/planning-test`, enabled
+with `ATLAS_PLAN_PREVIEW=1`. Default tests use fixtures and simulated HTTP;
+real Jev evaluations require explicit environment opt-in.
