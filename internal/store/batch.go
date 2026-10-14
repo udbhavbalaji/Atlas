@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,14 +22,31 @@ var ErrBatchChanged = errors.New("reviewed records changed; review the batch aga
 // DeleteBatch checks every reviewed record and applies all deletions in one
 // transaction. Newly created records are never included implicitly.
 func (s *Store) DeleteBatch(ctx context.Context, targets []BatchTarget) error {
+	return s.DeleteBatchRequest(ctx, "", targets)
+}
+
+// DeleteBatchRequest records the confirmation in the same transaction as the
+// deletion. Retrying a committed confirmation returns the prior result.
+func (s *Store) DeleteBatchRequest(ctx context.Context, key string, targets []BatchTarget) error {
 	if len(targets) == 0 {
-		return nil
+		return ErrBatchChanged
 	}
+	encoded, err := json.Marshal(targets)
+	if err != nil {
+		return err
+	}
+	hash := fingerprint("batch.delete.v1", string(encoded))
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	var receipt struct{}
+	if replayed, replayErr := replayReceipt(ctx, tx, "batch_delete", key, hash, &receipt); replayErr != nil {
+		return replayErr
+	} else if replayed {
+		return nil
+	}
 	seen := map[string]bool{}
 	for _, target := range targets {
 		var table string
@@ -114,6 +132,9 @@ func (s *Store) DeleteBatch(ctx context.Context, targets []BatchTarget) error {
 				return err
 			}
 		}
+	}
+	if err = saveReceipt(ctx, tx, "batch_delete", key, hash, receipt); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

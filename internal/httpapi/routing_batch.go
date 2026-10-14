@@ -94,7 +94,6 @@ func batchDeleteIntent(ctx context.Context, s *store.Store, text string) (bool, 
 		return false, nil
 	}
 	lower := strings.ToLower(text)
-	kindCount := 0
 	mentions := 0
 	plural := false
 	quantified := false
@@ -105,9 +104,6 @@ func batchDeleteIntent(ctx context.Context, s *store.Store, text string) (bool, 
 		}
 	}
 	for _, kind := range []string{"task", "reminder", "note"} {
-		if strings.Contains(lower, kind) {
-			kindCount++
-		}
 		for _, word := range tokens {
 			if word == kind || word == kind+"s" {
 				mentions++
@@ -117,7 +113,7 @@ func batchDeleteIntent(ctx context.Context, s *store.Store, text string) (bool, 
 			}
 		}
 	}
-	if kindCount >= 2 || (quantified && kindCount > 0) || (strings.Contains(lower, " and ") && (mentions >= 2 || plural)) {
+	if (quantified && mentions > 0) || plural || (strings.Contains(lower, " and ") && mentions >= 2) {
 		return true, nil
 	}
 	items, err := batchInventory(ctx, s, []string{"task", "reminder", "note"})
@@ -125,6 +121,109 @@ func batchDeleteIntent(ctx context.Context, s *store.Store, text string) (bool, 
 		return false, err
 	}
 	return len(exactTitleMatches(lower, items)) >= 2, nil
+}
+
+// A local batch route must not discard another action in the same request.
+// Send these requests to a visible clarification before either action starts.
+func compoundBatchRequest(text string) bool {
+	lower := strings.ToLower(text)
+	words := strings.FieldsFunc(lower, func(r rune) bool { return !unicode.IsLetter(r) })
+	if len(words) == 0 {
+		return false
+	}
+	i := 0
+	if words[i] == "please" {
+		i++
+	}
+	if i+1 < len(words) && (words[i] == "can" || words[i] == "could") && words[i+1] == "you" {
+		i += 2
+	}
+	if i+2 < len(words) && words[i] == "i" && words[i+1] == "want" && words[i+2] == "to" {
+		i += 3
+	}
+	if i >= len(words) || (words[i] != "delete" && words[i] != "remove" && words[i] != "clear") {
+		return false
+	}
+	for _, phrase := range []string{" and add ", " and create ", " and make ", " and remind ", " and schedule ", " and send ", " and email ", " and edit ", " and update ", " and move ", " and rename ", " and complete ", " and dismiss ", " then add ", " then create ", " then remind ", " then send ", " then edit ", " then update ", " then move ", " then rename ", " then complete ", " then dismiss "} {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// These are distinct product operations that the conversational action plan
+// cannot represent. Recognize only explicit commands; model routing handles
+// less direct language and still has an unsupported choice.
+func unsupportedWorkflowReason(text string) string {
+	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) })
+	for len(words) > 0 && (words[0] == "please" || words[0] == "hey") {
+		words = words[1:]
+	}
+	if len(words) >= 2 && (words[0] == "can" || words[0] == "could" || words[0] == "would") && words[1] == "you" {
+		words = words[2:]
+	}
+	if len(words) >= 3 && words[0] == "i" && words[1] == "want" && words[2] == "to" {
+		words = words[3:]
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	has := func(targets ...string) bool {
+		for _, word := range words {
+			for _, target := range targets {
+				if word == target {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	verb := words[0]
+	object := words[1:]
+	for len(object) > 0 && (object[0] == "a" || object[0] == "an" || object[0] == "the" || object[0] == "my" || object[0] == "new") {
+		object = object[1:]
+	}
+	if len(object) > 0 && (object[0] == "project" || object[0] == "projects") && (verb == "create" || verb == "add" || verb == "make" || verb == "manage") {
+		return "I can't create a project record in Atlas. I can save a task or note about the project."
+	}
+	if (verb == "send" || verb == "email" || verb == "text" || verb == "post") && has("email", "message", "text", "notification") {
+		return "I can't send an email or message from Atlas. I can save a task or reminder to do it."
+	}
+	if (verb == "link" || verb == "unlink" || verb == "attach" || verb == "detach") && has("task", "tasks", "reminder", "reminders", "note", "notes") {
+		return "I can't change links between existing records in this conversation. The direct Atlas API supports note and reminder links."
+	}
+	if verb == "remove" && has("from") && has("note", "notes", "reminder", "reminders") && has("task", "tasks", "reminder", "reminders") {
+		return "I can't remove a link between existing records in this conversation. The direct Atlas API supports note and reminder links."
+	}
+	if (verb == "relate" || verb == "unrelate" || verb == "add" || verb == "remove") && has("relation", "relations", "relationship", "relationships") {
+		return "I can't change record relations in this conversation. The direct Atlas API supports relations."
+	}
+	if (verb == "add" || verb == "remove" || verb == "make") && has("dependency", "dependencies", "depend", "depends") {
+		return "I can't change task dependencies in this conversation. The direct Atlas API supports task dependencies."
+	}
+	if verb == "make" && has("before") && has("task", "tasks") {
+		return "I can't change task dependencies in this conversation. The direct Atlas API supports task dependencies."
+	}
+	if (verb == "change" || verb == "update" || verb == "edit" || verb == "stop") && has("repeat", "repeating", "recurrence", "recurring") && has("reminder", "reminders") {
+		return "I can't change an existing reminder's repeat rule. I can create a new repeating reminder."
+	}
+	if (verb == "complete" || verb == "finish" || verb == "reopen" || verb == "reschedule" || verb == "edit" || verb == "update") && has("all", "every") && has("task", "tasks", "reminder", "reminders", "note", "notes") {
+		return "I can't change multiple saved records in one conversation action. Tell me which record to change first."
+	}
+	return ""
+}
+
+func localUnsupportedRoute(service routingService, name string, input routing.Request, reason string) routing.Result {
+	result := localBatchRoute(service, name, input)
+	result.State = "unsupported"
+	result.SelectedTool = ""
+	result.SelectedChannel = ""
+	result.Category = "unsupported_workflow"
+	result.ExtractionModel = "local_capability_guard"
+	result.Plan = &routing.ActionPlan{Action: "unsupported", Clarification: reason}
+	result.RoutingToken = service.sign(result)
+	return result
 }
 
 func exactTitleMatches(lower string, items []store.BatchTarget) []store.BatchTarget {
@@ -171,7 +270,7 @@ func batchInventory(ctx context.Context, s *store.Store, kinds []string) ([]stor
 }
 
 func localBatchRoute(service routingService, name string, input routing.Request) routing.Result {
-	result := routing.Result{Version: routing.Version, RegistryVersion: routing.RegistryVersion, RequestID: input.RequestID, Provider: name, Category: "remove", SelectedTool: "delete_batch", SelectedChannel: "batch_delete", State: "routed", Policy: routing.DefaultPolicy,
+	result := routing.Result{Version: routing.Version, RegistryVersion: routing.RegistryVersion, RequestID: input.RequestID, Provider: name, Mock: name == "mock", Category: "remove", SelectedTool: "delete_batch", SelectedChannel: "batch_delete", State: "routed", Policy: routing.DefaultPolicy,
 		Input: routing.State{Text: input.Text, Timezone: input.Timezone, ReferenceAt: time.Now().UTC().Format(time.RFC3339Nano), RecentConversation: input.RecentConversation, Context: []provider.ContextRecord{}}, ExtractionModel: "local_batch_scope"}
 	result.RoutingToken = service.sign(result)
 	return result
@@ -199,7 +298,7 @@ func (c *routingConversation) prepareBatch(ctx context.Context, s *store.Store) 
 		c.State = "answered"
 		return nil
 	}
-	if !all && len(b.Targets) < 2 {
+	if !all && (len(b.Targets) < 2 || duplicateBatchTitle(b.Targets)) {
 		b.Targets = []store.BatchTarget{}
 		b.Candidates = items
 		c.State = "awaiting_batch_targets"
@@ -218,6 +317,18 @@ func (c *routingConversation) prepareBatch(ctx context.Context, s *store.Store) 
 	}
 	c.State = "awaiting_delete_confirmation"
 	return nil
+}
+
+func duplicateBatchTitle(targets []store.BatchTarget) bool {
+	seen := map[string]bool{}
+	for _, target := range targets {
+		title := strings.ToLower(strings.TrimSpace(target.Title))
+		if seen[title] {
+			return true
+		}
+		seen[title] = true
+	}
+	return false
 }
 
 func (c *routingConversation) selectBatchTargets(value string) bool {
@@ -304,11 +415,11 @@ func containsKind(kinds []string, kind string) bool {
 	return false
 }
 
-func (c *routingConversation) commitBatch(ctx context.Context, s *store.Store) error {
+func (c *routingConversation) commitBatch(ctx context.Context, s *store.Store, key string) error {
 	if c.Batch == nil || len(c.Batch.Targets) == 0 {
 		return routing.ErrContract
 	}
-	if err := s.DeleteBatch(ctx, c.Batch.Targets); err != nil {
+	if err := s.DeleteBatchRequest(ctx, key, c.Batch.Targets); err != nil {
 		return err
 	}
 	counts := map[string]int{}

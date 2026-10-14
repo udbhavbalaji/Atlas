@@ -26,7 +26,7 @@ function routingConversationRender(state){
  for(const warning of state.warnings||[]){const p=document.createElement('p');p.className='meta';p.textContent=warning;preview.append(p);}
  if(state.state==='awaiting_confirmation'){for(const reply of ['yes','cancel']){const b=document.createElement('button');b.type='button';b.textContent=reply==='yes'?'Confirm and save':'Cancel';b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,text:reply});preview.append(b);}}
  if(state.state==='awaiting_delete_confirmation'){for(const reply of ['yes','cancel']){const b=document.createElement('button');b.type='button';b.textContent=reply==='yes'?'Confirm deletion':'Cancel';b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,text:reply});preview.append(b);}}
- $('routing-conversation-reply').hidden=['cancelled','unsupported'].includes(state.state);
+ $('routing-conversation-reply').hidden=state.state==='cancelled';
 }
 async function routingConversationCall(path,method,body){
  if(routingConversationBusy)return;routingConversationBusy=true;

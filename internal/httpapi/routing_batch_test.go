@@ -4,6 +4,7 @@ import (
 	"atlas/internal/store"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -162,6 +163,155 @@ func TestBatchDeletePickerRequiresSeparateConfirmation(t *testing.T) {
 	}
 	if _, err = s.ReminderState(t.Context(), reminder.ID); err != nil {
 		t.Fatal("selection deleted reminder", err)
+	}
+}
+
+func TestBatchDeleteDoesNotSwallowSecondAction(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	task, err := s.Create(t.Context(), "Keep until reviewed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "batch-compound", "text": "Delete all tasks and add a reminder", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_route" || c["channel"] != "" || !strings.Contains(c["prompt"].(string), "another action") {
+		t.Fatal(code, c)
+	}
+	if _, err = s.TaskState(t.Context(), task.ID); err != nil {
+		t.Fatal("task changed before clarification", err)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "Delete all tasks"})
+	if code != 200 || c["state"] != "awaiting_delete_confirmation" {
+		t.Fatal(code, c)
+	}
+}
+
+func TestBatchDeleteUsesWholeKindWordsAndExplainsInvalidSelection(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	_, _ = s.Create(t.Context(), "Pick task")
+	_, _ = s.CreateReminder(t.Context(), "Pick reminder", time.Now().Add(time.Hour).UTC().Format(time.RFC3339), "UTC")
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	send := batchTestSend(t, mux)
+	code, result := send("/api/v1/routing/mock/evaluate", map[string]any{"version": "1", "request_id": "single-note", "text": "Remove note from reminder", "timezone": "UTC", "fixture": "delete"})
+	if code != 200 || result["selected_tool"] == "delete_batch" {
+		t.Fatal(code, result)
+	}
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "batch-invalid", "text": "Delete task and reminder", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_batch_targets" {
+		t.Fatal(code, c)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "not a listed ID"})
+	if code != 200 || c["state"] != "awaiting_batch_targets" || !strings.Contains(c["prompt"].(string), "couldn't match") {
+		t.Fatal(code, c)
+	}
+}
+
+func TestUnsupportedRequestExplainsLimitAndAcceptsClarification(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "unsupported-clarify", "text": "Send an email", "timezone": "UTC", "fixture": "unsupported"})
+	if code != 201 || c["state"] != "unsupported" || !strings.Contains(c["prompt"].(string), "can't send") || c["next_request"].(map[string]any)["terminal"] != false {
+		t.Fatal(code, c)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "note"})
+	if code != 200 || c["channel"] != "notes" || c["state"] == "unsupported" {
+		t.Fatal(code, c)
+	}
+}
+
+func TestExplicitUnavailableWorkflowOperations(t *testing.T) {
+	for _, tc := range []struct{ request, reason string }{
+		{"Link this note to my task", "can't change links"},
+		{"Add a dependency between my tasks", "can't change task dependencies"},
+		{"Change the repeat rule on my reminder", "can't change an existing reminder's repeat rule"},
+		{"Complete all tasks", "can't change multiple"},
+		{"Create a project", "can't create a project"},
+	} {
+		if got := unsupportedWorkflowReason(tc.request); !strings.Contains(got, tc.reason) {
+			t.Errorf("%q: %q", tc.request, got)
+		}
+	}
+	if got := unsupportedWorkflowReason("Add a reminder about my project"); got != "" {
+		t.Fatalf("supported reminder classified as unsupported: %q", got)
+	}
+}
+
+func TestBatchDeleteDuplicateTitlesRequireExplicitSelection(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	_, _ = s.Create(t.Context(), "Duplicate target")
+	_, _ = s.Create(t.Context(), "Duplicate target")
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	code, c := batchTestSend(t, mux)("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "batch-duplicates", "text": "Delete Duplicate target", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_batch_targets" {
+		t.Fatal(code, c)
+	}
+}
+
+func TestBatchDeleteConfirmationReceiptSurvivesRetry(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	task, err := s.Create(t.Context(), "Receipt target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := []store.BatchTarget{{Kind: "task", ID: task.ID, Title: task.Title, UpdatedAt: task.UpdatedAt}}
+	if err = s.DeleteBatchRequest(t.Context(), "batch-retry", targets); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteBatchRequest(t.Context(), "batch-retry", targets); err != nil {
+		t.Fatal("committed confirmation did not replay", err)
+	}
+	changed := append([]store.BatchTarget(nil), targets...)
+	changed[0].Title = "Different review"
+	if err = s.DeleteBatchRequest(t.Context(), "batch-retry", changed); !errors.Is(err, store.ErrIdempotencyConflict) {
+		t.Fatalf("different confirmation reused receipt: %v", err)
+	}
+	if err = s.DeleteBatch(t.Context(), nil); !errors.Is(err, store.ErrBatchChanged) {
+		t.Fatalf("empty request succeeded: %v", err)
+	}
+}
+
+func TestAmbiguousRouteShowsLikelyActionsAndRejectedReply(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "ambiguous-suggestions", "text": "Remember the meeting", "timezone": "UTC", "fixture": "ambiguous"})
+	if code != 201 || c["state"] != "awaiting_route" || !strings.Contains(c["prompt"].(string), "add a task") || !strings.Contains(c["prompt"].(string), "add a reminder") {
+		t.Fatal(code, c)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "maybe later"})
+	if code != 200 || c["state"] != "awaiting_route" || !strings.Contains(c["prompt"].(string), "couldn't match") {
+		t.Fatal(code, c)
 	}
 }
 

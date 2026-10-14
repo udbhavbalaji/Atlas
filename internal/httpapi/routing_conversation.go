@@ -35,7 +35,10 @@ type routingConversation struct {
 func (c *routingConversation) prompt() string {
 	switch c.State {
 	case "unsupported":
-		return "I can add, find, edit, and delete Atlas tasks, reminders, and notes. That request needs another capability."
+		if c.Route.Plan != nil && c.Route.Plan.Clarification != "" {
+			return c.Route.Plan.Clarification + " Reply with a supported action or send a new request."
+		}
+		return "I can't do that request in Atlas. I can add, find, edit, and delete saved tasks, reminders, and notes. Reply with the action you meant, such as ‘note’, ‘find’, or ‘edit’, or send a new request."
 	case "cancelled":
 		return "Cancelled. Nothing was saved."
 	case "saved":
@@ -71,13 +74,32 @@ func (c *routingConversation) prompt() string {
 	case "confirming":
 		return "Saving. If the connection was interrupted, retry confirmation or resume this conversation."
 	case "awaiting_route":
-		return "Should I add, find, edit, or delete a saved record?"
+		prompt := "Should I add, find, edit, or delete a saved record?"
+		if c.Route.Category == "compound" {
+			prompt = "I see a deletion and another action in your request. I can handle them one at a time. Please restate the first action separately, for example, ‘delete all tasks’ or ‘add a reminder’. No records have changed."
+		} else if c.Route.Plan != nil && c.Route.Plan.Clarification != "" {
+			prompt = c.Route.Plan.Clarification + " I can add, find, edit, or delete a saved task, reminder, or note."
+		} else if choices := likelyRouteActions(c.Route); len(choices) == 2 {
+			prompt = "I'm not sure whether you want to " + choices[0] + " or " + choices[1] + ". Which should I do? No records have changed."
+		}
+		if len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
 	case "awaiting_target", "awaiting_field", "awaiting_change":
 		if c.Question != nil {
-			return c.Question.Prompt
+			prompt := c.Question.Prompt + " I haven't changed a record yet."
+			if len(c.Warnings) > 0 {
+				prompt += " " + c.Warnings[len(c.Warnings)-1]
+			}
+			return prompt
 		}
 	case "awaiting_batch_targets":
-		return "Choose the saved records to delete. Review the selected list before confirming."
+		prompt := "I'm not sure which records you mean. Choose the saved records to delete. Review the selected list before confirming. Nothing has been deleted."
+		if len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
 	case "awaiting_delete_confirmation", "deleting", "deleting_batch":
 		if c.Batch != nil {
 			counts := map[string]int{}
@@ -90,10 +112,18 @@ func (c *routingConversation) prompt() string {
 					parts = append(parts, strconv.Itoa(counts[kind])+" "+kind)
 				}
 			}
-			return "Delete these " + strings.Join(parts, " and ") + " records? This cannot be undone. Only the listed records will be deleted. " + strings.Join(c.Batch.Effects, " ") + " Say yes to delete or cancel."
+			prompt := "Delete these " + strings.Join(parts, " and ") + " records? This cannot be undone. Only the listed records will be deleted. " + strings.Join(c.Batch.Effects, " ") + " Say yes to delete or cancel."
+			if len(c.Warnings) > 0 {
+				prompt += " " + c.Warnings[len(c.Warnings)-1]
+			}
+			return prompt
 		}
 		if c.Mutation != nil {
-			return "Delete " + c.Mutation.Kind + " “" + c.Mutation.Title + "”? This cannot be undone. " + strings.Join(c.Mutation.Effects, " ") + " Say yes to delete or cancel."
+			prompt := "Delete " + c.Mutation.Kind + " “" + c.Mutation.Title + "”? This cannot be undone. " + strings.Join(c.Mutation.Effects, " ") + " Say yes to delete or cancel."
+			if len(c.Warnings) > 0 {
+				prompt += " " + c.Warnings[len(c.Warnings)-1]
+			}
+			return prompt
 		}
 	case "applying_edit":
 		return "Applying the change. Resume this conversation if the connection was interrupted."
@@ -121,17 +151,42 @@ func (c *routingConversation) prompt() string {
 		return prompt
 	}
 	if c.Question != nil {
-		return c.Question.Prompt
+		prompt := c.Question.Prompt
+		if len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
 	}
-	return "Tell me what you would like to save."
+	return "Tell me what you would like to do with a saved task, reminder, or note."
+}
+
+func likelyRouteActions(route routing.Result) []string {
+	labels := map[string]string{"task": "add a task", "reminder": "add a reminder", "note": "add a note", "lookup": "find a saved record", "edit": "edit a saved record", "delete": "delete a saved record"}
+	probabilities := route.Evaluation.Decision.Probabilities
+	choices := []string{}
+	used := map[string]bool{}
+	for len(choices) < 2 {
+		best := ""
+		for action := range labels {
+			if !used[action] && probabilities[action] >= 0.15 && (best == "" || probabilities[action] > probabilities[best]) {
+				best = action
+			}
+		}
+		if best == "" {
+			break
+		}
+		used[best] = true
+		choices = append(choices, labels[best])
+	}
+	return choices
 }
 
 func routingConversationResponse(w http.ResponseWriter, status int, d store.SessionDocument, c routingConversation) {
 	prompt := c.prompt()
-	if n := len(c.Messages); n > 0 && c.Messages[n-1].Role == "assistant" {
+	if n := len(c.Messages); n > 0 && c.Messages[n-1].Role == "assistant" && (c.State == "answered" || c.State == "saved") {
 		prompt = c.Messages[n-1].Text
 	}
-	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch"}})
+	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch"}})
 }
 
 func (c *routingConversation) appendAssistant(ctx *http.Request, service routingService) {
@@ -720,7 +775,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			failure(w, store.ErrSessionConflict)
 			return
 		}
-		if c.State == "cancelled" || c.State == "unsupported" {
+		if c.State == "cancelled" {
 			apiError(w, 409, "session_closed", "Start a new routing conversation.", false)
 			return
 		}
@@ -728,7 +783,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			apiError(w, 409, "confirmation_pending", "Retry confirmation to recover the result.", false)
 			return
 		}
-		if c.State != "confirming" {
+		if c.State != "confirming" && c.State != "deleting_batch" {
 			c.Messages = append(c.Messages, conversationTurn{Role: "user", Text: value})
 			if isCancel(value) {
 				c.State = "cancelled"
@@ -736,23 +791,44 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 				c.Proposal = nil
 			} else {
 				switch c.State {
-				case "answered", "saved":
+				case "answered", "saved", "unsupported":
 					previousID, previousKind := conversationFocusRecord(c)
-					result, routeErr := evaluateRouting(r.Context(), s, service, c.Route.Provider, routing.Request{Version: routing.Version, RequestID: d.ID + "." + strconv.Itoa(d.Version+1), Text: value, Timezone: c.Route.Input.Timezone, RecentConversation: recentConversation(c.Messages), RecentRecordID: previousID, RecentRecordKind: previousKind, Fixture: c.Fixture})
+					fixture := c.Fixture
+					if c.State == "unsupported" {
+						fixture = ""
+						if c.Route.Provider == "mock" {
+							fixture = map[string]string{"tasks": "task", "reminders": "reminder", "notes": "note", "lookup": "lookup", "edit": "edit", "delete": "delete"}[selectedChannel(value)]
+						}
+					}
+					result, routeErr := evaluateRouting(r.Context(), s, service, c.Route.Provider, routing.Request{Version: routing.Version, RequestID: d.ID + "." + strconv.Itoa(d.Version+1), Text: value, Timezone: c.Route.Input.Timezone, RecentConversation: recentConversation(c.Messages), RecentRecordID: previousID, RecentRecordKind: previousKind, Fixture: fixture})
 					if routeErr != nil {
 						routingFailure(w, routeErr)
 						return
 					}
+					c.Fixture = fixture
 					if err = c.beginRoute(r, s, result); err != nil {
 						failure(w, err)
 						return
 					}
 				case "awaiting_route":
+					if c.Route.Category == "compound" {
+						result, routeErr := evaluateRouting(r.Context(), s, service, c.Route.Provider, routing.Request{Version: routing.Version, RequestID: d.ID + "." + strconv.Itoa(d.Version+1), Text: value, Timezone: c.Route.Input.Timezone, RecentConversation: recentConversation(c.Messages)})
+						if routeErr != nil {
+							routingFailure(w, routeErr)
+							return
+						}
+						if err = c.beginRoute(r, s, result); err != nil {
+							failure(w, err)
+							return
+						}
+						break
+					}
 					channel := selectedChannel(value)
 					if channel == "" {
 						channel = c.naturalRouteChoice(r.Context(), service, value)
 					}
 					if channel != "" {
+						c.Warnings = nil
 						c.Channel = channel
 						c.Draft.Channel = channel
 						c.Draft.ReviewedChannel = true
@@ -771,13 +847,18 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 							failure(w, err)
 							return
 						}
+					} else {
+						c.Warnings = []string{"I couldn't match that to a saved-record action. Reply with task, reminder, note, find, edit, or delete."}
 					}
 				case "awaiting_answer":
 					if c.answer(in.Field, value) || in.Field == "" && c.naturalChoiceAnswer(r.Context(), service, value) {
+						c.Warnings = nil
 						if err = c.advance(r, s); err != nil {
 							failure(w, err)
 							return
 						}
+					} else {
+						c.Warnings = []string{"I couldn't use that answer. Please choose one of the offered options or answer the question directly."}
 					}
 				case "awaiting_confirmation":
 					if isConfirm(value) {
@@ -794,16 +875,31 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 							failure(w, err)
 							return
 						}
+					} else if c.State == "awaiting_confirmation" && len(c.Warnings) == 0 {
+						c.Warnings = []string{"I haven't applied that request. Change this draft, confirm it, or cancel it before starting a new request."}
 					}
 				case "awaiting_batch_targets":
 					if c.selectBatchTargets(value) {
+						c.Warnings = nil
 						if err = c.batchEffects(r.Context(), s); err != nil {
 							failure(w, err)
 							return
 						}
+					} else {
+						c.Warnings = []string{"I couldn't match that selection. Select one or more records from the list, or cancel."}
 					}
 				case "awaiting_target", "awaiting_field", "awaiting_change":
-					c.mutationReply(r.Context(), s, value)
+					before := c.State
+					handled, mutationErr := c.mutationReply(r.Context(), s, value)
+					if mutationErr != nil {
+						failure(w, mutationErr)
+						return
+					}
+					if !handled || before == "awaiting_change" && c.State == before {
+						c.Warnings = []string{"I couldn't apply that answer. Please provide the requested record, field, or value."}
+					} else {
+						c.Warnings = nil
+					}
 				case "awaiting_delete_confirmation":
 					if isConfirm(value) {
 						if c.Batch != nil {
@@ -811,6 +907,8 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 						} else {
 							c.State = "deleting"
 						}
+					} else {
+						c.Warnings = []string{"I have not started that new request. Confirm this deletion or cancel it, then send the new request."}
 					}
 				}
 			}
@@ -834,7 +932,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			}
 		}
 		if c.State == "deleting_batch" {
-			if err = c.commitBatch(r.Context(), s); errors.Is(err, store.ErrBatchChanged) {
+			if err = c.commitBatch(r.Context(), s, "routing.batch."+d.ID+"."+strconv.Itoa(d.Version)); errors.Is(err, store.ErrBatchChanged) {
 				if err = c.prepareBatch(r.Context(), s); err != nil {
 					failure(w, err)
 					return

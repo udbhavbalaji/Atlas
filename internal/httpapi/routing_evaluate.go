@@ -23,7 +23,19 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	if err := routing.ValidateRequest(input); err != nil {
 		return routing.Result{}, err
 	}
-	if name == "jev" || name == "mock" {
+	if name == "jev" || name == "mock" || name == "free" || name == "groq" {
+		if compoundBatchRequest(input.Text) {
+			result := localBatchRoute(service, name, input)
+			result.State = "needs_clarification"
+			result.SelectedChannel = ""
+			result.SelectedTool = ""
+			result.Category = "compound"
+			result.RoutingToken = service.sign(result)
+			return result, nil
+		}
+		if reason := unsupportedWorkflowReason(input.Text); reason != "" {
+			return localUnsupportedRoute(service, name, input, reason), nil
+		}
 		batch, err := batchDeleteIntent(parent, s, input.Text)
 		if err != nil {
 			return routing.Result{}, err
