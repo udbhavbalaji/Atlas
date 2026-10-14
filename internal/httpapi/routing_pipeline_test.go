@@ -144,6 +144,19 @@ func TestJevMalformedActionJSONAsksForReview(t *testing.T) {
 	if err != nil || len(tasks) != 0 {
 		t.Fatal(tasks, err)
 	}
+	reply, _ := json.Marshal(map[string]any{"version": out["version"], "text": "task"})
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/conversations/routing/"+out["id"].(string)+"/reply", bytes.NewReader(reply)))
+	if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || out["state"] != "awaiting_confirmation" {
+		t.Fatal(w.Code, out)
+	}
+	tasks, err = s.Tasks(t.Context())
+	if err != nil || len(tasks) != 0 {
+		t.Fatal("channel choice saved without confirmation", tasks, err)
+	}
 }
 
 func TestJevNoteListAgainAndReadThatNote(t *testing.T) {

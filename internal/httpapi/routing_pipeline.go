@@ -193,6 +193,9 @@ func pipelineExtractionClarification(result routing.Result, tool string) routing
 	}
 	result.State = "needs_clarification"
 	result.SelectedChannel = ""
+	// A reviewed channel choice is not approval to save. Clearing the category
+	// keeps Jev's normal automatic capture out of this recovery path.
+	result.Category = ""
 	result.ExtractionModel = "unavailable"
 	result.Plan = &routing.ActionPlan{Action: "clarify", Clarification: "I think you want to " + label + ", but I couldn't reliably read the details. Choose the intended action below to review them, or start a new request with clearer wording."}
 	return result
