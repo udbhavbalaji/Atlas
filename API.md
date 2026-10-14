@@ -289,3 +289,12 @@ Confirmation commits the reviewed proposal through the atomic capture transactio
 The **Voice** testing tab is a browser client for this same contract. Its transport class (`voice-client-core.js`) has `start`, `resume`, `reply(text, field, value)`, `confirm`, and `cancel`. A voice model can call `reply` with a text transcript or the current question's structured field and value. The browser UI keeps confirmation behind a separate button even when speech recognition returns “yes.”
 
 The testing UI applies initial suggestions to empty controls, exposes source/context and allows explicit copying of supplied context titles/deadlines or choosing a prerequisite target. Then submit the reviewed fields without `prefill` to preview. Explicit edits, clears and skip choices take precedence; normal previews never refill them. Date controls retain the original exact instant when a suggested/copied value is unchanged, including timezone offsets and subsecond precision.
+
+## Experimental multi-action plan previews
+
+`ATLAS_PLAN_PREVIEW=1` enables preview and revision endpoints under
+`/api/v1/planning`; it defaults off. `/planning-test` provides fixed mock cases
+and an explicit live Jev mode. Plans contain typed actions, unresolved fields,
+and task-deadline references. They never write records or authorize dispatch.
+See [PLANNING.md](PLANNING.md) for the request/response contract, limitations,
+existing-router comparison, opt-in evaluations and rollout gates.
