@@ -125,7 +125,7 @@ function voiceUpdateControls() {
   window.atlasDesktopAudio?.updateControls();
 }
 
-async function voiceCall(action, speak = true) {
+async function voiceCall(action, speak = true, starting = false) {
   if (voiceBusy) return;
   voiceBusy = true;
   voiceStatus('Sending to Atlas…');
@@ -140,7 +140,10 @@ async function voiceCall(action, speak = true) {
     if (speak) voiceSpeakPrompt();
     if ((state.saved || state.mutation && state.state === 'answered') && typeof load === 'function') await load();
   } catch (error) {
-    const message = error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : '');
+    let message = error.message;
+    if (error.status) message += starting
+      ? ' Atlas did not return a conversation for this request. Retry or rephrase it.'
+      : ' Resume the session to check its latest state before retrying.';
     voiceStatus(message);
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = message;
     if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = message;
@@ -238,7 +241,7 @@ voiceElement('start-form').onsubmit = event => {
     timezone: zone,
     contextQuery: voiceElement('context').value.trim(),
     requestID: crypto.randomUUID()
-  }));
+  }), true, true);
 };
 if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
   voiceClient.state = null;

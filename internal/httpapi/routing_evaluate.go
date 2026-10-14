@@ -250,7 +250,7 @@ func routingFailure(w http.ResponseWriter, err error) {
 		apiError(w, 503, "routing_unavailable", message, retryable)
 	case errors.Is(err, routing.ErrContract):
 		log.Printf("Atlas routing contract rejected: %v", err)
-		apiError(w, 422, "routing_evaluation_rejected", err.Error(), false)
+		apiError(w, 422, "routing_evaluation_rejected", "Atlas could not reliably interpret this request. Please rephrase it or specify whether you want to add, find, edit, or delete a task, reminder, or note.", false)
 	default:
 		failure(w, err)
 	}

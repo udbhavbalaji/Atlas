@@ -326,7 +326,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	c.ResponseModel = ""
 	c.Warnings = []string{}
 	if result.ExtractionModel == "local_parser" {
-		c.Warnings = append(c.Warnings, "Free model extraction was unavailable; Atlas used its local parser for this reminder.")
+		c.Warnings = append(c.Warnings, "Atlas used its local parser for this request.")
 	}
 	c.CorrectionAttempted = false
 	c.Draft = dispatchRequest{Version: routing.Version, RoutingToken: result.RoutingToken}

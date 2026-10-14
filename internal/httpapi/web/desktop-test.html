@@ -7,6 +7,7 @@
 <section class="composer"><h2>Reminder conversation check</h2><p>This sends “Remind me to buy bread tomorrow morning at 8am”, verifies the saved local time, asks for all upcoming reminders in the same conversation, and removes the test reminder. It uses Jev and free model requests.</p><button id="reminder-send-test" class="primary">Test reminder flow</button><pre id="reminder-send-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Exact reminder time check</h2><p>This sends “Remind me to call Neha tomorrow morning at 8am.” through Jev, verifies it saves without asking for the time again, and removes the temporary reminder.</p><button id="neha-reminder-test" class="primary">Test Neha reminder</button><pre id="neha-reminder-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Note rename conversation check</h2><p>This creates a temporary note, asks Atlas to rename its title in one sentence, checks that its body is preserved, and removes the note.</p><button id="note-rename-test" class="primary">Test note rename</button><pre id="note-rename-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Explicit note capture check</h2><p>This sends “make a note of this: …” through Jev, checks that Atlas saves the exact body with its local parser, and removes the temporary note. It uses Jev requests but no free model extraction.</p><button id="explicit-note-test" class="primary">Test explicit note</button><pre id="explicit-note-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Note follow-up check</h2><p>This creates a temporary titled note, lists notes, opens that exact note through Jev, then asks “What does it say?” in the same conversation. It removes the note afterward.</p><button id="note-followup-test" class="primary">Test note follow-up</button><pre id="note-followup-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Free natural language check</h2><p>This sends one sentence and up to 50 saved record summaries to the selected service using your configured key. It consumes one free model request and does not change records.</p><label>Service<select id="plan-provider"><option value="groq">Groq free</option><option value="free">OpenRouter free</option></select></label><label>Sentence<input id="free-question" value="When is my interview?"></label><button id="free-test" class="primary">Test free model plan</button><pre id="free-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre><p><a href="/batch-test">Test batch deletion and explicit approval</a></p></section>
@@ -140,6 +141,20 @@ document.getElementById('note-rename-test').addEventListener('click', async () =
   if(result.state!=='answered'||saved.note?.title!=='grocery list'||saved.note?.body!==body)throw new Error(`Unexpected result: ${result.prompt||result.state}; title: ${saved.note?.title||'unset'}`);
   output.textContent=`Passed: ${result.prompt}\nNote body stayed intact.`;
  }catch(error){output.textContent=`Failed: ${error.message}`;}
+ finally{if(id){const removed=await fetch('/api/v1/notes/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary note removed.':'\nCould not remove the temporary note; delete it in Records and tests.';}}
+});
+document.getElementById('explicit-note-test').addEventListener('click', async () => {
+ const output=document.getElementById('explicit-note-results');output.textContent='Sending an explicit note request…';let id='';
+ const body='Atlas explicit note check '+crypto.randomUUID().slice(0,8);
+ try {
+  const response=await fetch('/api/v1/conversations/routing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'jev',version:'1',request_id:crypto.randomUUID(),text:'make a note of this: '+body,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error?.message||'Conversation failed.');
+  id=result.saved?.notes?.[0]?.id||'';
+  if(result.state!=='saved'||result.route?.extraction_model!=='local_parser'||!id)throw new Error('Atlas did not save the explicit note through the local parser.');
+  const savedResponse=await fetch('/api/v1/notes/'+encodeURIComponent(id));const saved=await savedResponse.json();
+  if(!savedResponse.ok||saved.note?.body!==body)throw new Error('Saved note body did not match the original request.');
+  output.textContent='Passed: '+result.prompt;
+ }catch(error){output.textContent='Failed: '+error.message;}
  finally{if(id){const removed=await fetch('/api/v1/notes/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary note removed.':'\nCould not remove the temporary note; delete it in Records and tests.';}}
 });
 document.getElementById('note-followup-test').addEventListener('click', async () => {

@@ -36,7 +36,20 @@ type Result struct {
 	Assumptions         []string               `json:"assumptions"`
 }
 
-var notePrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:note\s*:|note that\s+|take a note\s*:?|make a note(?: that)?\s*:?|save a note(?: that)?\s*:?|(?:i need to |i want to )?remember that\s+)\s*`)
+var notePrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:note\s*:|note that\s+|take a note\s*:?|make a note(?: that| of this)?\s*:?|save a note(?: that)?\s*:?|(?:i need to |i want to )?remember that\s+)\s*`)
+
+// ExplicitNoteBody preserves the user's words for an unambiguous note request.
+// The routing layer can use it after choosing the note tool without another
+// model call or an inferred title, date, or record link.
+func ExplicitNoteBody(text string) (string, bool) {
+	command := regexp.MustCompile(`(?i)^(?:can|could|would) you (?:please )?`).ReplaceAllString(strings.TrimSpace(text), "")
+	prefix := notePrefix.FindStringIndex(command)
+	if prefix == nil {
+		return "", false
+	}
+	return strings.TrimSpace(command[prefix[1]:]), true
+}
+
 var reminderPrefix = regexp.MustCompile(`(?i)^(?:please\s+)?(?:remind me(?: to)?\s+|reminder\s*:\s*|set a reminder(?: to| for)?\s+|(?:i need to |i want to )?remember to\s+|don't forget to\s+)`)
 var eventPrefix = regexp.MustCompile(`(?i)^(?:please\s+)?i(?: have(?: got)?|'ve got) (?:an? |my )?interview\b`)
 var eventIntro = regexp.MustCompile(`(?i)^(?:please\s+)?i(?: have(?: got)?|'ve got) (?:an? |my )?`)
@@ -62,9 +75,9 @@ func Interpret(text, zone string, reference time.Time) (Result, error) {
 	input := store.CaptureInput{Kind: "task"}
 	ask := func(field, code, message string) { r.Questions = append(r.Questions, Question{field, code, message}) }
 	command := regexp.MustCompile(`(?i)^(?:can|could|would) you (?:please )?`).ReplaceAllString(text, "")
-	if prefix := notePrefix.FindStringIndex(command); prefix != nil {
+	if body, ok := ExplicitNoteBody(text); ok {
 		input.Kind = "note"
-		input.NoteBody = strings.TrimSpace(command[prefix[1]:])
+		input.NoteBody = body
 		return finish(r, input)
 	}
 	action := command
