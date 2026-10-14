@@ -171,12 +171,13 @@ type channelResponse struct {
 	Questions  []channelQuestion      `json:"questions"`
 	Proposal   *store.CaptureProposal `json:"proposal"`
 	Answer     *conversationAnswer    `json:"answer,omitempty"`
+	Batch      *batchMutation         `json:"batch,omitempty"`
 	Persisted  bool                   `json:"persisted"`
 }
 type channelHandler func(context.Context, *store.Store, routing.Result, dispatchRequest) (channelResponse, error)
 
 func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result, channel string, input dispatchRequest) (channelResponse, error) {
-	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel}
+	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel, "batch_delete": batchDeleteChannel}
 	handler, ok := handlers[channel]
 	if !ok {
 		return channelResponse{}, routing.ErrRequest
@@ -188,6 +189,16 @@ func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result,
 		return channelResponse{}, routing.ErrRequest
 	}
 	return handler(ctx, s, result, input)
+}
+func batchDeleteChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	c := routingConversation{Route: r, Channel: "batch_delete"}
+	if err := c.prepareBatch(ctx, s); err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "batch_delete", State: c.State, Source: r.Input.Text, Input: r.Input, Extraction: "local_batch_scope", Questions: []channelQuestion{}, Batch: c.Batch, Answer: c.Answer}, nil
 }
 func lookupChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
 	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {

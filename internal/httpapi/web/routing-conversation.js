@@ -12,15 +12,26 @@ function routingConversationRender(state){
  if(state.question?.choices)for(const choice of state.question.choices){const b=document.createElement('button');b.type='button';b.textContent=choice.label;b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,field:state.question.field,value:choice.value});preview.append(b);}
  if(state.state==='awaiting_route')for(const channel of ['task','reminder','note','lookup']){const b=document.createElement('button');b.type='button';b.textContent=channel;b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,text:channel});preview.append(b);}
  if(state.proposal){const h=document.createElement('h4');h.textContent=state.saved?'Saved records':'Proposed records · review before saving';preview.append(h);for(const [label,value] of Object.entries(state.proposal.input)){if(!value||label==='preview_id'||label==='before_task_version')continue;const p=document.createElement('p');p.textContent=label+': '+value;preview.append(p);}}
+ if(state.batch){
+  const choosing=state.state==='awaiting_batch_targets';
+  const h=document.createElement('h4');h.textContent=choosing?'Choose records to delete':'Records proposed for deletion';preview.append(h);
+  const list=document.createElement('div');preview.append(list);
+  for(const item of choosing?state.batch.candidates:state.batch.targets){
+   const label=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.value=item.id;check.checked=!choosing;check.disabled=!choosing;label.append(check,document.createTextNode(' '+item.kind+': '+item.title));list.append(label,document.createElement('br'));
+  }
+  if(choosing){const b=document.createElement('button');b.type='button';b.textContent='Review selected records';b.onclick=()=>{const ids=[...list.querySelectorAll('input:checked')].map(x=>x.value);if(ids.length)routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,field:'batch_targets',value:ids.join(',')});};preview.append(b);}
+  for(const effect of state.batch.effects||[]){const p=document.createElement('p');p.textContent=effect;preview.append(p);}
+ }
  if(state.answer?.sources?.length){const h=document.createElement('h4');h.textContent='Saved records used';preview.append(h);for(const source of state.answer.sources){if(!source.url?.startsWith('/#'))continue;const link=document.createElement('a');link.href=source.url;link.textContent=source.type+': '+source.title;preview.append(link);}}
  for(const warning of state.warnings||[]){const p=document.createElement('p');p.className='meta';p.textContent=warning;preview.append(p);}
  if(state.state==='awaiting_confirmation'){for(const reply of ['yes','cancel']){const b=document.createElement('button');b.type='button';b.textContent=reply==='yes'?'Confirm and save':'Cancel';b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,text:reply});preview.append(b);}}
+ if(state.state==='awaiting_delete_confirmation'){for(const reply of ['yes','cancel']){const b=document.createElement('button');b.type='button';b.textContent=reply==='yes'?'Confirm deletion':'Cancel';b.onclick=()=>routingConversationCall('/'+state.id+'/reply','POST',{version:state.version,text:reply});preview.append(b);}}
  $('routing-conversation-reply').hidden=['cancelled','unsupported'].includes(state.state);
 }
 async function routingConversationCall(path,method,body){
  if(routingConversationBusy)return;routingConversationBusy=true;
  document.querySelectorAll('#routing-conversation-heading ~ form button, #routing-conversation-preview button').forEach(b=>b.disabled=true);
- try{const response=await fetch('/api/v1/conversations/routing'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const state=await response.json();if(!response.ok)throw new Error(state.error?.message||'Conversation request failed.');routingConversationRender(state);$('routing-conversation-answer').value='';$('routing-conversation-field').value='';$('routing-conversation-value').value='';if(state.saved)await load();}
+ try{const response=await fetch('/api/v1/conversations/routing'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const state=await response.json();if(!response.ok)throw new Error(state.error?.message||'Conversation request failed.');routingConversationRender(state);$('routing-conversation-answer').value='';$('routing-conversation-field').value='';$('routing-conversation-value').value='';if(state.saved||state.state==='answered'&&(state.batch||state.mutation?.action==='delete'))await load();}
  catch(error){$('routing-conversation-status').textContent=error.message+' Resume the session before retrying.';}
  finally{routingConversationBusy=false;document.querySelectorAll('#routing-conversation-heading ~ form button, #routing-conversation-preview button').forEach(b=>b.disabled=false);}
 }

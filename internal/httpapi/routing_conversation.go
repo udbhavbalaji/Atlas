@@ -27,6 +27,7 @@ type routingConversation struct {
 	Saved               *store.TaskAction      `json:"saved,omitempty"`
 	Answer              *conversationAnswer    `json:"answer,omitempty"`
 	Mutation            *recordMutation        `json:"mutation,omitempty"`
+	Batch               *batchMutation         `json:"batch,omitempty"`
 	CorrectionAttempted bool                   `json:"correction_attempted,omitempty"`
 	ResponseModel       string                 `json:"response_model,omitempty"`
 }
@@ -75,7 +76,22 @@ func (c *routingConversation) prompt() string {
 		if c.Question != nil {
 			return c.Question.Prompt
 		}
-	case "awaiting_delete_confirmation", "deleting":
+	case "awaiting_batch_targets":
+		return "Choose the saved records to delete. Review the selected list before confirming."
+	case "awaiting_delete_confirmation", "deleting", "deleting_batch":
+		if c.Batch != nil {
+			counts := map[string]int{}
+			for _, target := range c.Batch.Targets {
+				counts[target.Kind]++
+			}
+			parts := []string{}
+			for _, kind := range c.Batch.Kinds {
+				if counts[kind] > 0 {
+					parts = append(parts, strconv.Itoa(counts[kind])+" "+kind)
+				}
+			}
+			return "Delete these " + strings.Join(parts, " and ") + " records? This cannot be undone. Only the listed records will be deleted. " + strings.Join(c.Batch.Effects, " ") + " Say yes to delete or cancel."
+		}
 		if c.Mutation != nil {
 			return "Delete " + c.Mutation.Kind + " “" + c.Mutation.Title + "”? This cannot be undone. " + strings.Join(c.Mutation.Effects, " ") + " Say yes to delete or cancel."
 		}
@@ -115,7 +131,7 @@ func routingConversationResponse(w http.ResponseWriter, status int, d store.Sess
 	if n := len(c.Messages); n > 0 && c.Messages[n-1].Role == "assistant" {
 		prompt = c.Messages[n-1].Text
 	}
-	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting"}})
+	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled" || c.State == "unsupported", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch"}})
 }
 
 func (c *routingConversation) appendAssistant(ctx *http.Request, service routingService) {
@@ -223,6 +239,9 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 	if c.Channel == "edit" || c.Channel == "delete" {
 		return c.prepareMutation(ctx.Context(), s)
 	}
+	if c.Channel == "batch_delete" {
+		return c.prepareBatch(ctx.Context(), s)
+	}
 	out, err := dispatchChannel(ctx.Context(), s, c.Route, c.Channel, c.Draft)
 	if err != nil {
 		return err
@@ -248,6 +267,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	c.Answer = nil
 	c.Saved = nil
 	c.Mutation = nil
+	c.Batch = nil
 	c.ResponseModel = ""
 	c.Warnings = []string{}
 	if result.ExtractionModel == "local_parser" {
@@ -704,7 +724,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			apiError(w, 409, "session_closed", "Start a new routing conversation.", false)
 			return
 		}
-		if (c.State == "confirming" || c.State == "deleting" || c.State == "applying_edit") && !isConfirm(value) {
+		if (c.State == "confirming" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "applying_edit") && !isConfirm(value) {
 			apiError(w, 409, "confirmation_pending", "Retry confirmation to recover the result.", false)
 			return
 		}
@@ -775,11 +795,22 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 							return
 						}
 					}
+				case "awaiting_batch_targets":
+					if c.selectBatchTargets(value) {
+						if err = c.batchEffects(r.Context(), s); err != nil {
+							failure(w, err)
+							return
+						}
+					}
 				case "awaiting_target", "awaiting_field", "awaiting_change":
 					c.mutationReply(r.Context(), s, value)
 				case "awaiting_delete_confirmation":
 					if isConfirm(value) {
-						c.State = "deleting"
+						if c.Batch != nil {
+							c.State = "deleting_batch"
+						} else {
+							c.State = "deleting"
+						}
 					}
 				}
 			}
@@ -798,6 +829,24 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 				return
 			}
 			if d, c, err = autoCapture(r, s, service, d, c); err != nil {
+				failure(w, err)
+				return
+			}
+		}
+		if c.State == "deleting_batch" {
+			if err = c.commitBatch(r.Context(), s); errors.Is(err, store.ErrBatchChanged) {
+				if err = c.prepareBatch(r.Context(), s); err != nil {
+					failure(w, err)
+					return
+				}
+				c.Warnings = append(c.Warnings, "The reviewed records changed. Review the current list and confirm again.")
+			} else if err != nil {
+				failure(w, err)
+				return
+			}
+			c.appendAssistant(r, service)
+			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
+			if err != nil {
 				failure(w, err)
 				return
 			}

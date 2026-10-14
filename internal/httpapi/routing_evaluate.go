@@ -23,6 +23,15 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	if err := routing.ValidateRequest(input); err != nil {
 		return routing.Result{}, err
 	}
+	if name == "jev" || name == "mock" {
+		batch, err := batchDeleteIntent(parent, s, input.Text)
+		if err != nil {
+			return routing.Result{}, err
+		}
+		if batch {
+			return localBatchRoute(service, name, input), nil
+		}
+	}
 	var evaluator routing.Evaluator
 	switch name {
 	case "mock":

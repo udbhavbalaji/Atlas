@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Atlas batch action test</title>
+<style>body{font:16px system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;color:#222}input,select,button{font:inherit;padding:.5rem;margin:.25rem}#request{width:min(100%,600px)}button{cursor:pointer}fieldset{margin:1rem 0}label.record{display:block;padding:.35rem}pre{white-space:pre-wrap;background:#f4f4f4;padding:1rem}#result{margin-top:1rem}</style></head>
+<body><a href="/desktop-test">Desktop checks</a><h1>Batch deletion test</h1>
+<p>Use saved test records. Atlas shows the exact records it proposes to delete and waits for an explicit confirmation. “All” includes every saved record of the named types.</p>
+<form id="start"><label>Provider <select id="provider"><option value="mock">Mock routing</option><option value="jev">Jev routing</option></select></label><label>Request <input id="request" value="Delete all tasks and reminders" required></label><button>Start review</button></form>
+<p>Try “Delete all tasks and reminders”, “Delete Batch Alpha and Batch Beta”, or “Delete task and reminder” to open the record picker.</p>
+<div id="result" role="status" aria-live="polite"></div><fieldset id="records" hidden><legend>Records</legend><div id="record-list"></div><button id="select" type="button" hidden>Review selected records</button></fieldset>
+<div id="actions" hidden><button id="approve" type="button">Confirm deletion</button><button id="cancel" type="button">Cancel</button></div><pre id="trace"></pre>
+<script>
+let session=null;
+const $=id=>document.getElementById(id);
+async function request(path,body){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw new Error(data.error?.message||response.statusText);return data;}
+function render(data){session=data;$('result').textContent=data.prompt;$('trace').textContent=`State: ${data.state}\nRoute: ${data.route?.selected_tool||'none'}\nVersion: ${data.version}`;const items=data.state==='awaiting_batch_targets'?data.batch?.candidates:data.batch?.targets;$('record-list').replaceChildren();$('records').hidden=!items?.length;for(const item of items||[]){const label=document.createElement('label');label.className='record';const box=document.createElement('input');box.type='checkbox';box.value=item.id;box.disabled=data.state!=='awaiting_batch_targets';box.checked=box.disabled;label.append(box,document.createTextNode(`${item.kind}: ${item.title} (${item.id})`));$('record-list').append(label);}$('select').hidden=data.state!=='awaiting_batch_targets';$('actions').hidden=data.state!=='awaiting_delete_confirmation';}
+async function reply(body){try{render(await request(`/api/v1/conversations/routing/${encodeURIComponent(session.id)}/reply`,{version:session.version,...body}));}catch(error){$('result').textContent=error.message;}}
+$('start').onsubmit=async event=>{event.preventDefault();try{render(await request('/api/v1/conversations/routing',{provider:$('provider').value,version:'1',request_id:crypto.randomUUID(),text:$('request').value,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}));}catch(error){$('result').textContent=error.message;}};
+$('select').onclick=()=>{const ids=[...$('record-list').querySelectorAll('input:checked')].map(x=>x.value);if(ids.length)reply({field:'batch_targets',value:ids.join(',')});};
+$('approve').onclick=()=>reply({text:'yes'});$('cancel').onclick=()=>reply({text:'cancel'});
+</script></body></html>
