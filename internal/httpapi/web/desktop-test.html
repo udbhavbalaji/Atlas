@@ -11,6 +11,7 @@
 <section class="composer"><h2>Free natural language check</h2><p>This sends one sentence and up to 50 saved record summaries to the selected service using your configured key. It consumes one free model request and does not change records.</p><label>Service<select id="plan-provider"><option value="groq">Groq free</option><option value="free">OpenRouter free</option></select></label><label>Sentence<input id="free-question" value="When is my interview?"></label><button id="free-test" class="primary">Test free model plan</button><pre id="free-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Atomic linked schedule</h2><p>This creates one temporary task and two linked reminders. Moving either schedule must preserve all offsets in one database transaction. The test removes its records afterward.</p><button id="schedule-workflow-test" class="primary">Run linked schedule test</button><pre id="schedule-workflow-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Linked conversation lifecycle</h2><p>This creates two tasks and two reminders, then reschedules, dismisses, and completes the first group through conversation. It checks every linked record and confirms the other task stays unchanged.</p><button id="linked-lifecycle-test" class="primary">Run linked lifecycle test</button><pre id="linked-lifecycle-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Continuous conversation check</h2><p>Use <a href="/desktop">Conversation</a> in Jev mode. Create a task with a note and an explicit reminder, then ask about it in the same conversation. Reschedule it, dismiss the reminder, complete the task, and ask about it again. The reply box should stay available after saving, and each edit should name what changed.</p><p>Try “I need to prepare for my interview by tomorrow at 6pm, note that I should bring my portfolio and remind me tomorrow at 5pm”. The task, linked note, and linked reminder should save together. Then ask “When is my interview?”</p></section>
 <section class="composer"><h2>Manual desktop checks</h2><ol><li>In <a href="/desktop">Conversation</a>, select <strong>Jev</strong> and ask about a saved record. The answer should name the record and show a link. If the decision is uncertain, choose <strong>Find existing records</strong>.</li><li>Ask a follow-up about an old reminder or note in the same conversation. Check that the answer matches the saved record.</li><li>Ask Atlas to reschedule an interview. If the date is missing, supply one. Check that Atlas applies the change and says the old and new dates. Ask it to delete a test record and verify that it waits for confirmation.</li><li>For a linked workflow, create a task named “Atlas rehearsal interview” with a deadline, then say “Save a note for my Atlas rehearsal interview: bring a portfolio” and “Remind me about my Atlas rehearsal interview one hour before”. Move the reminder two hours later and verify that Atlas moves the task deadline and any other active, non-repeating linked reminders by two hours in the same response. Move the task deadline and verify the reminders preserve their offsets. Rename the task and check the linked titles, edit the note, dismiss the reminder once it is due, complete the task, then ask about it again. The answer should show its completed status, linked note, and reminder.</li><li>In Jev mode, try a follow-up such as “I meant a reminder” when Atlas asks which action to take. If asked about an optional note, “I don’t need one” should skip it.</li><li>In Jev mode, start “I need to drop mummy tomorrow morning”. Atlas should not invent a 9am notification. If you want to track leaving separately, say so before confirming the drop-off task and inspect the proposed change.</li><li>Click Start microphone. While it connects, Cancel microphone should remain clickable and a status message should appear beside it. Try again, speak a short phrase, then click Stop microphone. The textbox should update every few seconds while speaking and the final text should remain editable before you send it. If nothing appears, read the status below the button for the local transcriber error.</li><li>Create a task in <a href="/#tasks">Tasks</a>. Close the window, reopen Atlas, and confirm it remains.</li><li>Use <a href="/#reminders">Reminders</a> to create a five second test reminder. Confirm it appears in the inbox.</li><li>Close Atlas and confirm its private local server stops.</li></ol></section>
 </main><script>
@@ -223,6 +224,60 @@ document.getElementById('schedule-workflow-test').addEventListener('click', asyn
   } finally {
     for (const id of reminderIDs) if (id) await fetch(`/api/v1/reminders/${id}`, {method: 'DELETE'});
     if (taskID) await fetch(`/api/v1/tasks/${taskID}`, {method: 'DELETE'});
+  }
+});
+document.getElementById('linked-lifecycle-test').addEventListener('click', async () => {
+  const output = document.getElementById('linked-lifecycle-results');
+  output.textContent = 'Creating two tasks and two linked reminders…';
+  const json = async (path, method, body, headers = {}) => {
+    const response = await fetch(path, {method, headers: {'Content-Type': 'application/json', ...headers}, body: body ? JSON.stringify(body) : undefined});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || `${method} ${path} failed`);
+    return data;
+  };
+  const base = Math.ceil((Date.now() + 7 * 86400000) / 1000) * 1000;
+  const newDue = base + 86400000;
+  const offsetDue = new Date(newDue + 19800000).toISOString().replace('Z', '+05:30');
+  const title = `Atlas lifecycle ${crypto.randomUUID().slice(0, 8)}`;
+  let taskID = '', otherID = '';
+  const reminderIDs = [];
+  try {
+    const task = await json('/api/v1/tasks', 'POST', {title, due_at: new Date(base).toISOString()}, {'Idempotency-Key': crypto.randomUUID()});
+    taskID = task.task_id || task.id;
+    const other = await json('/api/v1/tasks', 'POST', {title: `Atlas unrelated ${crypto.randomUUID().slice(0, 8)}`, due_at: new Date(base).toISOString()}, {'Idempotency-Key': crypto.randomUUID()});
+    otherID = other.task_id || other.id;
+    for (const [name, when] of [['Primary lifecycle', base - 3600000], ['Sibling lifecycle', base - 7200000]]) {
+      const saved = await json('/api/v1/reminders', 'POST', {title: `${name} ${title}`, scheduled_at: new Date(when).toISOString(), timezone: 'Asia/Kolkata', task_id: taskID}, {'Idempotency-Key': crypto.randomUUID()});
+      reminderIDs.push(saved.id || saved.reminder?.id);
+    }
+    const send = text => json('/api/v1/conversations/routing', 'POST', {provider: 'mock', fixture: 'edit', version: '1', request_id: crypto.randomUUID(), text, timezone: 'Asia/Kolkata'});
+    const moved = await send(`Reschedule ${title} to ${offsetDue}`);
+    if (moved.state !== 'answered') throw new Error(`Reschedule returned ${moved.state}`);
+    let state = await json(`/api/v1/tasks/${taskID}`, 'GET');
+    let reminders = Object.fromEntries(state.reminders.map(reminder => [reminder.id, reminder]));
+    const at = value => new Date(value).getTime();
+    if (at(state.task.due_at) !== newDue || at(reminders[reminderIDs[0]].scheduled_at) !== newDue - 3600000 || at(reminders[reminderIDs[1]].scheduled_at) !== newDue - 7200000) throw new Error('Reschedule did not move the task and both reminders together.');
+    output.textContent = 'Reschedule moved the task and both reminders. Dismissing one…';
+    const dismissed = await send(`Dismiss Primary lifecycle ${title} reminder`);
+    if (dismissed.state !== 'answered') throw new Error(`Dismiss returned ${dismissed.state}`);
+    state = await json(`/api/v1/tasks/${taskID}`, 'GET');
+    reminders = Object.fromEntries(state.reminders.map(reminder => [reminder.id, reminder]));
+    if (reminders[reminderIDs[0]].status !== 'dismissed' || reminders[reminderIDs[1]].status !== 'scheduled') throw new Error('Dismissal changed the wrong reminder or its sibling.');
+    output.textContent = 'Dismissal affected one reminder. Completing the task…';
+    const completed = await send(`Complete ${title} task`);
+    if (completed.state !== 'answered') throw new Error(`Completion returned ${completed.state}`);
+    state = await json(`/api/v1/tasks/${taskID}`, 'GET');
+    reminders = Object.fromEntries(state.reminders.map(reminder => [reminder.id, reminder]));
+    const unrelatedState = await json(`/api/v1/tasks/${otherID}`, 'GET');
+    if (state.task.status !== 'completed' || reminders[reminderIDs[0]].status !== 'dismissed' || reminders[reminderIDs[1]].status !== 'completed') throw new Error('Completion did not update the task and its active reminder correctly.');
+    if (unrelatedState.task.status !== 'open' || at(unrelatedState.task.due_at) !== base) throw new Error('The unrelated task changed.');
+    output.textContent = 'Passed: offset timestamp, two linked reminders, selective dismissal, task completion, and unrelated-task isolation.';
+  } catch (error) {
+    output.textContent = `Failed: ${error.message}`;
+  } finally {
+    for (const id of reminderIDs) if (id) await fetch(`/api/v1/reminders/${id}`, {method: 'DELETE'});
+    if (taskID) await fetch(`/api/v1/tasks/${taskID}`, {method: 'DELETE'});
+    if (otherID) await fetch(`/api/v1/tasks/${otherID}`, {method: 'DELETE'});
   }
 });
 </script></body></html>
