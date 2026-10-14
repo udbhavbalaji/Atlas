@@ -18,6 +18,15 @@ function voiceButton(text, action) {
   return button;
 }
 
+function voiceFieldValue(key, value, timezone) {
+  if (!['due_at', 'reminder_at'].includes(key)) return value;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat('en-US', {timeZone: timezone || 'UTC', weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'}).format(instant);
+  } catch { return value; }
+}
+
 function voiceSpeakPrompt() {
   const state = voiceClient.state;
   if (!state || !voiceElement('speak').checked || !('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
@@ -74,7 +83,7 @@ function voiceRender(state) {
     for (const [key, value] of Object.entries(state.proposal.input || {})) {
       if (!value || ['preview_id', 'before_task_version'].includes(key)) continue;
       const line = document.createElement('p');
-      line.textContent = key.replaceAll('_', ' ') + ': ' + value;
+      line.textContent = key.replaceAll('_', ' ') + ': ' + voiceFieldValue(key, value, state.route?.input?.timezone);
       proposal.append(line);
     }
     for (const effect of state.proposal.effects || []) {

@@ -136,10 +136,10 @@ func (c *routingConversation) prompt() string {
 			summary += ": " + p.Title
 		}
 		if p.DueAt != "" {
-			summary += "; due " + p.DueAt
+			summary += "; due " + lookupTime(p.DueAt, c.Route.Input.Timezone)
 		}
 		if p.ReminderAt != "" {
-			summary += "; reminder " + p.ReminderAt
+			summary += "; reminder " + lookupTime(p.ReminderAt, c.Route.Input.Timezone)
 		}
 		if p.NoteBody != "" && p.Kind != "note" {
 			summary += "; note " + p.NoteBody

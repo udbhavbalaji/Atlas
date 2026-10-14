@@ -6,6 +6,7 @@
 <section class="composer"><h2>Saved-record answer and Jev context</h2><p>Ask about a saved record using the real Jev flow. Atlas selects relevant saved entities before its first decision. This reads records and uses Jev and free model requests.</p><label>Question<input id="lookup-question" value="When is my interview?"></label><button id="lookup-test" class="primary">Test Jev lookup</button><pre id="lookup-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Reminder conversation check</h2><p>This sends “Remind me to buy bread tomorrow morning at 8am”, verifies the saved local time, asks for all upcoming reminders in the same conversation, and removes the test reminder. It uses Jev and free model requests.</p><button id="reminder-send-test" class="primary">Test reminder flow</button><pre id="reminder-send-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Exact reminder time check</h2><p>This sends “Remind me to call Neha tomorrow morning at 8am.” through Jev, verifies it saves without asking for the time again, and removes the temporary reminder.</p><button id="neha-reminder-test" class="primary">Test Neha reminder</button><pre id="neha-reminder-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Reminder time correction check</h2><p>This starts an unsaved reminder draft with the free model, replies “make the time 9 am” through Jev, checks the local time and feedback, then cancels the draft. It uses one free model request and one Jev correction decision.</p><button id="reminder-correction-test" class="primary">Test time correction</button><pre id="reminder-correction-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Note rename conversation check</h2><p>This creates a temporary note, asks Atlas to rename its title in one sentence, checks that its body is preserved, and removes the note.</p><button id="note-rename-test" class="primary">Test note rename</button><pre id="note-rename-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Explicit note capture check</h2><p>This sends “make a note of this: …” through Jev, checks that Atlas saves the exact body with its local parser, and removes the temporary note. It uses Jev requests but no free model extraction.</p><button id="explicit-note-test" class="primary">Test explicit note</button><pre id="explicit-note-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Note follow-up check</h2><p>This creates a temporary titled note, lists notes, opens that exact note through Jev, then asks “What does it say?” in the same conversation. It removes the note afterward.</p><button id="note-followup-test" class="primary">Test note follow-up</button><pre id="note-followup-results" role="status" aria-live="polite">Ready.</pre></section>
@@ -96,6 +97,22 @@ document.getElementById('neha-reminder-test').addEventListener('click', async ()
   output.textContent='Passed: '+result.prompt;
  }catch(error){output.textContent='Failed: '+error.message;}
  finally{if(id){const removed=await fetch('/api/v1/reminders/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary reminder removed.':'\nCould not remove the temporary reminder; delete it in Records and tests.';}}
+});
+document.getElementById('reminder-correction-test').addEventListener('click', async () => {
+ const output=document.getElementById('reminder-correction-results');output.textContent='Starting an unsaved reminder draft…';let conversation=null;
+ const send=async(path,body)=>{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error?.message||'Conversation failed.');return result;};
+ try {
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(Date.now()+2*86400000));
+  const part=type=>parts.find(item=>item.type===type)?.value;
+  const date=`${part('year')}-${part('month')}-${part('day')}`;
+  conversation=await send('/api/v1/conversations/routing',{provider:'free',version:'1',request_id:crypto.randomUUID(),text:`Remind me to text Atlas time check on ${date} at 9 am`,timezone:'Asia/Kolkata'});
+  if(conversation.state!=='awaiting_confirmation')throw new Error('Atlas did not prepare a reminder draft.');
+  output.textContent='Checking the time correction…';
+  conversation=await send('/api/v1/conversations/routing/'+encodeURIComponent(conversation.id)+'/reply',{version:conversation.version,text:'make the time 9 am'});
+  if(conversation.state!=='awaiting_confirmation'||!conversation.prompt?.includes('9:00 AM IST')||!conversation.prompt?.includes('already set for'))throw new Error('Atlas did not recognize the local time correction: '+(conversation.prompt||conversation.state));
+  output.textContent='Passed: '+conversation.prompt;
+ }catch(error){output.textContent='Failed: '+error.message;}
+ finally{if(conversation?.id&&conversation.state==='awaiting_confirmation'){try{await send('/api/v1/conversations/routing/'+encodeURIComponent(conversation.id)+'/reply',{version:conversation.version,text:'cancel'});output.textContent+='\nUnsaved draft cancelled.';}catch{output.textContent+='\nCould not cancel the draft; no confirmation was sent.';}}}
 });
 document.getElementById('weekday-edit-test').addEventListener('click', async () => {
   const output = document.getElementById('weekday-edit-results');
