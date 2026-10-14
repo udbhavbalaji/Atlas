@@ -10,6 +10,7 @@
 <section class="composer"><h2>Note follow-up check</h2><p>This creates a temporary titled note, lists notes, opens that exact note through Jev, then asks “What does it say?” in the same conversation. It removes the note afterward.</p><button id="note-followup-test" class="primary">Test note follow-up</button><pre id="note-followup-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Free natural language check</h2><p>This sends one sentence and up to 50 saved record summaries to the selected service using your configured key. It consumes one free model request and does not change records.</p><label>Service<select id="plan-provider"><option value="groq">Groq free</option><option value="free">OpenRouter free</option></select></label><label>Sentence<input id="free-question" value="When is my interview?"></label><button id="free-test" class="primary">Test free model plan</button><pre id="free-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Conversation edit and delete</h2><p>This creates temporary task, reminder, and note records; edits each through conversation, verifies the reported changes, and confirms deletion of each. It cleans up if a step fails.</p><button id="mutation-test" class="primary">Run edit and delete test</button><pre id="mutation-results" role="status" aria-live="polite">Ready.</pre></section>
+<section class="composer"><h2>Live weekday edit decision</h2><p>This creates one temporary task and asks the real Jev flow to move it to Sunday at 7 pm in Asia/Kolkata. It checks the proposed target and local time without applying the edit, then removes the task. This uses Jev and free model requests.</p><button id="weekday-edit-test" class="primary">Test Jev weekday edit</button><pre id="weekday-edit-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Atomic linked schedule</h2><p>This creates one temporary task and two linked reminders. Moving either schedule must preserve all offsets in one database transaction. The test removes its records afterward.</p><button id="schedule-workflow-test" class="primary">Run linked schedule test</button><pre id="schedule-workflow-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Linked conversation lifecycle</h2><p>This creates two tasks and two reminders, then reschedules, dismisses, and completes the first group through conversation. It checks every linked record and confirms the other task stays unchanged.</p><button id="linked-lifecycle-test" class="primary">Run linked lifecycle test</button><pre id="linked-lifecycle-results" role="status" aria-live="polite">Ready.</pre></section>
 <section class="composer"><h2>Continuous conversation check</h2><p>Use <a href="/desktop">Conversation</a> in Jev mode. Create a task with a note and an explicit reminder, then ask about it in the same conversation. Reschedule it, dismiss the reminder, complete the task, and ask about it again. The reply box should stay available after saving, and each edit should name what changed.</p><p>Try “I need to prepare for my interview by tomorrow at 6pm, note that I should bring my portfolio and remind me tomorrow at 5pm”. The task, linked note, and linked reminder should save together. Then ask “When is my interview?”</p></section>
@@ -94,6 +95,37 @@ document.getElementById('neha-reminder-test').addEventListener('click', async ()
   output.textContent='Passed: '+result.prompt;
  }catch(error){output.textContent='Failed: '+error.message;}
  finally{if(id){const removed=await fetch('/api/v1/reminders/'+encodeURIComponent(id),{method:'DELETE'});output.textContent+=removed.ok?'\nTemporary reminder removed.':'\nCould not remove the temporary reminder; delete it in Records and tests.';}}
+});
+document.getElementById('weekday-edit-test').addEventListener('click', async () => {
+  const output = document.getElementById('weekday-edit-results');
+  output.textContent = 'Creating a temporary task…';
+  let taskID = '';
+  try {
+    const title = `Atlas weekday edit check ${crypto.randomUUID().slice(0, 8)}`;
+    const createdResponse = await fetch('/api/v1/tasks', {method: 'POST', headers: {'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID()}, body: JSON.stringify({title})});
+    const created = await createdResponse.json();
+    if (!createdResponse.ok) throw new Error(created.error?.message || 'Task creation failed.');
+    taskID = created.task_id || created.task?.id || created.id;
+    if (!taskID) throw new Error('Temporary task has no ID.');
+    output.textContent = 'Asking Jev and the free model for an edit proposal…';
+    const response = await fetch('/api/v1/routing/jev/evaluate', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({version: '1', request_id: crypto.randomUUID(), text: 'Move that task to Sunday at 7pm', timezone: 'Asia/Kolkata', recent_record_id: taskID, recent_record_kind: 'task', recent_conversation: `We were discussing the task ${title}.`})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error?.message || 'Jev edit evaluation failed.');
+    const plan = result.plan;
+    if (result.category !== 'change' || result.selected_tool !== 'edit_task' || plan?.target_id !== taskID || plan.field !== 'due_at') throw new Error('The edit decision or target was wrong.');
+    const proposed = new Date(plan.value);
+    if (Number.isNaN(proposed.getTime())) throw new Error('The proposed date is invalid.');
+    const local = new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Kolkata', weekday: 'long', hour: 'numeric', minute: '2-digit', hourCycle: 'h23'}).formatToParts(proposed);
+    const part = type => local.find(item => item.type === type)?.value;
+    if (part('weekday') !== 'Sunday' || part('hour') !== '19' || part('minute') !== '00') throw new Error(`The proposed time was ${plan.value}, not Sunday at 7 pm in Asia/Kolkata.`);
+    output.textContent = `Passed: Jev chose ${result.category} / ${result.selected_tool} and proposed ${plan.value} for the intended task. No edit was applied.`;
+  } catch (error) { output.textContent = `Failed: ${error.message}`; }
+  finally {
+    if (taskID) {
+      const removed = await fetch(`/api/v1/tasks/${encodeURIComponent(taskID)}`, {method: 'DELETE'});
+      output.textContent += removed.ok ? '\nTemporary task removed.' : '\nCould not remove the temporary task; delete it in Records and tests.';
+    }
+  }
 });
 document.getElementById('note-rename-test').addEventListener('click', async () => {
  const output=document.getElementById('note-rename-results');output.textContent='Creating a temporary note…';let id='';

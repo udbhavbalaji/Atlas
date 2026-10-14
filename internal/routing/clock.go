@@ -97,10 +97,10 @@ func normalizeExplicitClock(plan ActionPlan, state State) ActionPlan {
 			return value, 0
 		}
 		local := instant.In(zone)
-		if local.Hour() == hour && local.Minute() == minute {
+		date, hasRelativeDate := relativeDate(state)
+		if local.Hour() == hour && local.Minute() == minute && (!hasRelativeDate || sameLocalDate(value, date, state.Timezone)) {
 			return value, 0
 		}
-		date, hasRelativeDate := relativeDate(state)
 		if !hasRelativeDate {
 			// Without a stated relative day, only reinterpret a timestamp
 			// whose own clock digits match the user's requested time.

@@ -84,3 +84,21 @@ func TestExplicitOffsetDoesNotOverrideDifferentRelativeDay(t *testing.T) {
 		t.Fatalf("old deadline overrode requested day: %q", plan.Value)
 	}
 }
+
+func TestWeekdayEditCorrectsExtractedDateAndLocalClock(t *testing.T) {
+	state := State{Text: "Move that task to Sunday at 7pm", Timezone: "Asia/Kolkata", ReferenceAt: "2026-10-14T12:00:00Z"}
+	for _, value := range []string{"2026-10-18T19:00:00Z", "2026-10-19T19:00:00+05:30"} {
+		plan := NormalizePlanTiming(ActionPlan{Action: "edit", Kind: "task", Field: "due_at", Value: value}, state)
+		if plan.Value != "2026-10-18T19:00:00+05:30" {
+			t.Fatalf("extracted %s normalized to %s", value, plan.Value)
+		}
+		if err := ValidatePlan(plan, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state.ReferenceAt = "2026-10-18T20:00:00+05:30"
+	plan := NormalizePlanTiming(ActionPlan{Action: "edit", Kind: "task", Field: "due_at", Value: "2026-10-18T19:00:00+05:30"}, state)
+	if plan.Value != "2026-10-25T19:00:00+05:30" {
+		t.Fatalf("past Sunday was not moved to the next occurrence: %s", plan.Value)
+	}
+}

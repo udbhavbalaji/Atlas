@@ -473,6 +473,31 @@ func relativeDate(state State) (time.Time, bool) {
 			return reference.In(zone), true
 		}
 	}
+	weekdays := map[string]time.Weekday{
+		"sunday": time.Sunday, "monday": time.Monday, "tuesday": time.Tuesday,
+		"wednesday": time.Wednesday, "thursday": time.Thursday,
+		"friday": time.Friday, "saturday": time.Saturday,
+	}
+	var wanted time.Weekday
+	found := false
+	for _, word := range words {
+		if day, ok := weekdays[word]; ok {
+			if found { // Two named days do not identify one replacement date.
+				return time.Time{}, false
+			}
+			wanted, found = day, true
+		}
+	}
+	if found {
+		local := reference.In(zone)
+		days := (int(wanted) - int(local.Weekday()) + 7) % 7
+		if days == 0 {
+			if hour, minute, ok := explicitClock(state.Text); ok && (local.Hour() > hour || local.Hour() == hour && local.Minute() >= minute) {
+				days = 7
+			}
+		}
+		return local.AddDate(0, 0, days), true
+	}
 	return time.Time{}, false
 }
 
