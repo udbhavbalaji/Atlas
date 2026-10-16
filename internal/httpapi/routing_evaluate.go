@@ -24,6 +24,15 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 		return routing.Result{}, err
 	}
 	if name == "jev" || name == "mock" || name == "free" || name == "groq" {
+		if steps := workflowClauses(input.Text); len(steps) > 1 {
+			if len(steps) > 12 {
+				return localUnsupportedRoute(service, name, input, "I can review up to 12 separate actions at once. Please split this into smaller requests."), nil
+			}
+			return workflowRoute(service, name, input, steps), nil
+		}
+		if possibleWorkflow(input.Text) {
+			return unresolvedWorkflowRoute(service, name, input), nil
+		}
 		if compoundBatchRequest(input.Text) {
 			result := localBatchRoute(service, name, input)
 			result.State = "needs_clarification"
@@ -32,6 +41,9 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			result.Category = "compound"
 			result.RoutingToken = service.sign(result)
 			return result, nil
+		}
+		if associationIntent(input.Text) != nil {
+			return localAssociationRoute(service, name, input), nil
 		}
 		if reason := unsupportedWorkflowReason(input.Text); reason != "" {
 			return localUnsupportedRoute(service, name, input, reason), nil

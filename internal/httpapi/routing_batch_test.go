@@ -180,14 +180,22 @@ func TestBatchDeleteDoesNotSwallowSecondAction(t *testing.T) {
 	routingRoutesWithService(mux, s, routingService{secret: "test"})
 	send := batchTestSend(t, mux)
 	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "batch-compound", "text": "Delete all tasks and add a reminder", "timezone": "UTC"})
-	if code != 201 || c["state"] != "awaiting_route" || c["channel"] != "" || !strings.Contains(c["prompt"].(string), "another action") {
+	if code != 201 || c["state"] != "awaiting_workflow_start" || c["channel"] != "" || !strings.Contains(c["prompt"].(string), "add a reminder") {
 		t.Fatal(code, c)
 	}
 	if _, err = s.TaskState(t.Context(), task.ID); err != nil {
 		t.Fatal("task changed before clarification", err)
 	}
-	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "Delete all tasks"})
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "start"})
 	if code != 200 || c["state"] != "awaiting_delete_confirmation" {
+		t.Fatal(code, c)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "yes"})
+	if code != 200 || c["state"] != "answered" || !strings.Contains(c["prompt"].(string), "continue") {
+		t.Fatal(code, c)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "continue"})
+	if code != 200 || c["channel"] != "reminders" || c["workflow"].(map[string]any)["index"] != float64(1) {
 		t.Fatal(code, c)
 	}
 }
@@ -220,7 +228,7 @@ func TestBatchDeleteDoesNotSwallowPunctuatedSecondAction(t *testing.T) {
 	mux := http.NewServeMux()
 	routingRoutesWithService(mux, s, routingService{secret: "test"})
 	code, c := batchTestSend(t, mux)("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "batch-punctuation", "text": "Delete all tasks. Add a reminder", "timezone": "UTC"})
-	if code != 201 || c["state"] != "awaiting_route" || c["channel"] != "" {
+	if code != 201 || c["state"] != "awaiting_workflow_start" || c["channel"] != "" {
 		t.Fatal(code, c)
 	}
 	rows, err := s.Tasks(t.Context())
@@ -277,7 +285,6 @@ func TestExplicitUnavailableWorkflowOperations(t *testing.T) {
 	for _, tc := range []struct{ request, reason string }{
 		{"Link this note to my task", "can't change links"},
 		{"Add a dependency between my tasks", "can't change task dependencies"},
-		{"Change the repeat rule on my reminder", "can't change an existing reminder's repeat rule"},
 		{"Complete all tasks", "can't change multiple"},
 		{"Create a project", "can't create a project"},
 	} {
@@ -287,6 +294,9 @@ func TestExplicitUnavailableWorkflowOperations(t *testing.T) {
 	}
 	if got := unsupportedWorkflowReason("Add a reminder about my project"); got != "" {
 		t.Fatalf("supported reminder classified as unsupported: %q", got)
+	}
+	if got := unsupportedWorkflowReason("Change the repeat rule on my reminder"); got != "" {
+		t.Fatalf("supported repeat edit classified as unsupported: %q", got)
 	}
 }
 

@@ -28,15 +28,38 @@ type routingConversation struct {
 	Answer              *conversationAnswer    `json:"answer,omitempty"`
 	Mutation            *recordMutation        `json:"mutation,omitempty"`
 	Batch               *batchMutation         `json:"batch,omitempty"`
+	Association         *associationMutation   `json:"association,omitempty"`
+	Workflow            *workflowPlan          `json:"workflow,omitempty"`
 	CorrectionAttempted bool                   `json:"correction_attempted,omitempty"`
 	ResponseModel       string                 `json:"response_model,omitempty"`
 }
 
 func (c *routingConversation) prompt() string {
 	switch c.State {
+	case "awaiting_workflow_start":
+		parts := make([]string, 0, len(c.Workflow.Steps))
+		for i, step := range c.Workflow.Steps {
+			label := strconv.Itoa(i+1) + ". " + step
+			if unsupportedWorkflowReason(step) != "" {
+				label += " (Atlas cannot do this step)"
+			}
+			parts = append(parts, label)
+		}
+		prompt := "I found these actions in order: " + strings.Join(parts, " ") + " Say start to begin the first step, or cancel. Atlas will pause at each write review and before the next step."
+		if len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
 	case "unsupported":
 		if c.Route.Plan != nil && c.Route.Plan.Clarification != "" {
-			return c.Route.Plan.Clarification + " Reply with a supported action or send a new request."
+			prompt := c.Route.Plan.Clarification + " Reply with a supported action or send a new request."
+			if c.Workflow != nil {
+				prompt += " Say skip to leave this step undone and continue the planned workflow, or cancel the remaining steps."
+			}
+			return prompt
+		}
+		if c.Workflow != nil {
+			return "I can't do this planned step in Atlas. Say skip to leave it undone and continue, or cancel the remaining steps."
 		}
 		return "I can't do that request in Atlas. I can add, find, edit, and delete saved tasks, reminders, and notes. Reply with the action you meant, such as ‘note’, ‘find’, or ‘edit’, or send a new request."
 	case "cancelled":
@@ -63,11 +86,20 @@ func (c *routingConversation) prompt() string {
 			if p.NoteBody != "" && p.Kind != "note" {
 				summary += ", and a linked note: “" + p.NoteBody + "”"
 			}
+			if c.Workflow != nil {
+				return c.workflowProgress(summary + ".")
+			}
 			return summary + ". What would you like to do next?"
+		}
+		if c.Workflow != nil {
+			return c.workflowProgress("Saved.")
 		}
 		return "Saved. What would you like to do next?"
 	case "answered":
 		if c.Answer != nil {
+			if c.Workflow != nil {
+				return c.workflowProgress(c.Answer.Text)
+			}
 			return c.Answer.Text
 		}
 		return "I couldn't read the saved records. Please ask again."
@@ -96,6 +128,21 @@ func (c *routingConversation) prompt() string {
 		}
 	case "awaiting_batch_targets":
 		prompt := "I'm not sure which records you mean. Choose the saved records to delete. Review the selected list before confirming. Nothing has been deleted."
+		if len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
+	case "awaiting_association_targets":
+		prompt := "Choose the first and second saved records for this relationship. Atlas will show the exact pair before making a change."
+		if c.Association != nil && c.Association.Operation == "dependency" {
+			prompt = "Choose the prerequisite task first, then the task that depends on it. Atlas will show the exact pair before making a change."
+		}
+		if len(c.Warnings) > 0 {
+			prompt += " " + c.Warnings[len(c.Warnings)-1]
+		}
+		return prompt
+	case "awaiting_association_confirmation", "applying_association":
+		prompt := c.associationSummary() + "? Say yes to apply this relationship change or cancel."
 		if len(c.Warnings) > 0 {
 			prompt += " " + c.Warnings[len(c.Warnings)-1]
 		}
@@ -186,14 +233,14 @@ func routingConversationResponse(w http.ResponseWriter, status int, d store.Sess
 	if n := len(c.Messages); n > 0 && c.Messages[n-1].Role == "assistant" && (c.State == "answered" || c.State == "saved") {
 		prompt = c.Messages[n-1].Text
 	}
-	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled", "confirmation_required": c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch"}})
+	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "association": c.Association, "workflow": c.Workflow, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled", "confirmation_required": c.State == "awaiting_workflow_start" || c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "awaiting_association_confirmation" || c.State == "applying_association"}})
 }
 
 func (c *routingConversation) appendAssistant(ctx *http.Request, service routingService) {
 	canonical := c.prompt()
 	message := canonical
 	c.ResponseModel = "local"
-	if c.Route.Provider == "jev" && service.responder != nil && (c.State == "answered" || c.State == "saved") {
+	if c.Workflow == nil && c.Route.Provider == "jev" && service.responder != nil && (c.State == "answered" || c.State == "saved") {
 		facts := map[string]any{"canonical_answer": canonical, "state": c.State, "selected_tool": c.Route.SelectedTool, "user_request": c.Route.Input.Text}
 		if c.Answer != nil {
 			facts["answer"] = c.Answer
@@ -297,6 +344,9 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 	if c.Channel == "batch_delete" {
 		return c.prepareBatch(ctx.Context(), s)
 	}
+	if c.Channel == "association" {
+		return c.prepareAssociation(ctx.Context(), s)
+	}
 	out, err := dispatchChannel(ctx.Context(), s, c.Route, c.Channel, c.Draft)
 	if err != nil {
 		return err
@@ -315,6 +365,11 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 }
 
 func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result routing.Result) error {
+	if result.Category == "compound" && c.Workflow == nil {
+		if steps := workflowClauses(result.Input.Text); len(steps) > 1 {
+			c.Workflow = &workflowPlan{Steps: steps}
+		}
+	}
 	c.Route = result
 	c.Channel = ""
 	c.Question = nil
@@ -323,6 +378,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	c.Saved = nil
 	c.Mutation = nil
 	c.Batch = nil
+	c.Association = nil
 	c.ResponseModel = ""
 	c.Warnings = []string{}
 	if result.ExtractionModel == "local_parser" {
@@ -334,7 +390,11 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	case "unsupported":
 		c.State = "unsupported"
 	case "needs_clarification":
-		c.State = "awaiting_route"
+		if c.Workflow != nil && result.Category == "compound" {
+			c.State = "awaiting_workflow_start"
+		} else {
+			c.State = "awaiting_route"
+		}
 	default:
 		c.Channel = result.SelectedChannel
 		if plan := result.Plan; plan != nil {
@@ -366,7 +426,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 			}
 			return c.advance(r, s)
 		}
-		if c.Channel != "lookup" && c.Channel != "edit" && c.Channel != "delete" {
+		if c.Channel != "lookup" && c.Channel != "edit" && c.Channel != "delete" && c.Channel != "association" {
 			seed := prepareChannel(result.Input, strings.TrimSuffix(c.Channel, "s"))
 			c.Draft = applyChannelPrefill(c.Draft, seed)
 			c.Warnings = seed.Warnings
@@ -779,11 +839,11 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			apiError(w, 409, "session_closed", "Start a new routing conversation.", false)
 			return
 		}
-		if (c.State == "confirming" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "applying_edit") && !isConfirm(value) {
+		if (c.State == "confirming" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "applying_edit" || c.State == "applying_association") && !isConfirm(value) {
 			apiError(w, 409, "confirmation_pending", "Retry confirmation to recover the result.", false)
 			return
 		}
-		if c.State != "confirming" && c.State != "deleting_batch" {
+		if c.State != "confirming" && c.State != "deleting_batch" && c.State != "applying_association" {
 			c.Messages = append(c.Messages, conversationTurn{Role: "user", Text: value})
 			if isCancel(value) {
 				c.State = "cancelled"
@@ -791,7 +851,38 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 				c.Proposal = nil
 			} else {
 				switch c.State {
+				case "awaiting_workflow_start":
+					if normalizedReply(value) == "start" || normalizedReply(value) == "begin" || isConfirm(value) {
+						if err = c.startWorkflowStep(r, s, service, d.ID, d.Version+1); err != nil {
+							routingFailure(w, err)
+							return
+						}
+					} else {
+						c.Warnings = []string{"Say start to begin the reviewed plan, or cancel it."}
+					}
 				case "answered", "saved", "unsupported":
+					if c.Workflow != nil && c.State == "unsupported" && normalizedReply(value) == "skip" && c.Workflow.Index+1 == len(c.Workflow.Steps) {
+						c.State = "answered"
+						c.Answer = &conversationAnswer{Text: "Skipped the final unsupported step. No records were changed by it.", Sources: []conversationSource{}}
+						break
+					}
+					if c.Workflow != nil && c.Workflow.Index+1 < len(c.Workflow.Steps) {
+						if normalizedReply(value) == "continue" && c.State != "unsupported" || normalizedReply(value) == "skip" && c.State == "unsupported" {
+							c.Workflow.Index++
+							if err = c.startWorkflowStep(r, s, service, d.ID, d.Version+1); err != nil {
+								routingFailure(w, err)
+								return
+							}
+						} else if c.State != "unsupported" {
+							c.Warnings = []string{"The remaining planned steps have not started. Say continue or cancel before a new request."}
+						}
+						if c.State != "unsupported" || normalizedReply(value) == "skip" {
+							break
+						}
+					}
+					if c.Workflow != nil && c.Workflow.Index+1 == len(c.Workflow.Steps) && c.State != "unsupported" {
+						c.Workflow = nil
+					}
 					previousID, previousKind := conversationFocusRecord(c)
 					fixture := c.Fixture
 					if c.State == "unsupported" {
@@ -888,6 +979,18 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 					} else {
 						c.Warnings = []string{"I couldn't match that selection. Select one or more records from the list, or cancel."}
 					}
+				case "awaiting_association_targets":
+					if c.selectAssociationTargets(value) {
+						c.Warnings = nil
+					} else {
+						c.Warnings = []string{"I couldn't match that pair. Choose one record from each list, or cancel."}
+					}
+				case "awaiting_association_confirmation":
+					if isConfirm(value) {
+						c.State = "applying_association"
+					} else {
+						c.Warnings = []string{"The relationship has not changed. Confirm the reviewed pair or cancel it."}
+					}
 				case "awaiting_target", "awaiting_field", "awaiting_change":
 					before := c.State
 					handled, mutationErr := c.mutationReply(r.Context(), s, value)
@@ -938,6 +1041,24 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 					return
 				}
 				c.Warnings = append(c.Warnings, "The reviewed records changed. Review the current list and confirm again.")
+			} else if err != nil {
+				failure(w, err)
+				return
+			}
+			c.appendAssistant(r, service)
+			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+		}
+		if c.State == "applying_association" {
+			if err = c.commitAssociation(r.Context(), s, "routing.association."+d.ID+"."+strconv.Itoa(d.Version)); errors.Is(err, store.ErrAssociationChanged) {
+				if err = c.prepareAssociation(r.Context(), s); err != nil {
+					failure(w, err)
+					return
+				}
+				c.Warnings = append(c.Warnings, "The reviewed records changed. Select the current pair and confirm again.")
 			} else if err != nil {
 				failure(w, err)
 				return

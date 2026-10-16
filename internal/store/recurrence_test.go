@@ -9,6 +9,36 @@ import (
 	"time"
 )
 
+func TestUpdateReminderRepeatPreservesCurrentOccurrence(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	at := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
+	r, err := s.CreateReminder(t.Context(), "Repeat review", at, "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	weekly, err := s.UpdateReminderRepeat(t.Context(), r.ID, "weekly")
+	if err != nil || weekly.Reminder.Repeat != "weekly" || weekly.Reminder.RepeatAnchor != r.ScheduledAt || weekly.Reminder.OccurrenceID != r.OccurrenceID || weekly.Reminder.ScheduledAt != r.ScheduledAt {
+		t.Fatal(weekly, err)
+	}
+	none, err := s.UpdateReminderRepeat(t.Context(), r.ID, "")
+	if err != nil || none.Reminder.Repeat != "" || none.Reminder.RepeatAnchor != "" || none.Reminder.OccurrenceID != r.OccurrenceID {
+		t.Fatal(none, err)
+	}
+	if _, err = s.UpdateReminderRepeat(t.Context(), r.ID, "monthly"); !errors.Is(err, ErrInvalidRepeat) {
+		t.Fatalf("invalid repeat accepted: %v", err)
+	}
+	if _, err = s.ReminderMutation(t.Context(), r.ID, "completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.UpdateReminderRepeat(t.Context(), r.ID, "daily"); !errors.Is(err, ErrReminderConflict) {
+		t.Fatalf("completed reminder changed: %v", err)
+	}
+}
+
 func parseInstant(t *testing.T, s string) time.Time {
 	t.Helper()
 	v, e := time.Parse(time.RFC3339, s)

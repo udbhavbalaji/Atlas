@@ -210,22 +210,19 @@ func unsupportedWorkflowReason(text string) string {
 		return "I can't send an email or message from Atlas. I can save a task or reminder to do it."
 	}
 	if (verb == "link" || verb == "unlink" || verb == "attach" || verb == "detach") && has("task", "tasks", "reminder", "reminders", "note", "notes") {
-		return "I can't change links between existing records in this conversation. The direct Atlas API supports note and reminder links."
+		return "Please say which link to change, for example, ‘link a note to a task’ or ‘unlink a reminder from a task’."
 	}
 	if verb == "remove" && has("from") && has("note", "notes", "reminder", "reminders") && has("task", "tasks", "reminder", "reminders") {
-		return "I can't remove a link between existing records in this conversation. The direct Atlas API supports note and reminder links."
+		return "Please say which link to remove, for example, ‘unlink a note from a task’."
 	}
 	if (verb == "relate" || verb == "unrelate" || verb == "add" || verb == "remove") && has("relation", "relations", "relationship", "relationships") {
-		return "I can't change record relations in this conversation. The direct Atlas API supports relations."
+		return "Please name the relation change, for example, ‘relate a task and a note’."
 	}
 	if (verb == "add" || verb == "remove" || verb == "make") && has("dependency", "dependencies", "depend", "depends") {
-		return "I can't change task dependencies in this conversation. The direct Atlas API supports task dependencies."
+		return "Please name the dependency change, for example, ‘add a dependency between tasks’."
 	}
 	if verb == "make" && has("before") && has("task", "tasks") {
-		return "I can't change task dependencies in this conversation. The direct Atlas API supports task dependencies."
-	}
-	if (verb == "change" || verb == "update" || verb == "edit" || verb == "stop") && has("repeat", "repeating", "recurrence", "recurring") && has("reminder", "reminders") {
-		return "I can't change an existing reminder's repeat rule. I can create a new repeating reminder."
+		return "Please name the prerequisite change, for example, ‘make a task a prerequisite for another task’."
 	}
 	if (verb == "complete" || verb == "finish" || verb == "reopen" || verb == "reschedule" || verb == "edit" || verb == "update") && has("all", "every") && has("task", "tasks", "reminder", "reminders", "note", "notes") {
 		return "I can't change multiple saved records in one conversation action. Tell me which record to change first."

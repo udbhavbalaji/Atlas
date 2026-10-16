@@ -12,6 +12,45 @@ const recurrenceMigration = `ALTER TABLE reminders ADD COLUMN repeat TEXT NOT NU
 var ErrInvalidRepeat = errors.New("repeat must be empty, daily, or weekly")
 var ErrOccurrenceConflict = errors.New("only the current due occurrence of a repeating reminder can be acknowledged")
 
+// UpdateReminderRepeat changes the future recurrence rule while preserving the
+// current occurrence and delivery. The current scheduled local clock becomes
+// the anchor for subsequent occurrences.
+func (s *Store) UpdateReminderRepeat(ctx context.Context, id, repeat string) (ReminderAction, error) {
+	if repeat != "" && repeat != "daily" && repeat != "weekly" {
+		return ReminderAction{}, ErrInvalidRepeat
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	defer tx.Rollback()
+	r, err := readReminder(ctx, tx, id)
+	if err != nil {
+		return ReminderAction{}, err
+	}
+	if r.Status != "scheduled" && r.Status != "due" {
+		return ReminderAction{}, ErrReminderConflict
+	}
+	if r.Repeat != repeat {
+		anchor := ""
+		if repeat != "" {
+			anchor = r.ScheduledAt
+		}
+		at := now()
+		if _, err = tx.ExecContext(ctx, "UPDATE reminders SET repeat=?,repeat_anchor=?,updated_at=? WHERE id=?", repeat, anchor, at, id); err != nil {
+			return ReminderAction{}, err
+		}
+		if err = reminderActivity(ctx, tx, id, "reminder.repeat_changed", at); err != nil {
+			return ReminderAction{}, err
+		}
+	}
+	v, err := reminderAction(ctx, tx, id)
+	if err == nil {
+		err = tx.Commit()
+	}
+	return v, err
+}
+
 // nextRepeat keeps the original local clock and weekday. Missing local times are
 // skipped; ambiguous times choose the earlier instant. Only a future occurrence
 // is queued, so downtime never produces a burst of old notifications.

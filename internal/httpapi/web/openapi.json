@@ -1286,12 +1286,12 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReminderLinkPatch"
+                "$ref": "#/components/schemas/ReminderPatch"
               }
             }
           }
         },
-        "summary": "Link or unlink an active reminder directly to an open task"
+        "summary": "Change an active reminder's task link or future repeat rule"
       }
     },
     "/api/v1/reminders/{id}/complete": {
@@ -4199,16 +4199,22 @@
           }
         }
       },
-      "ReminderLinkPatch": {
+      "ReminderPatch": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "task_id"
+        "oneOf": [
+          { "required": ["task_id"] },
+          { "required": ["repeat"] }
         ],
         "properties": {
           "task_id": {
             "type": "string",
             "description": "Existing open task ID, or empty to detach. Completed reminders cannot change links."
+          },
+          "repeat": {
+            "type": "string",
+            "enum": ["", "daily", "weekly"],
+            "description": "Future recurrence rule; empty stops repeating. The current occurrence and delivery remain unchanged."
           }
         }
       },
@@ -5664,7 +5670,7 @@
       },
       "RoutingResult": {
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "version": {
             "type": "string",
@@ -5681,7 +5687,9 @@
             "type": "string",
             "enum": [
               "mock",
-              "jev"
+              "jev",
+              "free",
+              "groq"
             ]
           },
           "mock": {
@@ -5702,7 +5710,11 @@
               "tasks",
               "reminders",
               "notes",
-              "lookup"
+              "lookup",
+              "edit",
+              "delete",
+              "batch_delete",
+              "association"
             ]
           },
           "input": {
@@ -5878,7 +5890,7 @@
       },
       "RoutingChannelResponse": {
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "version": {
             "type": "string",
@@ -5890,7 +5902,9 @@
               "tasks",
               "reminders",
               "notes",
-              "lookup"
+              "lookup",
+              "batch_delete",
+              "association"
             ]
           },
           "state": {
@@ -5898,6 +5912,8 @@
             "enum": [
               "needs_fields",
               "awaiting_confirmation",
+              "awaiting_batch_targets",
+              "awaiting_association_targets",
               "answered"
             ]
           },
@@ -5909,7 +5925,9 @@
             "enum": [
               "explicit_fields",
               "local_prefill_review",
-              "saved_record_lookup"
+              "saved_record_lookup",
+              "local_batch_scope",
+              "local_association_scope"
             ]
           },
           "questions": {
