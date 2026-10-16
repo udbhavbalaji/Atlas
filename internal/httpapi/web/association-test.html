@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Atlas relationship test</title>
+<style>body{font:16px system-ui,sans-serif;max-width:850px;margin:2rem auto;padding:0 1rem;color:#222}textarea,select,input,button{font:inherit;padding:.5rem}textarea{width:100%;box-sizing:border-box}button{margin:.25rem;cursor:pointer}pre{white-space:pre-wrap;background:#f4f4f4;padding:1rem}label{display:block;margin:.6rem 0}</style></head>
+<body><a href="/desktop-test">Desktop checks</a><h1>Relationship test</h1><p>Choose existing records, review the exact pair, and confirm. The page shows the saved state at each step.</p>
+<form id="start"><label>Provider <select id="provider"><option value="mock">Mock</option><option value="jev">Live Jev</option></select></label><label>Request<textarea id="request" rows="2">Link a note to a task</textarea></label><button>Start</button></form>
+<p>Also try “Add a dependency between tasks”, “Relate a task and note”, “Unlink a reminder from a task”, or a request with two actions.</p>
+<p id="status" role="status" aria-live="polite">Ready.</p><div id="controls"></div><pre id="details"></pre>
+<form id="reply" hidden><label>Reply <input id="reply-text" required></label><button>Send</button></form>
+<script>
+let session=null;const $=id=>document.getElementById(id);
+async function send(path,body){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw new Error(data.error?.message||response.statusText);return data;}
+async function reply(text,field='',value=''){try{render(await send('/api/v1/conversations/routing/'+encodeURIComponent(session.id)+'/reply',{version:session.version,text,field,value}));}catch(error){$('status').textContent=error.message;}}
+function button(label,text){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>reply(text);$('controls').append(b);}
+function render(data){session=data;$('status').textContent=data.prompt;$('details').textContent=JSON.stringify({state:data.state,association:data.association,workflow:data.workflow,warnings:data.warnings,answer:data.answer},null,2);$('controls').replaceChildren();const a=data.association;
+ if(data.state==='awaiting_association_targets'&&a){const selects=[];for(const [label,items] of [['First record',a.from_candidates||[]],['Second record',a.to_candidates||[]]]){const wrap=document.createElement('label');wrap.textContent=label+' ';const select=document.createElement('select');for(const item of items){const option=document.createElement('option');option.value=item.id;option.textContent=item.kind+': '+item.title;select.append(option);}wrap.append(select);$('controls').append(wrap);selects.push(select);}const b=document.createElement('button');b.type='button';b.textContent='Review pair';b.onclick=()=>reply('','association_targets',selects.map(s=>s.value).join(','));$('controls').append(b);}
+ if(data.state==='awaiting_association_confirmation')button('Apply reviewed relationship','yes');if(data.state==='awaiting_workflow_start')button('Start workflow','start');if(data.workflow&&['answered','saved'].includes(data.state)&&data.workflow.index+1<data.workflow.steps.length)button('Continue workflow','continue');if(data.state!=='cancelled')button('Cancel','cancel');$('reply').hidden=data.state==='cancelled';}
+ $('start').onsubmit=async event=>{event.preventDefault();try{render(await send('/api/v1/conversations/routing',{provider:$('provider').value,version:'1',request_id:crypto.randomUUID(),text:$('request').value,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}));}catch(error){$('status').textContent=error.message;}};
+ $('reply').onsubmit=event=>{event.preventDefault();const text=$('reply-text').value;$('reply-text').value='';reply(text);};
+</script></body></html>

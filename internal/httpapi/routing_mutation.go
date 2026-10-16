@@ -246,6 +246,8 @@ func (c *routingConversation) prepareEditValue(text string) error {
 			m.Field, m.New = "status", "dismissed"
 		case (strings.Contains(lower, "complete") || strings.Contains(lower, "finish")) && m.Kind == "reminder":
 			m.Field, m.New = "status", "completed"
+		case m.Kind == "reminder" && (strings.Contains(lower, "repeat") || strings.Contains(lower, "recurr")):
+			m.Field = "repeat"
 		case strings.Contains(lower, "rename") || strings.Contains(lower, "title"):
 			m.Field = "title"
 		case m.Kind == "note":
@@ -269,7 +271,7 @@ func (c *routingConversation) prepareEditValue(text string) error {
 			choices = append(choices, provider.Choice{Value: "details", Label: "Details"}, provider.Choice{Value: "due_at", Label: "Due date"})
 		}
 		if m.Kind == "reminder" {
-			choices = append(choices, provider.Choice{Value: "scheduled_at", Label: "Reminder time"})
+			choices = append(choices, provider.Choice{Value: "scheduled_at", Label: "Reminder time"}, provider.Choice{Value: "repeat", Label: "Repeat rule"})
 		}
 		c.Question = &channelQuestion{ID: "edit_field", Field: "edit_field", ValueType: "choice", Prompt: "What should I change on “" + m.Title + "”?", Required: true, Choices: choices}
 		c.State = "awaiting_field"
@@ -299,8 +301,17 @@ func (c *routingConversation) prepareEditValue(text string) error {
 			}
 		}
 	}
+	if m.Field == "repeat" && m.New != "" {
+		m.New = strings.ToLower(strings.TrimSpace(m.New))
+		if m.New != "daily" && m.New != "weekly" && m.New != "none" {
+			m.New = ""
+		}
+	}
 	if m.New == "" {
 		prompt := "What should the new " + strings.ReplaceAll(m.Field, "_", " ") + " be for “" + m.Title + "”?"
+		if m.Field == "repeat" {
+			prompt = "Should “" + m.Title + "” repeat daily, weekly, or none?"
+		}
 		c.Question = &channelQuestion{ID: "edit_value", Field: "edit_value", ValueType: "text", Prompt: prompt, Required: true}
 		c.State = "awaiting_change"
 		return nil
@@ -382,6 +393,8 @@ func (c *routingConversation) snapshotMutation(ctx context.Context, s *store.Sto
 			m.Old = v.Reminder.ScheduledAt
 		case "status":
 			m.Old = v.Reminder.Status
+		case "repeat":
+			m.Old = v.Reminder.Repeat
 		default:
 			return routing.ErrContract
 		}
@@ -500,10 +513,16 @@ func (c *routingConversation) commitMutation(ctx context.Context, s *store.Store
 			before = current.Reminder.ScheduledAt
 		case "status":
 			before = current.Reminder.Status
+		case "repeat":
+			before = current.Reminder.Repeat
 		default:
 			return routing.ErrContract
 		}
-		if before != m.New {
+		newValue := m.New
+		if m.Field == "repeat" && newValue == "none" {
+			newValue = ""
+		}
+		if before != newValue {
 			var updated store.ReminderAction
 			if m.Field == "title" {
 				updated, err = s.RenameReminder(ctx, m.ID, m.New)
@@ -517,6 +536,8 @@ func (c *routingConversation) commitMutation(ctx context.Context, s *store.Store
 					label := change.Kind + " “" + change.Title + "”"
 					effects = append(effects, fmt.Sprintf("Linked %s changed %s from %s to %s.", label, strings.ReplaceAll(change.Field, "_", " "), change.Old, change.New))
 				}
+			} else if m.Field == "repeat" {
+				updated, err = s.UpdateReminderRepeat(ctx, m.ID, newValue)
 			} else {
 				updated, err = s.ReminderMutation(ctx, m.ID, m.New, "")
 			}
@@ -530,6 +551,8 @@ func (c *routingConversation) commitMutation(ctx context.Context, s *store.Store
 				after = updated.Reminder.ScheduledAt
 			case "status":
 				after = updated.Reminder.Status
+			case "repeat":
+				after = updated.Reminder.Repeat
 			}
 		} else {
 			after = before

@@ -39,7 +39,7 @@ func Registry() []Action {
 		{"edit", "edit", "Change an existing Atlas task, reminder, or note. Includes reschedule, rename, update details or note body, complete or reopen a task, and complete or dismiss a reminder. Select this even when the record type is not explicitly named."},
 		{"delete", "delete", "Delete an existing Atlas task, reminder, or note. The exact record must be confirmed before deletion. Select this even when the record type is not explicitly named."},
 		{"clarify", "", "The primary intent is unclear, or several independent actions cannot be represented by one capture. Ask the user before routing."},
-		{"unsupported", "", "The request needs an external action or a capability outside conversational record creation, lookup, single-record editing, or reviewed deletion. Examples: changing existing links, task dependencies or record relations, changing a reminder's repeat rule, bulk edits, and separate project or contact records. Explain the unavailable operation."},
+		{"unsupported", "", "The request needs an external action or a capability outside conversational record creation, lookup, single-record editing, or reviewed deletion. Examples: changing existing links, task dependencies or record relations, bulk edits, and separate project or contact records. Explain the unavailable operation."},
 	}
 }
 

@@ -323,7 +323,7 @@ func pipelineTools(category string) []routing.Action {
 		}
 		return []routing.Action{
 			{ID: verb + "_task", Description: verb + " an existing task, including a recently discussed task and related records when the store's workflow requires it."},
-			{ID: verb + "_reminder", Description: verb + " an existing reminder, including a recently discussed reminder."},
+			{ID: verb + "_reminder", Description: verb + " an existing reminder, including its repeat rule or a recently discussed reminder."},
 			{ID: verb + "_note", Description: verb + " an existing note, including a recently discussed note."},
 			{ID: "clarify", Description: "The target record type is genuinely unclear."},
 		}

@@ -109,3 +109,15 @@ func TestGroundPlanUsesRankedContextOnlyForReferentialRequests(t *testing.T) {
 		t.Fatalf("explicit grounded ID was overridden: %#v", plan)
 	}
 }
+
+func TestExistingReminderRepeatPlanValidation(t *testing.T) {
+	state := State{Text: "Change my reminder to repeat weekly", Timezone: "UTC"}
+	for _, value := range []string{"daily", "weekly", "none"} {
+		if err := ValidatePlan(ActionPlan{Action: "edit", Kind: "reminder", Field: "repeat", Value: value}, state); err != nil {
+			t.Errorf("valid repeat %q: %v", value, err)
+		}
+	}
+	if err := ValidatePlan(ActionPlan{Action: "edit", Kind: "reminder", Field: "repeat", Value: "monthly"}, state); err == nil {
+		t.Fatal("unsupported repeat rule accepted")
+	}
+}

@@ -69,6 +69,11 @@ function voiceRender(state) {
   if (state.state === 'awaiting_route') {
     for (const channel of ['task', 'reminder', 'note', 'lookup', 'edit', 'delete']) actions.append(voiceButton(channel === 'lookup' ? 'Find existing records' : channel, () => voiceCall(() => voiceClient.reply(channel))));
   }
+  if (state.state === 'awaiting_workflow_start') actions.append(voiceButton('Start first step', () => voiceCall(() => voiceClient.reply('start'))));
+  if (state.workflow && ['answered', 'saved'].includes(state.state) && state.workflow.index + 1 < state.workflow.steps.length) {
+    actions.append(voiceButton('Continue to next step', () => voiceCall(() => voiceClient.reply('continue'))));
+  }
+  if (state.workflow && state.state === 'unsupported') actions.append(voiceButton('Skip unsupported step', () => voiceCall(() => voiceClient.reply('skip'))));
   if (['awaiting_answer', 'awaiting_target', 'awaiting_field'].includes(state.state) && state.question?.choices) {
     for (const choice of state.question.choices) {
       actions.append(voiceButton(choice.label, () => voiceCall(() => voiceClient.reply('', state.question.field, choice.value))));
@@ -76,6 +81,18 @@ function voiceRender(state) {
   }
   const proposal = voiceElement('proposal');
   proposal.replaceChildren();
+  if (state.workflow) {
+    const heading = document.createElement('h3');
+    heading.textContent = 'Ordered workflow';
+    proposal.append(heading);
+    const list = document.createElement('ol');
+    for (const [index, step] of state.workflow.steps.entries()) {
+      const item = document.createElement('li');
+      item.textContent = `${step} · ${index < state.workflow.index ? 'complete' : index === state.workflow.index ? 'current' : 'pending'}`;
+      list.append(item);
+    }
+    proposal.append(list);
+  }
   if (state.proposal && !state.saved) {
     const heading = document.createElement('h3');
     heading.textContent = state.saved ? 'Saved records' : 'Review before saving';
@@ -123,6 +140,34 @@ function voiceRender(state) {
       proposal.append(line);
     }
   }
+  if (state.association) {
+    const relation = state.association;
+    const heading = document.createElement('h3');
+    heading.textContent = 'Relationship · ' + relation.operation;
+    proposal.append(heading);
+    if (state.state === 'awaiting_association_targets') {
+      const selects = [];
+      for (const [label, items] of [['First record', relation.from_candidates || []], ['Second record', relation.to_candidates || []]]) {
+        const wrapper = document.createElement('label');
+        wrapper.textContent = label + ' ';
+        const select = document.createElement('select');
+        for (const item of items) {
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `${item.kind}: ${item.title}`;
+          select.append(option);
+        }
+        wrapper.append(select);
+        proposal.append(wrapper, document.createElement('br'));
+        selects.push(select);
+      }
+      proposal.append(voiceButton('Review relationship', () => voiceCall(() => voiceClient.reply('', 'association_targets', selects.map(select => select.value).join(',')))));
+    } else if (relation.change) {
+      const line = document.createElement('p');
+      line.textContent = `${relation.attach ? 'Add' : 'Remove'} ${relation.operation}: ${relation.change.from.kind} “${relation.change.from.title}” → ${relation.change.to.kind} “${relation.change.to.title}”`;
+      proposal.append(line);
+    }
+  }
   for (const warning of state.warnings || []) {
     const line = document.createElement('p');
     line.className = 'meta';
@@ -145,9 +190,9 @@ function voiceRender(state) {
   }
   const active = state.state !== 'cancelled';
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
-  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state);
-  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
-  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit'].includes(state.state);
+  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting', 'deleting_batch', 'awaiting_association_confirmation', 'applying_association'].includes(state.state);
+  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state) ? 'Confirm delete' : ['awaiting_association_confirmation', 'applying_association'].includes(state.state) ? 'Apply relationship' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
+  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit', 'applying_association'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
 }
@@ -177,7 +222,7 @@ async function voiceCall(action, speak = true, starting = false) {
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
     if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
     if (speak) voiceSpeakPrompt();
-    if ((state.saved || (state.mutation || state.batch) && state.state === 'answered') && typeof load === 'function') await load();
+    if ((state.saved || (state.mutation || state.batch || state.association) && state.state === 'answered') && typeof load === 'function') await load();
   } catch (error) {
     let message = error.message;
     if (error.status) message += starting

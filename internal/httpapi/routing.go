@@ -161,23 +161,24 @@ type channelQuestion struct {
 	Choices   []provider.Choice `json:"choices"`
 }
 type channelResponse struct {
-	Version    string                 `json:"version"`
-	Channel    string                 `json:"channel"`
-	State      string                 `json:"state"`
-	Source     string                 `json:"source"`
-	Input      routing.State          `json:"input"`
-	Prefill    *channelPrefill        `json:"prefill,omitempty"`
-	Extraction string                 `json:"extraction"`
-	Questions  []channelQuestion      `json:"questions"`
-	Proposal   *store.CaptureProposal `json:"proposal"`
-	Answer     *conversationAnswer    `json:"answer,omitempty"`
-	Batch      *batchMutation         `json:"batch,omitempty"`
-	Persisted  bool                   `json:"persisted"`
+	Version     string                 `json:"version"`
+	Channel     string                 `json:"channel"`
+	State       string                 `json:"state"`
+	Source      string                 `json:"source"`
+	Input       routing.State          `json:"input"`
+	Prefill     *channelPrefill        `json:"prefill,omitempty"`
+	Extraction  string                 `json:"extraction"`
+	Questions   []channelQuestion      `json:"questions"`
+	Proposal    *store.CaptureProposal `json:"proposal"`
+	Answer      *conversationAnswer    `json:"answer,omitempty"`
+	Batch       *batchMutation         `json:"batch,omitempty"`
+	Association *associationMutation   `json:"association,omitempty"`
+	Persisted   bool                   `json:"persisted"`
 }
 type channelHandler func(context.Context, *store.Store, routing.Result, dispatchRequest) (channelResponse, error)
 
 func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result, channel string, input dispatchRequest) (channelResponse, error) {
-	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel, "batch_delete": batchDeleteChannel}
+	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel, "batch_delete": batchDeleteChannel, "association": associationChannel}
 	handler, ok := handlers[channel]
 	if !ok {
 		return channelResponse{}, routing.ErrRequest
@@ -189,6 +190,16 @@ func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result,
 		return channelResponse{}, routing.ErrRequest
 	}
 	return handler(ctx, s, result, input)
+}
+func associationChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	c := routingConversation{Route: r, Channel: "association"}
+	if err := c.prepareAssociation(ctx, s); err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "association", State: c.State, Source: r.Input.Text, Input: r.Input, Extraction: "local_association_scope", Questions: []channelQuestion{}, Association: c.Association, Answer: c.Answer}, nil
 }
 func batchDeleteChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
 	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
