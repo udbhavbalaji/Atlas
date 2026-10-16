@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"atlas/internal/interpret"
 	"atlas/internal/provider"
 	"atlas/internal/routing"
 	"atlas/internal/store"
@@ -110,51 +111,94 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 			}
 			state.Context = includeRecentRecord(ctx, s, state.Context, input.RecentRecordID, input.RecentRecordKind)
 			result.Input = state
-			planned, planErr := service.free.Plan(ctx, state)
-			if planErr != nil {
-				if category == "read" {
-					result.ExtractionModel = "local_lookup"
-				} else if fallback, ok := localReminderPlan(state); ok {
-					result.Plan = &fallback
-					result.ExtractionModel = "local_parser"
-				} else {
-					return routing.Result{}, fmt.Errorf("argument extraction: %w", planErr)
-				}
-			} else if !pipelinePlanMatches(tool, planned.Plan) {
-				if category == "read" {
-					result.ExtractionModel = "local_lookup"
-				} else if fallback, ok := localReminderPlan(state); ok {
-					result.Plan = &fallback
-					result.ExtractionModel = "local_parser"
-				} else {
-					return routing.Result{}, fmt.Errorf("extracted tool mismatch: %w", routing.ErrContract)
-				}
+			if local, ok := localNotePlan(state); ok {
+				result.Plan = &local
+				result.ExtractionModel = "local_parser"
 			} else {
-				planned.Plan = routing.NormalizePlanTiming(planned.Plan, state)
-				// A task with a stated time should retain that time as its
-				// deadline as well as its linked reminder. This keeps later
-				// reschedules synchronized even when extraction only filled
-				// the reminder field.
-				normalizeTimedTaskPlan(tool, input.Text, &planned.Plan)
-				if tool == "reminder" && planned.Plan.ReminderAt == "" {
-					seed := prepareChannel(state, "reminder")
-					if !seedHasDefaultTime(seed) {
-						planned.Plan.ReminderAt = seed.Fields["reminder_at"]
+				planned, planErr := service.free.Plan(ctx, state)
+				if planErr != nil {
+					if category == "read" {
+						result.ExtractionModel = "local_lookup"
+					} else if fallback, ok := localReminderPlan(state); ok {
+						result.Plan = &fallback
+						result.ExtractionModel = "local_parser"
+					} else {
+						if ctx.Err() != nil {
+							return routing.Result{}, ctx.Err()
+						}
+						result = pipelineExtractionClarification(result, tool)
+					}
+				} else if !pipelinePlanMatches(tool, planned.Plan) {
+					if category == "read" {
+						result.ExtractionModel = "local_lookup"
+					} else if fallback, ok := localReminderPlan(state); ok {
+						result.Plan = &fallback
+						result.ExtractionModel = "local_parser"
+					} else {
+						result = pipelineExtractionClarification(result, tool)
+					}
+				} else {
+					planned.Plan = routing.NormalizePlanTiming(planned.Plan, state)
+					// A task with a stated time should retain that time as its
+					// deadline as well as its linked reminder. This keeps later
+					// reschedules synchronized even when extraction only filled
+					// the reminder field.
+					normalizeTimedTaskPlan(tool, input.Text, &planned.Plan)
+					if tool == "reminder" && planned.Plan.ReminderAt == "" {
+						seed := prepareChannel(state, "reminder")
+						if !seedHasDefaultTime(seed) {
+							planned.Plan.ReminderAt = seed.Fields["reminder_at"]
+						}
+					}
+					if err = routing.ValidatePlan(planned.Plan, state); err != nil {
+						result = pipelineExtractionClarification(result, tool)
+					} else {
+						result.Plan = &planned.Plan
+						result.ExtractionModel = planned.Model
+						result.Evaluation.ModelCalls++
+						result.Evaluation.Usage.InputTokens += planned.Usage.InputTokens
+						result.Evaluation.Usage.OutputTokens += planned.Usage.OutputTokens
 					}
 				}
-				if err = routing.ValidatePlan(planned.Plan, state); err != nil {
-					return routing.Result{}, err
-				}
-				result.Plan = &planned.Plan
-				result.ExtractionModel = planned.Model
-				result.Evaluation.ModelCalls++
-				result.Evaluation.Usage.InputTokens += planned.Usage.InputTokens
-				result.Evaluation.Usage.OutputTokens += planned.Usage.OutputTokens
 			}
 		}
 	}
 	result.RoutingToken = service.sign(result)
 	return result, nil
+}
+
+func localNotePlan(state routing.State) (routing.ActionPlan, bool) {
+	if state.SelectedTool != "note" || state.RecentRecordKind == "task" {
+		return routing.ActionPlan{}, false
+	}
+	body, explicit := interpret.ExplicitNoteBody(state.Text)
+	if !explicit || body == "" {
+		return routing.ActionPlan{}, false
+	}
+	plan := routing.ActionPlan{Action: "note", Kind: "note", NoteBody: body}
+	if routing.ValidatePlan(plan, state) != nil {
+		return routing.ActionPlan{}, false
+	}
+	return plan, true
+}
+
+func pipelineExtractionClarification(result routing.Result, tool string) routing.Result {
+	label := map[string]string{
+		"task": "add a task", "reminder": "add a reminder", "note": "add a note",
+		"edit_task": "edit a task", "edit_reminder": "edit a reminder", "edit_note": "edit a note",
+		"delete_task": "delete a task", "delete_reminder": "delete a reminder", "delete_note": "delete a note",
+	}[tool]
+	if label == "" {
+		label = "change a saved record"
+	}
+	result.State = "needs_clarification"
+	result.SelectedChannel = ""
+	// A reviewed channel choice is not approval to save. Clearing the category
+	// keeps Jev's normal automatic capture out of this recovery path.
+	result.Category = ""
+	result.ExtractionModel = "unavailable"
+	result.Plan = &routing.ActionPlan{Action: "clarify", Clarification: "I think you want to " + label + ", but I couldn't reliably read the details. Choose the intended action below to review them, or start a new request with clearer wording."}
+	return result
 }
 
 // When every free extractor fails, a fully specified standalone reminder can

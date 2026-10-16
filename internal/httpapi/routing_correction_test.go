@@ -3,9 +3,16 @@ package httpapi
 import (
 	"atlas/internal/provider"
 	"atlas/internal/routing"
+	"atlas/internal/store"
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type correctionFixture struct{ choice string }
@@ -46,6 +53,85 @@ func TestNaturalCorrectionRevisesDeadlineAndRemovesLateReminder(t *testing.T) {
 	}
 	if !strings.Contains(c.Warnings[0], "after the new deadline") {
 		t.Fatal(c.Warnings)
+	}
+}
+
+func TestNaturalCorrectionUnderstandsMakeTheTime(t *testing.T) {
+	for _, test := range []struct {
+		text, want, warning string
+	}{
+		{"make the time 9am", "2026-10-16T03:30:00Z", "already set for"},
+		{"make the time 9 am", "2026-10-16T03:30:00Z", "already set for"},
+		{"make it 10am", "2026-10-16T04:30:00Z", ""},
+		{"9 am", "2026-10-16T03:30:00Z", "already set for"},
+		{"change the time to 10 am", "2026-10-16T04:30:00Z", ""},
+	} {
+		t.Run(test.text, func(t *testing.T) {
+			c := routingConversation{State: "awaiting_confirmation", Channel: "reminders", Route: routing.Result{Provider: "jev", Input: routing.State{Timezone: "Asia/Kolkata", ReferenceAt: "2026-10-15T00:00:00Z"}}}
+			c.Draft.Fields.Title = "text Dhriti"
+			c.Draft.Fields.ReminderAt = "2026-10-16T03:30:00Z"
+			if !c.naturalCorrection(t.Context(), routingService{jev: correctionFixture{choice: "reminder"}}, test.text) {
+				t.Fatal(c.Warnings)
+			}
+			if c.Draft.Fields.ReminderAt != test.want || test.warning != "" && (len(c.Warnings) == 0 || !strings.Contains(c.Warnings[0], test.warning)) || test.warning == "" && len(c.Warnings) != 0 {
+				t.Fatalf("unexpected time or warning: %+v", c)
+			}
+		})
+	}
+}
+
+func TestNaturalCorrectionClarifiesMultipleClockTimes(t *testing.T) {
+	c := routingConversation{Channel: "reminders", Route: routing.Result{Provider: "jev", Input: routing.State{Timezone: "Asia/Kolkata", ReferenceAt: "2026-10-15T00:00:00Z"}}}
+	c.Draft.Fields.ReminderAt = "2026-10-16T03:30:00Z"
+	if c.naturalCorrection(t.Context(), routingService{jev: correctionFixture{choice: "reminder"}}, "time 9am or 10am") {
+		t.Fatal("ambiguous clock was applied")
+	}
+	if c.Draft.Fields.ReminderAt != "2026-10-16T03:30:00Z" || len(c.Warnings) == 0 {
+		t.Fatal(c.Draft, c.Warnings)
+	}
+}
+
+func TestReminderConfirmationUsesLocalTime(t *testing.T) {
+	c := routingConversation{State: "awaiting_confirmation", Route: routing.Result{Input: routing.State{Timezone: "Asia/Kolkata"}}, Proposal: &store.CaptureProposal{Input: store.CaptureInput{Kind: "reminder", Title: "text Dhriti", ReminderAt: "2026-10-16T03:30:00Z"}}}
+	prompt := c.prompt()
+	if !strings.Contains(prompt, "Fri, 16 Oct 2026 at 9:00 AM IST") || strings.Contains(prompt, "03:30:00Z") {
+		t.Fatal(prompt)
+	}
+}
+
+func TestReminderTimeReplyKeepsConversationReviewable(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	zone, _ := time.LoadLocation("Asia/Kolkata")
+	day := time.Now().In(zone).AddDate(0, 0, 2)
+	at := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, zone).UTC().Format(time.RFC3339)
+	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "reminder", Kind: "reminder", Title: "text Dhriti", ReminderAt: at}}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: correctionFixture{choice: "reminder"}, free: planner, configured: true, secret: "test"})
+	send := func(path string, body any) (int, map[string]any) {
+		payload, _ := json.Marshal(body)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, path, bytes.NewReader(payload)))
+		var out map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return w.Code, out
+	}
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "free", "version": "1", "request_id": "reminder-time-reply", "text": "Remind me to text Dhriti", "timezone": "Asia/Kolkata"})
+	if code != 201 || c["state"] != "awaiting_confirmation" {
+		t.Fatal(code, c)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "make the time 9 am"})
+	if code != 200 || c["state"] != "awaiting_confirmation" || !strings.Contains(c["prompt"].(string), "9:00 AM IST") || !strings.Contains(c["prompt"].(string), "already set for") || strings.Contains(c["prompt"].(string), "03:30:00Z") {
+		t.Fatal(code, c)
+	}
+	reminders, err := s.Reminders(t.Context())
+	if err != nil || len(reminders) != 0 {
+		t.Fatal("reply saved without confirmation", reminders, err)
 	}
 }
 

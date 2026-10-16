@@ -23,6 +23,27 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 	if err := routing.ValidateRequest(input); err != nil {
 		return routing.Result{}, err
 	}
+	if name == "jev" || name == "mock" || name == "free" || name == "groq" {
+		if compoundBatchRequest(input.Text) {
+			result := localBatchRoute(service, name, input)
+			result.State = "needs_clarification"
+			result.SelectedChannel = ""
+			result.SelectedTool = ""
+			result.Category = "compound"
+			result.RoutingToken = service.sign(result)
+			return result, nil
+		}
+		if reason := unsupportedWorkflowReason(input.Text); reason != "" {
+			return localUnsupportedRoute(service, name, input, reason), nil
+		}
+		batch, err := batchDeleteIntent(parent, s, input.Text)
+		if err != nil {
+			return routing.Result{}, err
+		}
+		if batch {
+			return localBatchRoute(service, name, input), nil
+		}
+	}
 	var evaluator routing.Evaluator
 	switch name {
 	case "mock":
@@ -229,7 +250,7 @@ func routingFailure(w http.ResponseWriter, err error) {
 		apiError(w, 503, "routing_unavailable", message, retryable)
 	case errors.Is(err, routing.ErrContract):
 		log.Printf("Atlas routing contract rejected: %v", err)
-		apiError(w, 422, "routing_evaluation_rejected", err.Error(), false)
+		apiError(w, 422, "routing_evaluation_rejected", "Atlas could not reliably interpret this request. Please rephrase it or specify whether you want to add, find, edit, or delete a task, reminder, or note.", false)
 	default:
 		failure(w, err)
 	}

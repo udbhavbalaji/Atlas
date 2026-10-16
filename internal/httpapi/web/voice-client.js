@@ -18,6 +18,15 @@ function voiceButton(text, action) {
   return button;
 }
 
+function voiceFieldValue(key, value, timezone) {
+  if (!['due_at', 'reminder_at'].includes(key)) return value;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat('en-US', {timeZone: timezone || 'UTC', weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'}).format(instant);
+  } catch { return value; }
+}
+
 function voiceSpeakPrompt() {
   const state = voiceClient.state;
   if (!state || !voiceElement('speak').checked || !('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
@@ -74,13 +83,43 @@ function voiceRender(state) {
     for (const [key, value] of Object.entries(state.proposal.input || {})) {
       if (!value || ['preview_id', 'before_task_version'].includes(key)) continue;
       const line = document.createElement('p');
-      line.textContent = key.replaceAll('_', ' ') + ': ' + value;
+      line.textContent = key.replaceAll('_', ' ') + ': ' + voiceFieldValue(key, value, state.route?.input?.timezone);
       proposal.append(line);
     }
     for (const effect of state.proposal.effects || []) {
       const line = document.createElement('p');
       line.className = 'meta';
       line.textContent = 'Will ' + effect.replaceAll('.', ' ');
+      proposal.append(line);
+    }
+  }
+  if (state.batch) {
+    const choosing = state.state === 'awaiting_batch_targets';
+    const heading = document.createElement('h3');
+    heading.textContent = choosing ? 'Choose records to delete' : 'Records proposed for deletion';
+    proposal.append(heading);
+    const list = document.createElement('div');
+    proposal.append(list);
+    for (const item of choosing ? state.batch.candidates || [] : state.batch.targets || []) {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = item.id;
+      checkbox.checked = !choosing;
+      checkbox.disabled = !choosing;
+      label.append(checkbox, document.createTextNode(` ${item.kind}: ${item.title} (${item.id})`));
+      list.append(label, document.createElement('br'));
+    }
+    if (choosing) {
+      const review = voiceButton('Review selected records', () => {
+        const ids = [...list.querySelectorAll('input:checked')].map(input => input.value);
+        if (ids.length) voiceCall(() => voiceClient.reply('', 'batch_targets', ids.join(',')));
+      });
+      proposal.append(review);
+    }
+    for (const effect of state.batch.effects || []) {
+      const line = document.createElement('p');
+      line.textContent = effect;
       proposal.append(line);
     }
   }
@@ -104,11 +143,11 @@ function voiceRender(state) {
       proposal.append(line);
     }
   }
-  const active = !['cancelled', 'unsupported'].includes(state.state);
+  const active = state.state !== 'cancelled';
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
-  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting'].includes(state.state);
-  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
-  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'applying_edit'].includes(state.state);
+  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state);
+  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
+  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
 }
@@ -125,7 +164,7 @@ function voiceUpdateControls() {
   window.atlasDesktopAudio?.updateControls();
 }
 
-async function voiceCall(action, speak = true) {
+async function voiceCall(action, speak = true, starting = false) {
   if (voiceBusy) return;
   voiceBusy = true;
   voiceStatus('Sending to Atlas…');
@@ -138,9 +177,12 @@ async function voiceCall(action, speak = true) {
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
     if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
     if (speak) voiceSpeakPrompt();
-    if ((state.saved || state.mutation && state.state === 'answered') && typeof load === 'function') await load();
+    if ((state.saved || (state.mutation || state.batch) && state.state === 'answered') && typeof load === 'function') await load();
   } catch (error) {
-    const message = error.message + (error.status ? ' Resume the session to check its latest state before retrying.' : '');
+    let message = error.message;
+    if (error.status) message += starting
+      ? ' Atlas did not return a conversation for this request. Retry or rephrase it.'
+      : ' Resume the session to check its latest state before retrying.';
     voiceStatus(message);
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = message;
     if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = message;
@@ -238,7 +280,7 @@ voiceElement('start-form').onsubmit = event => {
     timezone: zone,
     contextQuery: voiceElement('context').value.trim(),
     requestID: crypto.randomUUID()
-  }));
+  }), true, true);
 };
 if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
   voiceClient.state = null;

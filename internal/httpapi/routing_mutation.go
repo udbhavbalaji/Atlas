@@ -310,31 +310,28 @@ func (c *routingConversation) prepareEditValue(text string) error {
 	return nil
 }
 
-func (c *routingConversation) mutationReply(ctx context.Context, s *store.Store, value string) bool {
+func (c *routingConversation) mutationReply(ctx context.Context, s *store.Store, value string) (bool, error) {
 	if c.Mutation == nil {
-		return false
+		return false, nil
 	}
 	if c.State == "awaiting_target" {
 		if len(c.Mutation.Candidates) == 0 {
 			c.Mutation.TargetQuery = value
-			_ = c.prepareMutation(ctx, s)
-			return true
+			return true, c.prepareMutation(ctx, s)
 		}
 		for _, candidate := range c.Mutation.Candidates {
 			if candidate.ID == value || strings.EqualFold(candidate.Title, value) || strings.EqualFold(candidate.Kind+": "+candidate.Title, value) {
 				c.Mutation.ID, c.Mutation.Kind, c.Mutation.Title = candidate.ID, candidate.Kind, candidate.Title
 				c.Mutation.Candidates = nil
 				c.Question = nil
-				_ = c.prepareMutation(ctx, s)
-				return true
+				return true, c.prepareMutation(ctx, s)
 			}
 		}
-		return false
+		return false, nil
 	}
 	if c.State == "awaiting_change" {
 		c.Mutation.New = ""
-		_ = c.prepareEditValue(value)
-		return true
+		return true, c.prepareEditValue(value)
 	}
 	if c.State == "awaiting_field" {
 		value = strings.TrimSpace(strings.ToLower(value))
@@ -342,13 +339,12 @@ func (c *routingConversation) mutationReply(ctx context.Context, s *store.Store,
 			if value == choice.Value || strings.EqualFold(value, choice.Label) {
 				c.Mutation.Field = choice.Value
 				c.Mutation.New = ""
-				_ = c.prepareEditValue(c.Route.Input.Text)
-				return true
+				return true, c.prepareEditValue(c.Route.Input.Text)
 			}
 		}
-		return false
+		return false, nil
 	}
-	return false
+	return false, nil
 }
 
 func (c *routingConversation) snapshotMutation(ctx context.Context, s *store.Store) error {

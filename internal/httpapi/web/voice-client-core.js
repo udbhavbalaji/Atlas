@@ -17,7 +17,7 @@ class AtlasVoiceSession {
     });
     let result;
     try { result = await response.json(); }
-    catch { throw new Error('Atlas returned a response that could not be read. Resume the session before retrying.'); }
+    catch { throw new Error(path ? 'Atlas returned a response that could not be read. Resume the session before retrying.' : 'Atlas returned a response that could not be read. Retry or rephrase the request.'); }
     if (!response.ok) {
       const error = new Error(result.error?.message || 'Conversation request failed.');
       error.status = response.status;

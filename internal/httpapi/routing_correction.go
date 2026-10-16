@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-var spokenClock = regexp.MustCompile(`(?i)\b(?:by|at)\s+(\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\b`)
+var spokenClock = regexp.MustCompile(`(?i)\b(?:by|at|to|for|time|it)\s+(\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?)\b`)
+var standaloneClock = regexp.MustCompile(`(?i)^\s*(\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\s*[.!]?\s*$`)
+var explicitClockTokens = regexp.MustCompile(`(?i)\b\d{1,2}(?:[:.]\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b`)
 var statedValue = regexp.MustCompile(`(?i)\b(?:to|as|that)\s+(.+)$`)
 
 // Jev selects which part of an existing proposal a natural-language follow-up
@@ -96,12 +98,21 @@ func (c *routingConversation) naturalCorrection(ctx context.Context, service rou
 		c.Warnings = append(c.Warnings, "This is a reminder draft. Please say when you want the reminder.")
 		return false
 	}
-	clock := spokenClock.FindStringSubmatch(text)
-	if len(clock) < 2 {
-		c.Warnings = append(c.Warnings, "I understood which time you want changed, but could not read the new clock time. Please include am or pm.")
+	clocks := spokenClock.FindAllStringSubmatch(text, -1)
+	if len(clocks) > 1 || len(explicitClockTokens.FindAllString(text, -1)) > 1 {
+		c.Warnings = append(c.Warnings, "I found more than one clock time. Which single time should I use?")
 		return false
 	}
-	phrase := strings.TrimSpace(clock[1])
+	if len(clocks) == 0 {
+		if clock := standaloneClock.FindStringSubmatch(text); len(clock) == 2 {
+			clocks = [][]string{clock}
+		}
+	}
+	if len(clocks) == 0 {
+		c.Warnings = append(c.Warnings, "I understood which time you want changed, but could not read the new clock time. Please reply with a time such as ‘9 am’.")
+		return false
+	}
+	phrase := strings.TrimSpace(clocks[0][1])
 	lower := strings.ToLower(text)
 	if strings.Contains(lower, "tomorrow") {
 		phrase = "tomorrow at " + phrase
@@ -130,11 +141,19 @@ func (c *routingConversation) naturalCorrection(ctx context.Context, service rou
 	if selected == "deadline" || selected == "both" {
 		c.Draft.Fields.DueAt = instant
 	}
+	previousReminder := c.Draft.Fields.ReminderAt
 	c.Warnings = nil
 	if selected == "reminder" || selected == "both" {
 		c.Draft.Fields.ReminderAt = instant
 		if c.Channel == "tasks" {
 			c.Draft.Reminder = "add"
+		}
+		if selected == "reminder" && previousReminder != "" {
+			before, beforeErr := time.Parse(time.RFC3339Nano, previousReminder)
+			after, afterErr := time.Parse(time.RFC3339Nano, instant)
+			if beforeErr == nil && afterErr == nil && before.Equal(after) {
+				c.Warnings = append(c.Warnings, "That reminder is already set for "+lookupTime(instant, c.Route.Input.Timezone)+".")
+			}
 		}
 	} else if reminder, parseErr := time.Parse(time.RFC3339Nano, c.Draft.Fields.ReminderAt); parseErr == nil {
 		if deadline, deadlineErr := time.Parse(time.RFC3339Nano, instant); deadlineErr == nil && !reminder.Before(deadline) {

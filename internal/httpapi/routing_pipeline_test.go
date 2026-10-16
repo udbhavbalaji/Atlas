@@ -87,6 +87,78 @@ func TestJevLookupUsesSavedRecordsWhenFreeModelsUnavailable(t *testing.T) {
 	}
 }
 
+func TestJevExplicitNoteNeedsNoModelExtraction(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: &stagedJev{category: "create", tool: "note"}, free: unavailablePlanner{}, configured: true, secret: "test"})
+	data, _ := json.Marshal(map[string]any{"provider": "jev", "version": "1", "request_id": "explicit-note", "text": "make a note of this: My number is 4689", "timezone": "UTC"})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/conversations/routing", bytes.NewReader(data)))
+	var out map[string]any
+	if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 201 || out["state"] != "saved" || out["route"].(map[string]any)["extraction_model"] != "local_parser" {
+		t.Fatal(w.Code, out)
+	}
+	notes, err := s.Notes(t.Context())
+	if err != nil || len(notes) != 1 || notes[0].Body != "My number is 4689" {
+		t.Fatal(notes, err)
+	}
+}
+
+func TestExplicitNoteDoesNotDropRecentTaskLink(t *testing.T) {
+	state := routing.State{SelectedTool: "note", Text: "make a note of this: Bring the portfolio", RecentRecordID: "task-1", RecentRecordKind: "task"}
+	if plan, ok := localNotePlan(state); ok {
+		t.Fatalf("task context was discarded: %#v", plan)
+	}
+}
+
+func TestJevMalformedActionJSONAsksForReview(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"model": "free-test", "choices": []any{map[string]any{"message": map[string]any{"content": "not JSON"}}}})
+	}))
+	defer model.Close()
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: &stagedJev{category: "create", tool: "task"}, free: routing.FreePlanner{APIKey: "test", Endpoint: model.URL, Client: model.Client()}, configured: true, secret: "test"})
+	data, _ := json.Marshal(map[string]any{"provider": "jev", "version": "1", "request_id": "malformed-task", "text": "Create a task to buy milk", "timezone": "UTC"})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/conversations/routing", bytes.NewReader(data)))
+	var out map[string]any
+	if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 201 || out["state"] != "awaiting_route" || !strings.Contains(out["prompt"].(string), "add a task") || out["route"].(map[string]any)["extraction_model"] != "unavailable" {
+		t.Fatal(w.Code, out)
+	}
+	tasks, err := s.Tasks(t.Context())
+	if err != nil || len(tasks) != 0 {
+		t.Fatal(tasks, err)
+	}
+	reply, _ := json.Marshal(map[string]any{"version": out["version"], "text": "task"})
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/conversations/routing/"+out["id"].(string)+"/reply", bytes.NewReader(reply)))
+	if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != 200 || out["state"] != "awaiting_confirmation" {
+		t.Fatal(w.Code, out)
+	}
+	tasks, err = s.Tasks(t.Context())
+	if err != nil || len(tasks) != 0 {
+		t.Fatal("channel choice saved without confirmation", tasks, err)
+	}
+}
+
 func TestJevNoteListAgainAndReadThatNote(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {
