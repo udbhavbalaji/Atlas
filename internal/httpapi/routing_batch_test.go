@@ -192,6 +192,43 @@ func TestBatchDeleteDoesNotSwallowSecondAction(t *testing.T) {
 	}
 }
 
+func TestBatchDeleteDoesNotSwallowPunctuatedSecondAction(t *testing.T) {
+	for _, request := range []string{
+		"Delete all tasks. Add a reminder",
+		"Delete all tasks; then create a note",
+		"Delete all tasks, add a reminder",
+		"Delete all tasks and add a reminder",
+		"Delete all tasks and please add a reminder",
+		"Delete all tasks; also add a reminder",
+	} {
+		if !compoundBatchRequest(request) {
+			t.Errorf("second action was missed in %q", request)
+		}
+	}
+	if compoundBatchRequest("Delete all tasks and reminders") {
+		t.Fatal("two deletion kinds were treated as separate actions")
+	}
+
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err = s.Create(t.Context(), "Keep until reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	code, c := batchTestSend(t, mux)("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "batch-punctuation", "text": "Delete all tasks. Add a reminder", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_route" || c["channel"] != "" {
+		t.Fatal(code, c)
+	}
+	rows, err := s.Tasks(t.Context())
+	if err != nil || len(rows) != 1 {
+		t.Fatal("record changed before the separate actions were clarified", rows, err)
+	}
+}
+
 func TestBatchDeleteUsesWholeKindWordsAndExplainsInvalidSelection(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {

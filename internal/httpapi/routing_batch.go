@@ -144,8 +144,27 @@ func compoundBatchRequest(text string) bool {
 	if i >= len(words) || (words[i] != "delete" && words[i] != "remove" && words[i] != "clear") {
 		return false
 	}
-	for _, phrase := range []string{" and add ", " and create ", " and make ", " and remind ", " and schedule ", " and send ", " and email ", " and edit ", " and update ", " and move ", " and rename ", " and complete ", " and dismiss ", " then add ", " then create ", " then remind ", " then send ", " then edit ", " then update ", " then move ", " then rename ", " then complete ", " then dismiss "} {
-		if strings.Contains(lower, phrase) {
+	// A second clause may be separated by punctuation, not just "and" or
+	// "then". Do not route a deletion locally if it would drop that clause.
+	secondAction := map[string]bool{"add": true, "create": true, "make": true, "remind": true, "schedule": true, "send": true, "email": true, "edit": true, "update": true, "move": true, "rename": true, "complete": true, "dismiss": true}
+	for _, clause := range strings.FieldsFunc(lower, func(r rune) bool { return r == '.' || r == ';' || r == '!' || r == '?' || r == ',' })[1:] {
+		parts := strings.Fields(clause)
+		for len(parts) > 0 && (parts[0] == "please" || parts[0] == "then" || parts[0] == "and" || parts[0] == "also") {
+			parts = parts[1:]
+		}
+		if len(parts) > 0 && secondAction[parts[0]] {
+			return true
+		}
+	}
+	for i := 1; i+1 < len(words); i++ {
+		if words[i] != "and" && words[i] != "then" && words[i] != "also" {
+			continue
+		}
+		j := i + 1
+		for j < len(words) && (words[j] == "please" || words[j] == "then" || words[j] == "also") {
+			j++
+		}
+		if j < len(words) && secondAction[words[j]] {
 			return true
 		}
 	}

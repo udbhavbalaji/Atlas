@@ -93,6 +93,36 @@ function voiceRender(state) {
       proposal.append(line);
     }
   }
+  if (state.batch) {
+    const choosing = state.state === 'awaiting_batch_targets';
+    const heading = document.createElement('h3');
+    heading.textContent = choosing ? 'Choose records to delete' : 'Records proposed for deletion';
+    proposal.append(heading);
+    const list = document.createElement('div');
+    proposal.append(list);
+    for (const item of choosing ? state.batch.candidates || [] : state.batch.targets || []) {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = item.id;
+      checkbox.checked = !choosing;
+      checkbox.disabled = !choosing;
+      label.append(checkbox, document.createTextNode(` ${item.kind}: ${item.title} (${item.id})`));
+      list.append(label, document.createElement('br'));
+    }
+    if (choosing) {
+      const review = voiceButton('Review selected records', () => {
+        const ids = [...list.querySelectorAll('input:checked')].map(input => input.value);
+        if (ids.length) voiceCall(() => voiceClient.reply('', 'batch_targets', ids.join(',')));
+      });
+      proposal.append(review);
+    }
+    for (const effect of state.batch.effects || []) {
+      const line = document.createElement('p');
+      line.textContent = effect;
+      proposal.append(line);
+    }
+  }
   for (const warning of state.warnings || []) {
     const line = document.createElement('p');
     line.className = 'meta';
@@ -113,11 +143,11 @@ function voiceRender(state) {
       proposal.append(line);
     }
   }
-  const active = !['cancelled', 'unsupported'].includes(state.state);
+  const active = state.state !== 'cancelled';
   voiceElement('reply-form').hidden = !active || state.state === 'confirming';
-  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting'].includes(state.state);
-  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
-  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'applying_edit'].includes(state.state);
+  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state);
+  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state) ? 'Confirm delete' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
+  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
 }
@@ -147,7 +177,7 @@ async function voiceCall(action, speak = true, starting = false) {
     if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
     if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
     if (speak) voiceSpeakPrompt();
-    if ((state.saved || state.mutation && state.state === 'answered') && typeof load === 'function') await load();
+    if ((state.saved || (state.mutation || state.batch) && state.state === 'answered') && typeof load === 'function') await load();
   } catch (error) {
     let message = error.message;
     if (error.status) message += starting
