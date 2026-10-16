@@ -53,7 +53,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 10 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 11 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -114,6 +114,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 9 {
 		_, err = tx.Exec(sessionMigration)
+		if err == nil {
+			version = 10
+		}
+	}
+	if err == nil && version == 10 {
+		_, err = tx.Exec("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT ''; PRAGMA user_version=11;")
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -309,10 +315,13 @@ func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (Tas
 	if err != nil {
 		return TaskAction{}, err
 	}
+	oldDueAt := t.DueAt
 	changed := false
+	renamed := false
 	if title != nil && t.Title != *title {
 		t.Title = *title
 		changed = true
+		renamed = true
 	}
 	if status != nil && t.Status != *status {
 		t.Status = *status
@@ -329,6 +338,21 @@ func (s *Store) PatchTaskState(ctx context.Context, id string, p TaskPatch) (Tas
 	if changed {
 		t.UpdatedAt = now()
 		_, err = tx.ExecContext(ctx, "UPDATE tasks SET title=?,status=?,updated_at=?,details=?,due_at=? WHERE id=?", t.Title, t.Status, t.UpdatedAt, t.Details, t.DueAt, id)
+		if err == nil && renamed {
+			_, err = tx.ExecContext(ctx, "UPDATE reminders SET task_title=?,updated_at=? WHERE task_id=?", t.Title, t.UpdatedAt, id)
+		}
+		if err == nil && renamed {
+			_, err = tx.ExecContext(ctx, "UPDATE note_links SET target_title=? WHERE target_type='task' AND target_id=?", t.Title, id)
+		}
+		if err == nil && p.DueAt != nil && oldDueAt != "" && t.DueAt != "" && oldDueAt != t.DueAt {
+			oldDue, oldErr := time.Parse(time.RFC3339Nano, oldDueAt)
+			newDue, newErr := time.Parse(time.RFC3339Nano, t.DueAt)
+			if oldErr != nil || newErr != nil {
+				err = ErrInvalidFields
+			} else {
+				_, err = shiftLinkedReminderSchedules(ctx, tx, id, "", newDue.Sub(oldDue), t.UpdatedAt)
+			}
+		}
 		if err == nil && t.Status == "completed" {
 			err = cancelTaskReminders(ctx, tx, id, "task.completed", t.UpdatedAt)
 		}

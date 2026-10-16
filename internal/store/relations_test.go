@@ -101,7 +101,7 @@ func TestRelationMigrationPreservesDependenciesAndReceipts(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.db.Exec("DROP TABLE record_relations; ALTER TABLE activity DROP COLUMN relation_id; DROP TABLE capture_sessions; PRAGMA user_version=8;"); e != nil {
+	if _, e = s.db.Exec("DROP TABLE record_relations; ALTER TABLE activity DROP COLUMN relation_id; DROP TABLE capture_sessions; ALTER TABLE notes DROP COLUMN title; PRAGMA user_version=8;"); e != nil {
 		t.Fatal(e)
 	}
 	s.Close()

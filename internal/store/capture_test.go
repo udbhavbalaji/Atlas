@@ -6,7 +6,63 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
+
+func TestCaptureLinksSeparateNoteAndReminderToExistingTask(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	task, err := s.Create(ctx, "Interview with Maya")
+	if err != nil {
+		t.Fatal(err)
+	}
+	notePreview, err := s.CapturePreview(ctx, CaptureInput{Kind: "note", NoteBody: "Bring portfolio", LinkedTaskID: task.ID})
+	if err != nil || notePreview.Reference == nil || notePreview.Reference.ID != task.ID {
+		t.Fatal(notePreview, err)
+	}
+	noteSaved, replay, err := s.CommitCapture(ctx, "linked-note", notePreview.Input)
+	if err != nil || replay || len(noteSaved.Notes) != 1 || len(noteSaved.Notes[0].Links) != 1 || noteSaved.Notes[0].Links[0].TargetID != task.ID {
+		t.Fatal(noteSaved, replay, err)
+	}
+	when := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
+	reminderPreview, err := s.CapturePreview(ctx, CaptureInput{Kind: "reminder", Title: "Prepare for interview", ReminderAt: when, Timezone: "UTC", LinkedTaskID: task.ID})
+	if err != nil || reminderPreview.Reference == nil {
+		t.Fatal(reminderPreview, err)
+	}
+	reminderSaved, replay, err := s.CommitCapture(ctx, "linked-reminder", reminderPreview.Input)
+	if err != nil || replay || len(reminderSaved.Reminders) != 1 || reminderSaved.Reminders[0].TaskID != task.ID {
+		t.Fatal(reminderSaved, replay, err)
+	}
+	newTitle := "Interview with Maya revised"
+	if _, err = s.PatchTaskState(ctx, task.ID, TaskPatch{Title: &newTitle}); err != nil {
+		t.Fatal(err)
+	}
+	linkedReminder, err := s.ReminderState(ctx, reminderSaved.Reminders[0].ID)
+	if err != nil || linkedReminder.Reminder.TaskTitle != newTitle {
+		t.Fatal(linkedReminder, err)
+	}
+	linkedNote, err := s.NoteState(ctx, noteSaved.Notes[0].ID)
+	if err != nil || linkedNote.Note.Links[0].TargetTitle != newTitle {
+		t.Fatal(linkedNote, err)
+	}
+	if err = s.ProcessDue(ctx, time.Now().Add(49*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ReminderMutation(ctx, reminderSaved.Reminders[0].ID, "dismissed", ""); err != nil {
+		t.Fatal(err)
+	}
+	completed, err := s.CompleteTaskState(ctx, task.ID)
+	if err != nil || completed.Task.Status != "completed" || completed.Reminders[0].Status != "dismissed" {
+		t.Fatal(completed, err)
+	}
+	if _, err = s.CapturePreview(ctx, CaptureInput{Kind: "note", NoteBody: "Invalid", LinkedTaskID: "invented"}); err == nil {
+		t.Fatal("invented task link accepted")
+	}
+}
 
 func captureFixture(t *testing.T) CaptureInput {
 	t.Helper()

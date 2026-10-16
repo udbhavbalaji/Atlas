@@ -22,6 +22,7 @@ type NoteLink struct {
 }
 type Note struct {
 	ID        string     `json:"id"`
+	Title     string     `json:"title"`
 	Body      string     `json:"body"`
 	CreatedAt string     `json:"created_at"`
 	UpdatedAt string     `json:"updated_at"`
@@ -68,7 +69,7 @@ func noteTarget(ctx context.Context, tx *sql.Tx, kind, id string) (string, error
 func readNote(ctx context.Context, tx *sql.Tx, id string) (Note, error) {
 	var n Note
 	n.Links = []NoteLink{}
-	err := tx.QueryRowContext(ctx, "SELECT id,body,created_at,updated_at FROM notes WHERE id=?", id).Scan(&n.ID, &n.Body, &n.CreatedAt, &n.UpdatedAt)
+	err := tx.QueryRowContext(ctx, "SELECT id,title,body,created_at,updated_at FROM notes WHERE id=?", id).Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrNoteNotFound
 	}
@@ -207,6 +208,31 @@ func (s *Store) UpdateNote(ctx context.Context, id, body string) (NoteAction, er
 	}
 	return v, e
 }
+func (s *Store) RenameNote(ctx context.Context, id, title string) (NoteAction, error) {
+	if strings.TrimSpace(title) == "" || len([]rune(title)) > 500 || !utf8.ValidString(title) {
+		return NoteAction{}, ErrInvalid
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return NoteAction{}, e
+	}
+	defer tx.Rollback()
+	n, e := readNote(ctx, tx, id)
+	if e != nil {
+		return NoteAction{}, e
+	}
+	if n.Title != title {
+		n.Title, n.UpdatedAt = title, now()
+		_, e = tx.ExecContext(ctx, "UPDATE notes SET title=?,updated_at=? WHERE id=?", title, n.UpdatedAt, id)
+		if e == nil {
+			e = noteActivity(ctx, tx, id, "", "", "note.updated", n.UpdatedAt)
+		}
+	}
+	if e == nil {
+		e = tx.Commit()
+	}
+	return NoteAction{NoteID: id, Note: &n}, e
+}
 func (s *Store) DeleteNote(ctx context.Context, id string) (NoteAction, error) {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -283,7 +309,7 @@ func createNoteInTransaction(ctx context.Context, tx *sql.Tx, body, taskID, remi
 	if e != nil {
 		return Note{}, e
 	}
-	_, e = tx.ExecContext(ctx, "INSERT INTO notes VALUES(?,?,?,?)", id, body, at, at)
+	_, e = tx.ExecContext(ctx, "INSERT INTO notes(id,body,created_at,updated_at) VALUES(?,?,?,?)", id, body, at, at)
 	if e != nil {
 		return Note{}, e
 	}

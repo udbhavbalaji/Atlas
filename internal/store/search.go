@@ -93,7 +93,7 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) (SearchResponse, er
 	if !validSearch(o) {
 		return response, ErrInvalidSearch
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT kind,id,title,body,status,updated_at FROM (SELECT 'task' AS kind,id,title,details AS body,status,updated_at FROM tasks UNION ALL SELECT 'reminder',id,title,'' AS body,status,updated_at FROM reminders UNION ALL SELECT 'note',id,'' AS title,body,'' AS status,updated_at FROM notes) WHERE (?='' OR kind=?) AND (?='' OR status=?) ORDER BY updated_at DESC,kind,id`, o.Type, o.Type, o.Status, o.Status)
+	rows, err := s.db.QueryContext(ctx, `SELECT kind,id,title,body,status,updated_at FROM (SELECT 'task' AS kind,id,title,details AS body,status,updated_at FROM tasks UNION ALL SELECT 'reminder',id,title,'' AS body,status,updated_at FROM reminders UNION ALL SELECT 'note',id,title,body,'' AS status,updated_at FROM notes) WHERE (?='' OR kind=?) AND (?='' OR status=?) ORDER BY updated_at DESC,kind,id`, o.Type, o.Type, o.Status, o.Status)
 	if err != nil {
 		return response, err
 	}
@@ -110,7 +110,7 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) (SearchResponse, er
 			return response, err
 		}
 		item.MatchedFields = []string{}
-		inTitle := item.Type != "note" && strings.Contains(strings.ToLower(item.Title), needle)
+		inTitle := strings.Contains(strings.ToLower(item.Title), needle)
 		inBody := strings.Contains(strings.ToLower(body), needle)
 		if inTitle {
 			item.MatchedFields = append(item.MatchedFields, "title")
@@ -142,7 +142,7 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) (SearchResponse, er
 			excerpt = item.Title
 		}
 		item.Snippet = searchSnippet(excerpt, o.Query)
-		if item.Type == "note" {
+		if item.Type == "note" && item.Title == "" {
 			first := strings.SplitN(strings.TrimSpace(body), "\n", 2)[0]
 			title := []rune(first)
 			if len(title) > 80 {

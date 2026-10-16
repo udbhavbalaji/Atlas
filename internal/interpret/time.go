@@ -10,10 +10,11 @@ import (
 var durationPattern = regexp.MustCompile(`(?i)^in\s+(\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(seconds?|minutes?|hours?|days?|weeks?)$`)
 var isoDate = regexp.MustCompile(`\b\d{4}-\d{2}-\d{2}\b`)
 var monthDate = regexp.MustCompile(`(?i)\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b`)
+var dayMonthDate = regexp.MustCompile(`(?i)\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:,?\s+(\d{4}))?\b`)
 var weekdayPattern = regexp.MustCompile(`(?i)\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b`)
 var dailyPattern = regexp.MustCompile(`(?i)\b(?:every day|daily)\b`)
 var weeklyPattern = regexp.MustCompile(`(?i)\bweekly\b`)
-var clockPattern = regexp.MustCompile(`(?i)\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b`)
+var clockPattern = regexp.MustCompile(`(?i)\b(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b`)
 var words = map[string]int{"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
 var weekdays = map[string]time.Weekday{"sunday": time.Sunday, "monday": time.Monday, "tuesday": time.Tuesday, "wednesday": time.Wednesday, "thursday": time.Thursday, "friday": time.Friday, "saturday": time.Saturday}
 var months = map[string]time.Month{"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
@@ -114,6 +115,21 @@ func parseTime(raw string, now time.Time, loc *time.Location, field string) (str
 		}
 		month = months[m[0][1][:3]]
 		day, _ = strconv.Atoi(m[0][2])
+		if m[0][3] != "" {
+			year, _ = strconv.Atoi(m[0][3])
+		} else {
+			monthWithoutYear = true
+		}
+		dateExplicit = true
+		dates++
+		text = strings.Replace(text, m[0][0], "", 1)
+	}
+	if m := dayMonthDate.FindAllStringSubmatch(text, -1); len(m) > 0 {
+		if len(m) != 1 {
+			return fail("multiple_dates", "Choose one date for this field.")
+		}
+		day, _ = strconv.Atoi(m[0][1])
+		month = months[m[0][2][:3]]
 		if m[0][3] != "" {
 			year, _ = strconv.Atoi(m[0][3])
 		} else {

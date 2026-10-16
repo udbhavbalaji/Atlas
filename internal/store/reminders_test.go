@@ -91,7 +91,7 @@ func TestReminderCancelAndDismiss(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.DismissReminder(ctx, r.ID); !errors.Is(e, ErrReminderConflict) {
+	if e = s.DismissReminder(ctx, r.ID); e != nil {
 		t.Fatal(e)
 	}
 	if e = s.CompleteReminder(ctx, r.ID); e != nil {

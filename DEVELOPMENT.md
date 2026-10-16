@@ -5,7 +5,7 @@
 1. Start each feature from `development`: `git switch development`, then `git switch -c codex/<feature>`.
 2. Implement and verify the feature. Run `make check` and update relevant documentation.
 3. Commit on the feature branch and merge with `git merge --no-ff codex/<feature>` on `development`.
-4. At a major verified milestone, merge `development` into `main` with `--no-ff`.
+4. At a major verified milestone, make the case for promoting `development` into `main`. Wait for explicit user approval before merging with `--no-ff`. Never promote autonomously.
 
 ## Milestones
 
@@ -183,3 +183,53 @@ Open **Providers**. The screen must label everything as mock and mark Jev unavai
 6. In an isolated server, interrupt confirmation, restart, reload the same tab, and retry the retained proposal/key. Existing receipt recovery returns one saved result.
 
 Provider foundation introduces no migration. Contract tests cover schema/status violations, unexpected/unseen references, context limits and repeated requests, malformed reminder fields, atomic additions, idempotent capture, and unavailable-provider behavior. It does not replace live Capture conversations yet; wire Jev and durable provider sessions after verifying its actual interface.
+
+## Routing milestone and Jev setup
+
+The routing layer is implemented separately from the interim Capture interpreter. Open **Routing** to inspect the registry, probabilities and channel handoff. Channel field extraction currently requires explicit review/input.
+
+For OpenRouter access, save only the key (no quotes or assignment) in `/home/udawg_00/Developer/atlas/data/openrouter.key`. This directory is ignored by Git. Restrict the file to mode 600. Atlas reads it at startup; `OPENROUTER_API_KEY` takes precedence. Override its path with `-openrouter-key-file`, or use an empty flag to disable file loading. No npm setup command is required. Atlas uses OpenRouter's Decisions API and pinned model `typesafe/jev-1.13`. The prior Vercel key is no longer loaded. Do not silently substitute another model.
+
+Manual tests:
+
+1. Select Mock, Task, and enter the interview sentence. Evaluate: inspect six action probabilities and task channel questions. No action records are created.
+2. Supply the reviewed title and deadline. Choose Skip reminder / Skip note and Dispatch / preview. Confirm; verify one task only.
+3. Repeat with Add reminder / Add note, supply timing and contents, preview and confirm. Inspect canonical task/reminder/note links.
+4. Use the Reminder or Note fixture and exercise their required fields. They must not create an accidental task.
+5. Use Ambiguous: evaluation must wait for your explicit channel selection and dispatch click. Unsupported/malformed/unavailable cases must offer no confirmation.
+6. Change source/provider/context: evaluation is invalidated. Change channel fields: preview is invalidated without another evaluation. A restored uncertain confirmation retries the same storage key through reload/restart.
+7. Optional context search is bounded to five open tasks; only supplied IDs can be selected as prerequisite targets. Changing canonical state still requires reviewing the refreshed preview.
+8. With an OpenRouter key configured, explicitly choose Jev and evaluate a synthetic sentence once. A repeated unchanged evaluation should return `cache_hit:true`, `model_calls:0`. Inspect the originating token usage and cost. Changing relevant context must miss the cache.
+
+Automated routing tests simulate HTTP/authentication, malformed output, cancellation, redirects, uncertainty, bounded caching/concurrent reuse, channel questions, token tampering, cross-server receipts and atomic idempotent capture. They make no actual Jev calls.
+
+## Routing conversation test
+
+Open **Routing → Conversation test**. Choose Mock/Lookup and ask `When is my interview?`; check the saved date, task link, and an old-reminder follow-up. Then choose Mock/Task and enter `Call Maya`. Answer the reminder and note questions with `no`, review the proposal, say `change title to Call Maya tonight`, then `yes`. Resume the displayed session ID and verify the saved result. Try Mock/Ambiguous to choose a channel in a follow-up turn, or Mock/Reminder with `Remind me to call Maya` and answer the timing question with `tomorrow at 6pm`. A wrong field name or unresolved time keeps the current question open. `cancel` creates no action records. The JSON panel exposes the version, question, proposal and next request for voice-client integration.
+
+This milestone provides durable turn management, a Jev decision for each new request, typed capture follow-up questions, read-only saved-record answers with links, local source hints, reviewed correction, and idempotent confirmation. It still uses the existing local English time grammar and field hints; it does not connect a separate model for free-form channel extraction. A voice model can submit the current `question.id`/`field` and a recognized `value`, then speak the returned `prompt`. The model must not treat a proposal as saved before `state:saved`.
+
+## Browser voice prototype
+
+Open **Voice** in the testing webpage. Use Mock/Task with `Call Maya`; answer **Skip reminder**, **Skip note**, say or type `change title to Call Maya tonight`, then review the proposal and tap **Confirm and save**. The same flow can use Mock/Reminder, Mock/Lookup, or Mock/Ambiguous. Reload to resume the last session, or paste its ID into **Resume session**. The browser microphone button records one utterance at a time when its speech-recognition API is available. Typed text exercises the same server flow. Spoken follow-up answers can advance automatically, but a recognized “yes” at the proposal stage never saves; the separate button is required. Turn off prompt playback or automatic follow-up submission with the checkboxes.
+
+The browser may process speech through its own remote recognition service; Atlas stores the resulting transcript in its existing local conversation session and does not store audio. Speech recognition support and quality vary by browser. Prompt speech uses browser synthesis and falls back to visible text. This is a prototype of the client transport, not a realtime voice model or an offline speech engine. `voice-client-core.js` exposes `start`, `resume`, `reply`, `confirm` and `cancel` for a future voice-model adapter. Scripted tests run with `node internal/httpapi/webtest/voice-client-core.test.cjs`.
+
+The Omarchy desktop window streams microphone audio to the local Atlas service and uses local Voxtype transcription. Its **Desktop checks** page tests saved-record answers without a Jev call.
+
+## Branch promotion policy
+
+Use feature branches from `development`; tested work may merge into `development`. Never merge into `main` without explicit user approval. At a substantial milestone, make the case for promotion with scope, verification and limitations, then await approval. This supersedes earlier autonomous main promotion guidance.
+
+### Routing source and context prefill test
+
+1. In Routing, use Mock / Task and `I have an interview at Ather on Tuesday at 3pm; note: bring portfolio`. Evaluate: the secondary form shows the source, fills title/deadline/reminder/note, and explains local-parser suggestions. It must not offer confirmation until Dispatch / preview.
+2. Use `I have an interview at Ather on Tuesday` instead: title fills, timing remains blank with a missing-clock warning. No arbitrary date/time is invented.
+3. Enter a context search for an existing dated interview. The channel form displays supplied records and explicit Copy context title/deadline and prerequisite buttons. Copy values, edit them, preview; source and context remain in the structured channel response. Searching by itself must not copy or link a record.
+4. Edit or clear a seeded field after preparation. Normal Dispatch / preview must preserve that change. Skip reminder/note must remove those effects. Unchanged suggested/copied date controls must retain their original instant.
+5. Reminder fixtures can seed reminder title/time/repeat; Note fixtures can seed parsed note contents or retain the sentence verbatim. Mock routing remains fixture-driven; prefill is a separate local helper and makes no Jev calls.
+
+The opt-in, preview-only structured planning follow-up is documented in
+[PLANNING.md](PLANNING.md). Its focused testing page is `/planning-test`, enabled
+with `ATLAS_PLAN_PREVIEW=1`. Default tests use fixtures and simulated HTTP;
+real Jev evaluations require explicit environment opt-in.

@@ -1,0 +1,368 @@
+'use strict';
+
+const voiceStorage = 'atlas.voice.session.v1';
+const voiceClient = new AtlasVoiceSession(window.fetch.bind(window), voiceRender);
+const VoiceRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VoiceDesktopDictation = !VoiceRecognition && location.pathname === '/desktop';
+let voiceBusy = false;
+let voiceListening = false;
+let voiceRecognizer = null;
+
+function voiceElement(id) { return document.getElementById('voice-' + id); }
+function voiceStatus(message) { voiceElement('status').textContent = message; }
+function voiceButton(text, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = text;
+  button.onclick = action;
+  return button;
+}
+
+function voiceFieldValue(key, value, timezone) {
+  if (!['due_at', 'reminder_at'].includes(key)) return value;
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat('en-US', {timeZone: timezone || 'UTC', weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'}).format(instant);
+  } catch { return value; }
+}
+
+function voiceSpeakPrompt() {
+  const state = voiceClient.state;
+  if (!state || !voiceElement('speak').checked || !('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(state.prompt);
+  utterance.lang = voiceElement('language').value;
+  utterance.rate = 1;
+  utterance.onerror = event => {
+    if (event.error === 'interrupted' || event.error === 'canceled') return;
+    voiceElement('speak').checked = false;
+    voiceElement('mic-status').textContent = 'Speech playback is unavailable here; the prompt is shown on screen.';
+  };
+  window.speechSynthesis.speak(utterance);
+}
+
+function voiceRender(state) {
+	if (voiceElement('start-section')) voiceElement('start-section').hidden = true;
+	if (voiceElement('new-chat')) voiceElement('new-chat').hidden = false;
+  voiceElement('session-id').value = state.id;
+  try { localStorage.setItem(voiceStorage, state.id); } catch {}
+  const models = [state.route?.evaluation?.model, state.route?.extraction_model, state.response_model].filter(Boolean);
+  voiceStatus(state.state.replaceAll('_', ' ') + ' · ' + (state.route?.provider || 'unknown') + ' route · ' + models.join(' → ') + ' · session version ' + state.version);
+  voiceElement('prompt').textContent = state.state === 'answered' ? '' : state.prompt;
+  const transcript = voiceElement('transcript');
+  transcript.replaceChildren();
+  for (const turn of state.messages || []) {
+    const item = document.createElement('div');
+    item.className = 'voice-turn';
+    item.dataset.role = turn.role;
+    const role = document.createElement('strong');
+    role.textContent = turn.role === 'user' ? 'You' : 'Atlas';
+    const line = document.createElement('p');
+    line.textContent = turn.text;
+    item.append(role, line);
+    transcript.append(item);
+  }
+  transcript.scrollTop = transcript.scrollHeight;
+  const actions = voiceElement('question-actions');
+  actions.replaceChildren();
+  if (state.state === 'awaiting_route') {
+    for (const channel of ['task', 'reminder', 'note', 'lookup', 'edit', 'delete']) actions.append(voiceButton(channel === 'lookup' ? 'Find existing records' : channel, () => voiceCall(() => voiceClient.reply(channel))));
+  }
+  if (state.state === 'awaiting_workflow_start') actions.append(voiceButton('Start first step', () => voiceCall(() => voiceClient.reply('start'))));
+  if (state.workflow && ['answered', 'saved'].includes(state.state) && state.workflow.index + 1 < state.workflow.steps.length) {
+    actions.append(voiceButton('Continue to next step', () => voiceCall(() => voiceClient.reply('continue'))));
+  }
+  if (state.workflow && state.state === 'unsupported') actions.append(voiceButton('Skip unsupported step', () => voiceCall(() => voiceClient.reply('skip'))));
+  if (['awaiting_answer', 'awaiting_target', 'awaiting_field'].includes(state.state) && state.question?.choices) {
+    for (const choice of state.question.choices) {
+      actions.append(voiceButton(choice.label, () => voiceCall(() => voiceClient.reply('', state.question.field, choice.value))));
+    }
+  }
+  const proposal = voiceElement('proposal');
+  proposal.replaceChildren();
+  if (state.workflow) {
+    const heading = document.createElement('h3');
+    heading.textContent = 'Ordered workflow';
+    proposal.append(heading);
+    const list = document.createElement('ol');
+    for (const [index, step] of state.workflow.steps.entries()) {
+      const item = document.createElement('li');
+      item.textContent = `${step} · ${index < state.workflow.index ? 'complete' : index === state.workflow.index ? 'current' : 'pending'}`;
+      list.append(item);
+    }
+    proposal.append(list);
+  }
+  if (state.proposal && !state.saved) {
+    const heading = document.createElement('h3');
+    heading.textContent = state.saved ? 'Saved records' : 'Review before saving';
+    proposal.append(heading);
+    for (const [key, value] of Object.entries(state.proposal.input || {})) {
+      if (!value || ['preview_id', 'before_task_version'].includes(key)) continue;
+      const line = document.createElement('p');
+      line.textContent = key.replaceAll('_', ' ') + ': ' + voiceFieldValue(key, value, state.route?.input?.timezone);
+      proposal.append(line);
+    }
+    for (const effect of state.proposal.effects || []) {
+      const line = document.createElement('p');
+      line.className = 'meta';
+      line.textContent = 'Will ' + effect.replaceAll('.', ' ');
+      proposal.append(line);
+    }
+  }
+  if (state.batch) {
+    const choosing = state.state === 'awaiting_batch_targets';
+    const heading = document.createElement('h3');
+    heading.textContent = choosing ? 'Choose records to delete' : 'Records proposed for deletion';
+    proposal.append(heading);
+    const list = document.createElement('div');
+    proposal.append(list);
+    for (const item of choosing ? state.batch.candidates || [] : state.batch.targets || []) {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = item.id;
+      checkbox.checked = !choosing;
+      checkbox.disabled = !choosing;
+      label.append(checkbox, document.createTextNode(` ${item.kind}: ${item.title} (${item.id})`));
+      list.append(label, document.createElement('br'));
+    }
+    if (choosing) {
+      const review = voiceButton('Review selected records', () => {
+        const ids = [...list.querySelectorAll('input:checked')].map(input => input.value);
+        if (ids.length) voiceCall(() => voiceClient.reply('', 'batch_targets', ids.join(',')));
+      });
+      proposal.append(review);
+    }
+    for (const effect of state.batch.effects || []) {
+      const line = document.createElement('p');
+      line.textContent = effect;
+      proposal.append(line);
+    }
+  }
+  if (state.association) {
+    const relation = state.association;
+    const heading = document.createElement('h3');
+    heading.textContent = 'Relationship · ' + relation.operation;
+    proposal.append(heading);
+    if (state.state === 'awaiting_association_targets') {
+      const selects = [];
+      for (const [label, items] of [['First record', relation.from_candidates || []], ['Second record', relation.to_candidates || []]]) {
+        const wrapper = document.createElement('label');
+        wrapper.textContent = label + ' ';
+        const select = document.createElement('select');
+        for (const item of items) {
+          const option = document.createElement('option');
+          option.value = item.id;
+          option.textContent = `${item.kind}: ${item.title}`;
+          select.append(option);
+        }
+        wrapper.append(select);
+        proposal.append(wrapper, document.createElement('br'));
+        selects.push(select);
+      }
+      proposal.append(voiceButton('Review relationship', () => voiceCall(() => voiceClient.reply('', 'association_targets', selects.map(select => select.value).join(',')))));
+    } else if (relation.change) {
+      const line = document.createElement('p');
+      line.textContent = `${relation.attach ? 'Add' : 'Remove'} ${relation.operation}: ${relation.change.from.kind} “${relation.change.from.title}” → ${relation.change.to.kind} “${relation.change.to.title}”`;
+      proposal.append(line);
+    }
+  }
+  for (const warning of state.warnings || []) {
+    const line = document.createElement('p');
+    line.className = 'meta';
+    line.textContent = warning;
+    proposal.append(line);
+  }
+  if (state.answer?.sources?.length) {
+    const heading = document.createElement('h3');
+    heading.textContent = 'Saved records used';
+    proposal.append(heading);
+    for (const source of state.answer.sources) {
+      if (!source.url?.startsWith('/#')) continue;
+      const link = document.createElement('a');
+      link.href = source.url;
+      link.textContent = `${source.type}: ${source.title}`;
+      const line = document.createElement('p');
+      line.append(link);
+      proposal.append(line);
+    }
+  }
+  const active = state.state !== 'cancelled';
+  voiceElement('reply-form').hidden = !active || state.state === 'confirming';
+  voiceElement('confirm').hidden = !['awaiting_confirmation', 'confirming', 'awaiting_delete_confirmation', 'deleting', 'deleting_batch', 'awaiting_association_confirmation', 'applying_association'].includes(state.state);
+  voiceElement('confirm').textContent = ['awaiting_delete_confirmation', 'deleting', 'deleting_batch'].includes(state.state) ? 'Confirm delete' : ['awaiting_association_confirmation', 'applying_association'].includes(state.state) ? 'Apply relationship' : state.state === 'confirming' ? 'Retry confirmation' : 'Confirm and save';
+  voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit', 'applying_association'].includes(state.state);
+  voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
+  voiceUpdateControls();
+}
+
+function voiceUpdateControls() {
+  for (const button of document.querySelectorAll('#panel-voice button')) button.disabled = voiceBusy;
+  if (!VoiceRecognition && !VoiceDesktopDictation) {
+    voiceElement('listen-first').disabled = true;
+    voiceElement('listen-answer').disabled = true;
+  }
+  const listenLabel = VoiceDesktopDictation ? 'Focus for dictation' : voiceListening ? 'Stop listening' : 'Use microphone';
+  voiceElement('listen-first').textContent = listenLabel;
+  voiceElement('listen-answer').textContent = listenLabel;
+  window.atlasDesktopAudio?.updateControls();
+}
+
+async function voiceCall(action, speak = true, starting = false) {
+  if (voiceBusy) return;
+  voiceBusy = true;
+  voiceStatus('Sending to Atlas…');
+  if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Sending to Atlas…';
+  if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = 'Sending to Atlas…';
+  voiceUpdateControls();
+  try {
+    const state = await action();
+    voiceElement('answer').value = '';
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = '';
+    if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = '';
+    if (speak) voiceSpeakPrompt();
+    if ((state.saved || (state.mutation || state.batch || state.association) && state.state === 'answered') && typeof load === 'function') await load();
+  } catch (error) {
+    let message = error.message;
+    if (error.status) message += starting
+      ? ' Atlas did not return a conversation for this request. Retry or rephrase it.'
+      : ' Resume the session to check its latest state before retrying.';
+    voiceStatus(message);
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = message;
+    if (voiceElement('reply-feedback')) voiceElement('reply-feedback').textContent = message;
+  } finally {
+    voiceBusy = false;
+    voiceUpdateControls();
+  }
+}
+
+function voiceListen(targetID) {
+  if (!VoiceRecognition) {
+    if (VoiceDesktopDictation) {
+      voiceElement(targetID).focus();
+      voiceElement('mic-status').textContent = /Mac/.test(navigator.platform)
+        ? 'Use your Mac Dictation shortcut, then review the text before sending.'
+        : 'On Omarchy, hold F9 or toggle Super+Ctrl+X to dictate. Review the text before sending.';
+    }
+    return;
+  }
+  if (voiceListening) { voiceRecognizer?.stop(); return; }
+  if (voiceBusy) return;
+  window.speechSynthesis?.cancel();
+  const recognizer = new VoiceRecognition();
+  voiceRecognizer = recognizer;
+  recognizer.lang = voiceElement('language').value;
+  recognizer.continuous = false;
+  recognizer.interimResults = false;
+  recognizer.maxAlternatives = 1;
+  let pendingAnswer = '';
+  recognizer.onstart = () => {
+    voiceListening = true;
+    voiceElement('mic-status').textContent = 'Listening for one answer…';
+    voiceUpdateControls();
+  };
+  recognizer.onresult = event => {
+    const result = event.results[event.resultIndex];
+    if (!result?.isFinal) return;
+    const transcript = result[0]?.transcript?.trim() || '';
+    if (!transcript) return;
+    voiceElement(targetID).value = transcript;
+    voiceElement('mic-status').textContent = 'Heard: ' + transcript;
+    const state = voiceClient.state;
+    if (targetID === 'answer' && voiceElement('auto-send').checked && state && !['awaiting_confirmation', 'confirming'].includes(state.state)) {
+      pendingAnswer = transcript;
+    }
+  };
+  recognizer.onerror = event => {
+    pendingAnswer = '';
+    voiceElement('mic-status').textContent = 'Microphone input failed (' + event.error + '). You can type your answer.';
+  };
+  recognizer.onend = () => {
+    voiceListening = false;
+    voiceRecognizer = null;
+    voiceUpdateControls();
+    if (pendingAnswer) voiceCall(() => voiceClient.reply(pendingAnswer));
+  };
+  try { recognizer.start(); }
+  catch { voiceRecognizer = null; voiceElement('mic-status').textContent = 'Microphone input could not start. You can type your answer.'; }
+}
+
+let voiceProviderTouched = false;
+voiceElement('provider').onchange = () => {
+  voiceProviderTouched = true;
+  voiceElement('fixture-label').hidden = voiceElement('provider').value !== 'mock';
+};
+if (location.pathname === '/desktop') {
+  fetch('/api/v1/routing').then(response => response.json()).then(result => {
+    const groq = result.providers?.find(provider => provider.id === 'groq');
+    const free = result.providers?.find(provider => provider.id === 'free');
+    const jev = result.providers?.find(provider => provider.id === 'jev');
+    if (!voiceProviderTouched && jev?.configured) {
+      voiceElement('provider').value = 'jev';
+      voiceElement('fixture-label').hidden = true;
+      voiceElement('start-feedback').textContent = 'Jev and free OpenRouter models are ready. Free model capacity may vary.';
+    } else if (!voiceProviderTouched && groq?.configured) {
+      voiceElement('provider').value = 'groq';
+      voiceElement('fixture-label').hidden = true;
+    } else if (!free?.configured && voiceElement('start-feedback')) {
+      voiceElement('provider').value = 'mock';
+      voiceElement('fixture-label').hidden = false;
+      voiceElement('start-feedback').textContent = 'Natural language mode needs a Groq or OpenRouter key. Local test mode is available.';
+    }
+  }).catch(() => {
+    if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Could not check conversation configuration.';
+  });
+}
+voiceElement('start-form').onsubmit = event => {
+  event.preventDefault();
+  const text = voiceElement('first').value.trim();
+  if (!text) return;
+  voiceCall(() => voiceClient.start({
+    provider: voiceElement('provider').value,
+    fixture: voiceElement('fixture').value,
+    text,
+    timezone: zone,
+    contextQuery: voiceElement('context').value.trim(),
+    requestID: crypto.randomUUID()
+  }), true, true);
+};
+if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
+  voiceClient.state = null;
+  try { localStorage.removeItem(voiceStorage); } catch {}
+  voiceElement('start-section').hidden = false;
+  voiceElement('new-chat').hidden = true;
+  voiceElement('reply-form').hidden = true;
+  voiceElement('transcript').replaceChildren();
+  voiceElement('proposal').replaceChildren();
+  voiceElement('question-actions').replaceChildren();
+  voiceElement('prompt').textContent = '';
+  voiceElement('confirm').hidden = true;
+  voiceElement('cancel').hidden = true;
+  voiceElement('repeat').hidden = true;
+  voiceElement('first').value = '';
+  voiceStatus('Start a conversation below.');
+  voiceElement('first').focus();
+};
+voiceElement('resume-form').onsubmit = event => {
+  event.preventDefault();
+  voiceCall(() => voiceClient.resume(voiceElement('session-id').value.trim()), false);
+};
+voiceElement('reply-form').onsubmit = event => {
+  event.preventDefault();
+  voiceCall(() => voiceClient.reply(voiceElement('answer').value));
+};
+voiceElement('confirm').onclick = () => voiceCall(() => voiceClient.confirm());
+voiceElement('cancel').onclick = () => voiceCall(() => voiceClient.cancel());
+voiceElement('repeat').onclick = voiceSpeakPrompt;
+voiceElement('listen-first').onclick = () => voiceListen('first');
+voiceElement('listen-answer').onclick = () => voiceListen('answer');
+if (!VoiceRecognition) voiceElement('mic-status').textContent = VoiceDesktopDictation
+  ? (/Mac/.test(navigator.platform) ? 'Use macOS Dictation in a text box, then review before sending.' : 'Omarchy dictation is ready: focus a text box and hold F9, or toggle Super+Ctrl+X.')
+  : 'This browser has no speech recognition API. Type a transcript to test the same conversation.';
+if (!('speechSynthesis' in window)) voiceElement('speak').disabled = true;
+voiceUpdateControls();
+try {
+  const savedID = localStorage.getItem(voiceStorage);
+  if (savedID) voiceCall(() => voiceClient.resume(savedID), false);
+} catch {}

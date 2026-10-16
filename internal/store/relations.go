@@ -69,7 +69,7 @@ func relationRecord(ctx context.Context, tx *sql.Tx, kind, id string) (RelationR
 	return r, ErrRelation
 }
 func readRelations(ctx context.Context, tx *sql.Tx, kind, id string) ([]Relation, error) {
-	rows, e := tx.QueryContext(ctx, `WITH records(kind,id,title,status) AS (SELECT 'task',id,title,status FROM tasks UNION ALL SELECT 'reminder',id,title,status FROM reminders UNION ALL SELECT 'note',id,substr(trim(body),1,160),'stored' FROM notes) SELECT l.id,l.from_type,l.from_id,COALESCE(a.title,l.from_title),a.id IS NOT NULL,COALESCE(a.status,'missing'),l.to_type,l.to_id,COALESCE(b.title,l.to_title),b.id IS NOT NULL,COALESCE(b.status,'missing'),l.created_at FROM record_relations l LEFT JOIN records a ON a.kind=l.from_type AND a.id=l.from_id LEFT JOIN records b ON b.kind=l.to_type AND b.id=l.to_id WHERE ?='' OR (l.from_type=? AND l.from_id=?) OR (l.to_type=? AND l.to_id=?) ORDER BY l.created_at DESC,l.id`, kind, kind, id, kind, id)
+	rows, e := tx.QueryContext(ctx, `WITH records(kind,id,title,status) AS (SELECT 'task',id,title,status FROM tasks UNION ALL SELECT 'reminder',id,title,status FROM reminders UNION ALL SELECT 'note',id,COALESCE(NULLIF(title,''),substr(trim(body),1,160)),'stored' FROM notes) SELECT l.id,l.from_type,l.from_id,COALESCE(a.title,l.from_title),a.id IS NOT NULL,COALESCE(a.status,'missing'),l.to_type,l.to_id,COALESCE(b.title,l.to_title),b.id IS NOT NULL,COALESCE(b.status,'missing'),l.created_at FROM record_relations l LEFT JOIN records a ON a.kind=l.from_type AND a.id=l.from_id LEFT JOIN records b ON b.kind=l.to_type AND b.id=l.to_id WHERE ?='' OR (l.from_type=? AND l.from_id=?) OR (l.to_type=? AND l.to_id=?) ORDER BY l.created_at DESC,l.id`, kind, kind, id, kind, id)
 	if e != nil {
 		return nil, e
 	}

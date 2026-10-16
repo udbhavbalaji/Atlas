@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Atlas">
+  <rect width="128" height="128" rx="28" fill="#101114"/>
+  <path d="M28 96 55 31h18l27 65H82l-6-16H51l-6 16H28Zm29-31h13L63.5 46 57 65Z" fill="#e7e9ed"/>
+  <circle cx="100" cy="94" r="8" fill="#a8ddc2"/>
+</svg>

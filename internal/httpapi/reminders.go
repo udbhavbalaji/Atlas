@@ -6,18 +6,37 @@ import (
 )
 
 func reminderRoutes(mux *http.ServeMux, s *store.Store) {
+	mux.HandleFunc("DELETE /api/v1/reminders/{id}", func(w http.ResponseWriter, r *http.Request) {
+		v, err := s.DeleteReminder(r.Context(), r.PathValue("id"))
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		respond(w, 200, v)
+	})
 	mux.HandleFunc("PATCH /api/v1/reminders/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			TaskID *string `json:"task_id"`
+			Repeat *string `json:"repeat"`
 		}
 		if !decode(w, r, &input) {
 			return
 		}
-		if input.TaskID == nil {
-			apiError(w, 400, "invalid_reminder_link", "Provide task_id; an empty string removes the task link.", false)
+		if input.TaskID == nil && input.Repeat == nil {
+			apiError(w, 400, "invalid_reminder_link", "Provide task_id or repeat; an empty string removes that link or repeat rule.", false)
 			return
 		}
-		v, e := s.SetReminderTask(r.Context(), r.PathValue("id"), *input.TaskID)
+		if input.TaskID != nil && input.Repeat != nil {
+			apiError(w, 400, "invalid_reminder_patch", "Provide exactly one of task_id or repeat. Empty strings remove the link or repeat rule.", false)
+			return
+		}
+		var v store.ReminderAction
+		var e error
+		if input.TaskID != nil {
+			v, e = s.SetReminderTask(r.Context(), r.PathValue("id"), *input.TaskID)
+		} else {
+			v, e = s.UpdateReminderRepeat(r.Context(), r.PathValue("id"), *input.Repeat)
+		}
 		if e != nil {
 			failure(w, e)
 			return

@@ -64,6 +64,8 @@ type TaskAction struct {
 	Deliveries   []Delivery       `json:"deliveries"`
 }
 type ReminderAction struct {
+	ReminderID string     `json:"reminder_id,omitempty"`
+	Deleted    bool       `json:"deleted,omitempty"`
 	Notes      []Note     `json:"notes"`
 	Reminder   Reminder   `json:"reminder"`
 	Task       *Task      `json:"task"`

@@ -1,0 +1,347 @@
+package httpapi
+
+import (
+	"atlas/internal/provider"
+	"atlas/internal/routing"
+	"atlas/internal/store"
+	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+type routingService struct {
+	jev            routing.Evaluator
+	free           routing.Planner
+	responder      routing.Responder
+	groq           routing.Planner
+	configured     bool
+	groqConfigured bool
+	secret         string
+}
+type routingReceipt struct {
+	Result    routing.Result `json:"result"`
+	ExpiresAt int64          `json:"expires_at"`
+}
+
+func (s routingService) sign(r routing.Result) string {
+	r.RoutingToken = ""
+	body, _ := json.Marshal(routingReceipt{r, time.Now().Add(30 * time.Minute).Unix()})
+	encoded := base64.RawURLEncoding.EncodeToString(body)
+	mac := hmac.New(sha256.New, []byte(s.secret))
+	mac.Write([]byte(encoded))
+	return encoded + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+func (s routingService) verify(token string) (routing.Result, error) {
+	if len(token) > 150000 {
+		return routing.Result{}, routing.ErrRequest
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return routing.Result{}, routing.ErrRequest
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return routing.Result{}, routing.ErrRequest
+	}
+	mac := hmac.New(sha256.New, []byte(s.secret))
+	mac.Write([]byte(parts[0]))
+	if !hmac.Equal(sig, mac.Sum(nil)) {
+		return routing.Result{}, routing.ErrRequest
+	}
+	body, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return routing.Result{}, routing.ErrRequest
+	}
+	var receipt routingReceipt
+	if json.Unmarshal(body, &receipt) != nil || time.Now().Unix() >= receipt.ExpiresAt || receipt.Result.RegistryVersion != routing.RegistryVersion {
+		return routing.Result{}, routing.ErrRequest
+	}
+	return receipt.Result, nil
+}
+
+func routingRoutes(mux *http.ServeMux, s *store.Store) {
+	key := os.Getenv("OPENROUTER_API_KEY")
+	groqKey := os.Getenv("GROQ_API_KEY")
+	planners := make([]routing.Planner, 0, len(routing.FreeFallbackModels))
+	for _, model := range routing.FreeFallbackModels {
+		planners = append(planners, routing.FreePlanner{APIKey: key, Model: model})
+	}
+	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FallbackPlanner{Planners: planners}, responder: routing.FreeResponder{APIKey: key}, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
+}
+func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
+	routingConversationRoutes(mux, s, service)
+	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "policy": routing.DefaultPolicy, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
+	})
+	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
+		var input routing.Request
+		if !decode(w, r, &input) {
+			return
+		}
+		if err := routing.ValidateRequest(input); err != nil {
+			apiError(w, 400, "invalid_routing_request", err.Error(), false)
+			return
+		}
+		result, err := evaluateRouting(r.Context(), s, service, r.PathValue("provider"), input)
+		if err != nil {
+			routingFailure(w, err)
+			return
+		}
+		respond(w, 200, result)
+	})
+	mux.HandleFunc("POST /api/v1/routing/dispatch", func(w http.ResponseWriter, r *http.Request) {
+		var input dispatchRequest
+		if !decode(w, r, &input) {
+			return
+		}
+		if input.Version != routing.Version {
+			apiError(w, 400, "invalid_routing_request", "Unsupported dispatch version.", false)
+			return
+		}
+		result, err := service.verify(input.RoutingToken)
+		if err != nil {
+			apiError(w, 409, "routing_receipt_invalid", "Routing receipt changed, expired, or belongs to an earlier server instance. Evaluate again.", false)
+			return
+		}
+		channel := result.SelectedChannel
+		if input.Channel != "" {
+			if result.State != "needs_clarification" || !input.ReviewedChannel {
+				apiError(w, 400, "invalid_channel_selection", "Only an unresolved route accepts a reviewed channel selection.", false)
+				return
+			}
+			channel = input.Channel
+		}
+		if channel == "" {
+			apiError(w, 422, "routing_unresolved", "Resolve the primary channel before dispatching. Unsupported requests cannot be dispatched.", false)
+			return
+		}
+		response, err := dispatchChannel(r.Context(), s, result, channel, input)
+		if err != nil {
+			if errors.Is(err, routing.ErrRequest) {
+				apiError(w, 400, "invalid_channel_fields", err.Error(), false)
+			} else {
+				failure(w, err)
+			}
+			return
+		}
+		respond(w, 200, response)
+	})
+	for path, allow := range map[string]string{"/api/v1/routing": "GET, HEAD", "/api/v1/routing/{provider}/evaluate": "POST", "/api/v1/routing/dispatch": "POST"} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Allow", allow)
+			apiError(w, 405, "method_not_allowed", "Method is not supported for this endpoint.", false)
+		})
+	}
+}
+
+type dispatchRequest struct {
+	Version         string             `json:"version"`
+	RoutingToken    string             `json:"routing_token"`
+	Channel         string             `json:"channel"`
+	ReviewedChannel bool               `json:"reviewed_channel"`
+	Fields          store.CaptureInput `json:"fields"`
+	Reminder        string             `json:"reminder"`
+	Note            string             `json:"note"`
+	Prefill         bool               `json:"prefill"`
+}
+type channelQuestion struct {
+	ID        string            `json:"id"`
+	Field     string            `json:"field"`
+	ValueType string            `json:"value_type"`
+	Prompt    string            `json:"prompt"`
+	Required  bool              `json:"required"`
+	Choices   []provider.Choice `json:"choices"`
+}
+type channelResponse struct {
+	Version     string                 `json:"version"`
+	Channel     string                 `json:"channel"`
+	State       string                 `json:"state"`
+	Source      string                 `json:"source"`
+	Input       routing.State          `json:"input"`
+	Prefill     *channelPrefill        `json:"prefill,omitempty"`
+	Extraction  string                 `json:"extraction"`
+	Questions   []channelQuestion      `json:"questions"`
+	Proposal    *store.CaptureProposal `json:"proposal"`
+	Answer      *conversationAnswer    `json:"answer,omitempty"`
+	Batch       *batchMutation         `json:"batch,omitempty"`
+	Association *associationMutation   `json:"association,omitempty"`
+	Persisted   bool                   `json:"persisted"`
+}
+type channelHandler func(context.Context, *store.Store, routing.Result, dispatchRequest) (channelResponse, error)
+
+func dispatchChannel(ctx context.Context, s *store.Store, result routing.Result, channel string, input dispatchRequest) (channelResponse, error) {
+	handlers := map[string]channelHandler{"tasks": taskChannel, "reminders": reminderChannel, "notes": noteChannel, "lookup": lookupChannel, "batch_delete": batchDeleteChannel, "association": associationChannel}
+	handler, ok := handlers[channel]
+	if !ok {
+		return channelResponse{}, routing.ErrRequest
+	}
+	if input.Fields.PreviewID != "" || input.Fields.BeforeTaskVersion != "" || input.Fields.Kind != "" || input.Fields.Timezone != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	if input.Reminder != "" && input.Reminder != "add" && input.Reminder != "skip" || input.Note != "" && input.Note != "add" && input.Note != "skip" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	return handler(ctx, s, result, input)
+}
+func associationChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	c := routingConversation{Route: r, Channel: "association"}
+	if err := c.prepareAssociation(ctx, s); err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "association", State: c.State, Source: r.Input.Text, Input: r.Input, Extraction: "local_association_scope", Questions: []channelQuestion{}, Association: c.Association, Answer: c.Answer}, nil
+}
+func batchDeleteChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	c := routingConversation{Route: r, Channel: "batch_delete"}
+	if err := c.prepareBatch(ctx, s); err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "batch_delete", State: c.State, Source: r.Input.Text, Input: r.Input, Extraction: "local_batch_scope", Questions: []channelQuestion{}, Batch: c.Batch, Answer: c.Answer}, nil
+}
+func lookupChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	if in.Prefill || in.Fields != (store.CaptureInput{}) || in.Reminder != "" || in.Note != "" {
+		return channelResponse{}, routing.ErrRequest
+	}
+	var answer conversationAnswer
+	var err error
+	if r.Plan != nil {
+		answer, err = answerPlannedLookup(ctx, s, r.Input, *r.Plan)
+	} else {
+		answer, err = answerLookup(ctx, s, r.Input)
+	}
+	if err != nil {
+		return channelResponse{}, err
+	}
+	return channelResponse{Version: routing.Version, Channel: "lookup", State: "answered", Source: r.Input.Text, Input: r.Input, Extraction: "saved_record_lookup", Questions: []channelQuestion{}, Answer: &answer}, nil
+}
+func taskChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	return captureChannel(ctx, s, r, in, "tasks", "task")
+}
+func reminderChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	return captureChannel(ctx, s, r, in, "reminders", "reminder")
+}
+func noteChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest) (channelResponse, error) {
+	return captureChannel(ctx, s, r, in, "notes", "note")
+}
+
+// Channels collect reviewed fields. Initial preparation can offer source-derived
+// hints without rerouting or making a model call; subsequent edits are explicit.
+func captureChannel(ctx context.Context, s *store.Store, r routing.Result, in dispatchRequest, channel, kind string) (channelResponse, error) {
+	out := channelResponse{Version: routing.Version, Channel: channel, State: "needs_fields", Source: r.Input.Text, Input: r.Input, Extraction: "explicit_fields", Questions: []channelQuestion{}}
+	if in.Prefill {
+		seed := prepareChannel(r.Input, kind)
+		out.Prefill = &seed
+		in = applyChannelPrefill(in, *out.Prefill)
+		if kind == "task" && in.Reminder == "" {
+			in.Reminder = "skip"
+		}
+		if kind != "note" && in.Note == "" {
+			in.Note = "skip"
+		}
+		out.Extraction = "local_prefill_review"
+	}
+	draft := in.Fields
+	draft.Kind = kind
+	if kind == "task" && in.Reminder == "" && draft.ReminderAt != "" {
+		in.Reminder = "add"
+	}
+	if kind != "note" && in.Note == "" && draft.NoteBody != "" {
+		in.Note = "add"
+	}
+	ask := func(field, typ, prompt string, choices ...provider.Choice) {
+		if choices == nil {
+			choices = []provider.Choice{}
+		}
+		out.Questions = append(out.Questions, channelQuestion{ID: channel + "." + field, Field: field, ValueType: typ, Prompt: prompt, Required: true, Choices: choices})
+	}
+	if kind != "note" && strings.TrimSpace(draft.Title) == "" {
+		ask("fields.title", "string", "What title should be saved? Review the source sentence and its timing separately.")
+	}
+	if kind == "task" {
+		if in.Reminder == "" {
+			ask("reminder", "choice", "Add a linked reminder?", provider.Choice{Value: "add", Label: "Add reminder"}, provider.Choice{Value: "skip", Label: "Skip reminder"})
+		}
+		if in.Reminder == "skip" && (draft.ReminderAt != "" || draft.ReminderTitle != "" || draft.Repeat != "") {
+			return out, routing.ErrRequest
+		}
+		if in.Reminder == "add" && draft.ReminderAt == "" {
+			ask("fields.reminder_at", "rfc3339", "When should Atlas remind you?")
+		}
+	} else if kind == "reminder" {
+		if in.Reminder != "" {
+			return out, routing.ErrRequest
+		}
+		if draft.ReminderAt == "" {
+			ask("fields.reminder_at", "rfc3339", "When should Atlas remind you?")
+		}
+	} else if in.Reminder != "" || in.Note != "" {
+		return out, routing.ErrRequest
+	}
+	if kind != "note" {
+		if in.Note == "" {
+			ask("note", "choice", "Attach a note?", provider.Choice{Value: "add", Label: "Add note"}, provider.Choice{Value: "skip", Label: "Skip note"})
+		}
+		if in.Note == "skip" && draft.NoteBody != "" {
+			return out, routing.ErrRequest
+		}
+		if in.Note == "add" && strings.TrimSpace(draft.NoteBody) == "" {
+			ask("fields.note_body", "string", "What should the attached note contain?")
+		}
+	} else if strings.TrimSpace(draft.NoteBody) == "" {
+		ask("fields.note_body", "string", "What information should the note retain?")
+	}
+	// Dependency candidates must have been supplied in the initial bounded
+	// context. CapturePreview rechecks canonical state and captures its version.
+	if draft.BeforeTaskID != "" {
+		allowed := false
+		for _, record := range r.Input.Context {
+			if record.ID == draft.BeforeTaskID {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return out, routing.ErrRequest
+		}
+	}
+	if draft.LinkedTaskID != "" {
+		allowed := false
+		for _, record := range r.Input.Context {
+			if record.ID == draft.LinkedTaskID && record.Kind == "task" {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return out, routing.ErrRequest
+		}
+	}
+	if len(out.Questions) > 0 {
+		return out, nil
+	}
+	if in.Prefill {
+		return out, nil
+	}
+	if draft.ReminderAt != "" {
+		draft.Timezone = r.Input.Timezone
+	}
+	proposal, err := s.CapturePreview(ctx, draft)
+	if err != nil {
+		return out, err
+	}
+	out.State = "awaiting_confirmation"
+	out.Proposal = &proposal
+	return out, nil
+}
