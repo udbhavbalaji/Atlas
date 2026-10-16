@@ -281,10 +281,10 @@ func TestUnsupportedRequestExplainsLimitAndAcceptsClarification(t *testing.T) {
 	}
 }
 
-func TestExplicitUnavailableWorkflowOperations(t *testing.T) {
+func TestExplicitWorkflowGuidance(t *testing.T) {
 	for _, tc := range []struct{ request, reason string }{
-		{"Link this note to my task", "can't change links"},
-		{"Add a dependency between my tasks", "can't change task dependencies"},
+		{"Link this note to my task", "Please say which link"},
+		{"Add a dependency between my tasks", "Please name the dependency"},
 		{"Complete all tasks", "can't change multiple"},
 		{"Create a project", "can't create a project"},
 	} {
