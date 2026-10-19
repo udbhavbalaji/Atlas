@@ -70,6 +70,53 @@ func TestBatchDeleteAllRequiresApprovalAndKeepsOtherKinds(t *testing.T) {
 	}
 }
 
+func TestClearAllRemindersReviewsRepeatingAndOneTimeRecords(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	task, err := s.Create(t.Context(), "Keep task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oneTime, err := s.CreateReminder(t.Context(), "One time", time.Now().Add(time.Hour).UTC().Format(time.RFC3339), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeating, _, err := s.CreateRepeatingReminderRequest(t.Context(), "clear-repeat", "Daily", time.Now().Add(time.Hour).UTC().Format(time.RFC3339), "UTC", "", "daily")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "mock", "version": "1", "request_id": "clear-reminders", "text": "Clear all reminders", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_delete_confirmation" || c["channel"] != "batch_delete" {
+		t.Fatal(code, c)
+	}
+	if len(c["batch"].(map[string]any)["targets"].([]any)) != 2 {
+		t.Fatal("review did not list both reminders", c["batch"])
+	}
+	for _, id := range []string{oneTime.ID, repeating.ID} {
+		if _, err := s.ReminderState(t.Context(), id); err != nil {
+			t.Fatal("reminder deleted before confirmation", err)
+		}
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "yes"})
+	if code != 200 || c["state"] != "answered" {
+		t.Fatal(code, c)
+	}
+	for _, id := range []string{oneTime.ID, repeating.ID} {
+		if _, err := s.ReminderState(t.Context(), id); err == nil {
+			t.Fatal("confirmed reminder survived", id)
+		}
+	}
+	if _, err := s.TaskState(t.Context(), task.ID); err != nil {
+		t.Fatal("unselected task was deleted", err)
+	}
+}
+
 func TestBatchDeleteNamedTargetsSelectionAndChangedReview(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {

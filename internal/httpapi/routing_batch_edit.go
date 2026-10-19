@@ -34,16 +34,35 @@ func batchEditIntent(text string) *batchEditMutation {
 	}
 	if words[0] == "rename" || words[0] == "replace" {
 		verb := words[0]
-		if len(words) >= 5 && (words[1] == "all" || words[1] == "every") && (words[2] == "notes" || words[2] == "note") && (words[3] == "to" || words[3] == "with") {
+		i := 1
+		all := false
+		if i < len(words) && (words[i] == "all" || words[i] == "every") {
+			all = true
+			i++
+		}
+		if i < len(words) && (words[i] == "my" || words[i] == "the") {
+			i++
+		}
+		if i+2 < len(words) && (words[i] == "notes" || words[i] == "note") && (words[i+1] == "to" || words[i+1] == "with") {
 			field := "title"
 			if verb == "replace" {
 				field = "body"
 			}
 			original := strings.Fields(strings.TrimSpace(strings.TrimRight(text, ".!?")))
-			value := strings.Join(original[len(original)-len(words)+4:], " ")
+			value := strings.Join(original[len(original)-len(words)+i+2:], " ")
 			if strings.TrimSpace(value) != "" {
-				return &batchEditMutation{Kind: "note", Field: field, Value: value, All: true, Targets: []store.BatchTarget{}, Effects: []string{}}
+				return &batchEditMutation{Kind: "note", Field: field, Value: value, All: all, Targets: []store.BatchTarget{}, Effects: []string{}}
 			}
+		}
+		return nil
+	}
+	if words[0] == "mark" && len(words) >= 4 && (words[1] == "all" || words[1] == "every") {
+		remaining := words[2:]
+		if len(remaining) > 0 && (remaining[0] == "my" || remaining[0] == "the") {
+			remaining = remaining[1:]
+		}
+		if len(remaining) == 2 && (remaining[0] == "task" || remaining[0] == "tasks") && (remaining[1] == "done" || remaining[1] == "complete" || remaining[1] == "completed") {
+			return &batchEditMutation{Kind: "task", Status: "completed", All: true, Targets: []store.BatchTarget{}, Effects: []string{}}
 		}
 		return nil
 	}
