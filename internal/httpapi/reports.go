@@ -9,6 +9,7 @@ import (
 )
 
 type reportRequest struct {
+	SessionID    string `json:"session_id"`
 	Version      int    `json:"version"`
 	RequestID    string `json:"request_id"`
 	Surface      string `json:"surface"`
@@ -37,7 +38,7 @@ func validReportRequest(input reportRequest) bool {
 }
 
 func reportRoutes(mux *http.ServeMux, s *store.Store) {
-	mux.HandleFunc("POST /api/v1/conversations/routing/{id}/reports", func(w http.ResponseWriter, r *http.Request) {
+	save := func(w http.ResponseWriter, r *http.Request) {
 		var input reportRequest
 		if !decode(w, r, &input) {
 			return
@@ -46,6 +47,15 @@ func reportRoutes(mux *http.ServeMux, s *store.Store) {
 			failure(w, store.ErrReportInvalid)
 			return
 		}
+		id := r.PathValue("id")
+		if id == "" {
+			id = input.SessionID
+		}
+		if id == "" || input.SessionID != "" && input.SessionID != id {
+			failure(w, store.ErrReportInvalid)
+			return
+		}
+		r.SetPathValue("id", id)
 		d, c, err := loadRoutingConversation(r, s)
 		if err != nil {
 			failure(w, err)
@@ -90,16 +100,20 @@ func reportRoutes(mux *http.ServeMux, s *store.Store) {
 			status = http.StatusOK
 		}
 		respond(w, status, report)
-	})
-	mux.HandleFunc("GET /api/v1/reports", func(w http.ResponseWriter, r *http.Request) {
+	}
+	mux.HandleFunc("POST /api/v1/conversations/routing/{id}/reports", save)
+	mux.HandleFunc("POST /api/v1/debug/reports", save)
+	list := func(w http.ResponseWriter, r *http.Request) {
 		reports, err := s.ConversationReports(r.Context())
 		if err != nil {
 			failure(w, err)
 			return
 		}
 		respond(w, http.StatusOK, reports)
-	})
-	mux.HandleFunc("GET /api/v1/reports/corpus.jsonl", func(w http.ResponseWriter, r *http.Request) {
+	}
+	mux.HandleFunc("GET /api/v1/reports", list)
+	mux.HandleFunc("GET /api/v1/debug/reports", list)
+	export := func(w http.ResponseWriter, r *http.Request) {
 		reports, err := s.ConversationReports(r.Context())
 		if err != nil {
 			failure(w, err)
@@ -134,5 +148,7 @@ func reportRoutes(mux *http.ServeMux, s *store.Store) {
 				return
 			}
 		}
-	})
+	}
+	mux.HandleFunc("GET /api/v1/reports/corpus.jsonl", export)
+	mux.HandleFunc("GET /api/v1/debug/reports/corpus.jsonl", export)
 }

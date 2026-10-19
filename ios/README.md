@@ -2,7 +2,7 @@
 
 The app icon and its source assets are in `AtlasPhone/Assets.xcassets`.
 
-This is a native SwiftUI iPhone app. It is an Xcode project, not a web app. It uses the same durable routing conversation API as the Omarchy and macOS desktop apps for typed and push-to-talk input, follow-up questions, lookups, creation, editing, deletion, and session recovery. Saved items are read-only in their separate list; changes go through conversation. A saved action or answered question can be followed by another request in the same conversation. The conversation screen can save a local issue report with the conversation snapshot and your expected result.
+This is a native SwiftUI iPhone app. It is an Xcode project, not a web app. It uses the same durable routing conversation API as the Omarchy and macOS desktop apps for typed and push-to-talk input, follow-up questions, lookups, creation, editing, deletion, and session recovery. Saved items are read-only in their separate list; changes go through conversation. A saved action or answered question can be followed by another request in the same conversation. The conversation screen sends issue reports by HTTP to the connected Atlas service, which stores a versioned conversation snapshot and your expected result.
 
 ## Build and install on an iPhone
 
@@ -26,6 +26,8 @@ tailscale serve 8080
 ```
 
 Tailscale prints a private `https://…ts.net` URL. Enter that URL in the app's Connection screen. Keep Atlas on loopback; Tailscale Serve proxies to it. Use Serve, not Funnel. Tailscale is not installed or configured by this repository, so remote access is not live until you complete that setup. Other authenticated private HTTPS reverse proxies can also work.
+
+Use the same server address in the browser and both desktop apps to see the same tasks, reminders, notes, conversations, and reports. The phone does not keep a separate records database. `/sync-test` on that server shows its address and record counts.
 
 For a local iOS Simulator on the same Mac as the Atlas server, `http://127.0.0.1:8080` is accepted. The app rejects other plain HTTP addresses and uses normal iOS certificate validation.
 

@@ -132,7 +132,7 @@ final class ConversationStore: ObservableObject {
         do {
             let receipt = try await api.report(current, requestID: pending.requestID, category: category, expected: expected, messageIndex: messageIndex)
             UserDefaults.standard.removeObject(forKey: "atlas.report.pending")
-            message = "Report saved locally · " + String(receipt.id.prefix(8))
+            message = "Report sent to Atlas · " + String(receipt.id.prefix(8))
             return true
         } catch {
             message = error.localizedDescription

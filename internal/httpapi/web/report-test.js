@@ -35,7 +35,7 @@ openReport.onclick = () => AtlasReport.open(fixtureConversation);
 async function loadReports() {
   list.textContent = 'Loading reports…';
   try {
-    const response = await fetch('/api/v1/reports');
+    const response = await fetch('/api/v1/debug/reports');
     const reports = await response.json();
     if (!response.ok) throw new Error(reports.error?.message || 'Could not load reports.');
     list.replaceChildren();

@@ -81,8 +81,8 @@ struct AtlasAPI {
     }
 
     func report(_ conversation: Conversation, requestID: String, category: String, expected: String, messageIndex: Int) async throws -> ConversationReportReceipt {
-        try await send("/api/v1/conversations/routing/" + conversation.id + "/reports", method: "POST", body: [
-            "version": conversation.version, "request_id": requestID, "surface": "ios",
+        try await send("/api/v1/debug/reports", method: "POST", body: [
+            "session_id": conversation.id, "version": conversation.version, "request_id": requestID, "surface": "ios",
             "category": category, "expected": expected, "message_index": messageIndex
         ])
     }

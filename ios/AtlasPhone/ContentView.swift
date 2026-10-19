@@ -379,7 +379,7 @@ private struct ReportView: View {
                         .frame(minHeight: 125)
                         .accessibilityLabel("What should Atlas have done?")
                 } header: { Text("What should Atlas have done?") }
-                  footer: { Text("Your note, the conversation, and a route summary are saved in your Atlas service. Nothing is sent to an external issue tracker.") }
+                  footer: { Text("Your note, the conversation, and a route summary are sent to your connected Atlas service. Nothing is sent to an external issue tracker.") }
                 if !errorMessage.isEmpty {
                     Section { Text(errorMessage).foregroundStyle(.red).font(.footnote) }
                 }

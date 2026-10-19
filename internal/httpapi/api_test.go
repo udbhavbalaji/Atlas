@@ -56,7 +56,7 @@ func TestDesktopConversationPage(t *testing.T) {
 	}
 	defer s.Close()
 	h := Handler(s)
-	for _, path := range []string{"/desktop", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-client.js", "/desktop-test", "/report-test", "/report-test.js"} {
+	for _, path := range []string{"/desktop", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-client.js", "/desktop-test", "/report-test", "/report-test.js", "/sync-test", "/sync-test.js"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 {
@@ -70,6 +70,9 @@ func TestDesktopConversationPage(t *testing.T) {
 		}
 		if path == "/report-test" && (!strings.Contains(w.Body.String(), "report-fixture") || !strings.Contains(w.Body.String(), "report-open")) {
 			t.Fatal("report testing page is missing fixture controls")
+		}
+		if path == "/sync-test" && (!strings.Contains(w.Body.String(), "sync-check") || !strings.Contains(w.Body.String(), "/sync-test.js")) {
+			t.Fatal("shared server testing page is missing connection controls")
 		}
 	}
 }

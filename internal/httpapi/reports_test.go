@@ -26,17 +26,26 @@ func TestConversationReportSnapshotReplayAndCorpusExport(t *testing.T) {
 	}
 	id := c["id"].(string)
 	version := int(c["version"].(float64))
+	debugPath := "/api/v1/debug/reports"
 	for _, invalid := range []map[string]any{
+		{"version": version, "request_id": "missing-session", "surface": "web", "category": "other", "expected": "Enough detail"},
 		{"version": version, "request_id": "é-report-1", "surface": "web", "category": "other", "expected": "Enough detail"},
 		{"version": version, "request_id": "invalid-1", "surface": "external", "category": "other", "expected": "Enough detail"},
 		{"version": version, "request_id": "invalid-2", "surface": "web", "category": "other", "expected": "No", "message_index": 999},
 	} {
-		if code, _ := send("/api/v1/conversations/routing/"+id+"/reports", invalid); code != 400 {
+		if invalid["request_id"] != "missing-session" {
+			invalid["session_id"] = id
+		}
+		if code, _ := send(debugPath, invalid); code != 400 {
 			t.Fatalf("invalid report accepted: %#v, HTTP %d", invalid, code)
 		}
 	}
-	input := map[string]any{"version": version, "request_id": "report-request-1", "surface": "web", "category": "missed_action", "expected": "Offer to save a task for sending the email.", "message_index": 0}
-	code, report := send("/api/v1/conversations/routing/"+id+"/reports", input)
+	mismatch := map[string]any{"session_id": "different", "version": version, "request_id": "mismatch-1", "surface": "web", "category": "other", "expected": "Enough detail"}
+	if code, _ := send("/api/v1/conversations/routing/"+id+"/reports", mismatch); code != 400 {
+		t.Fatalf("mismatched conversation ID accepted: HTTP %d", code)
+	}
+	input := map[string]any{"session_id": id, "version": version, "request_id": "report-request-1", "surface": "web", "category": "missed_action", "expected": "Offer to save a task for sending the email.", "message_index": 0}
+	code, report := send(debugPath, input)
 	if code != 201 || report["session_id"] != id || int(report["session_version"].(float64)) != version {
 		t.Fatal(code, report)
 	}
@@ -48,23 +57,28 @@ func TestConversationReportSnapshotReplayAndCorpusExport(t *testing.T) {
 	if code != 200 || replay["id"] != report["id"] {
 		t.Fatal(code, replay)
 	}
-	changed := map[string]any{"version": version, "request_id": "report-request-1", "surface": "web", "category": "missed_action", "expected": "A different expectation"}
-	code, conflict := send("/api/v1/conversations/routing/"+id+"/reports", changed)
+	changed := map[string]any{"session_id": id, "version": version, "request_id": "report-request-1", "surface": "web", "category": "missed_action", "expected": "A different expectation"}
+	code, conflict := send(debugPath, changed)
 	if code != 409 || conflict["error"].(map[string]any)["code"] != "report_key_conflict" {
 		t.Fatal(code, conflict)
 	}
-	stale := map[string]any{"version": version + 1, "request_id": "report-request-2", "surface": "web", "category": "other", "expected": "Another outcome"}
-	code, conflict = send("/api/v1/conversations/routing/"+id+"/reports", stale)
+	stale := map[string]any{"session_id": id, "version": version + 1, "request_id": "report-request-2", "surface": "web", "category": "other", "expected": "Another outcome"}
+	code, conflict = send(debugPath, stale)
 	if code != 409 || conflict["error"].(map[string]any)["code"] != "session_version_conflict" {
 		t.Fatal(code, conflict)
 	}
 	listResponse := httptest.NewRecorder()
-	mux.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/api/v1/reports", nil))
+	mux.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, debugPath, nil))
 	var reports []store.ConversationReport
 	if listResponse.Code != 200 || json.Unmarshal(listResponse.Body.Bytes(), &reports) != nil || len(reports) != 1 {
 		t.Fatal(listResponse.Code, listResponse.Body.String())
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/reports/corpus.jsonl", nil)
+	legacyList := httptest.NewRecorder()
+	mux.ServeHTTP(legacyList, httptest.NewRequest(http.MethodGet, "/api/v1/reports", nil))
+	if legacyList.Code != 200 || legacyList.Body.String() != listResponse.Body.String() {
+		t.Fatal("legacy list route differs from debug route", legacyList.Code)
+	}
+	request := httptest.NewRequest(http.MethodGet, debugPath+"/corpus.jsonl", nil)
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)
 	if response.Code != 200 || !strings.Contains(response.Header().Get("Content-Type"), "application/x-ndjson") {

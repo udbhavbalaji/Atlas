@@ -26,7 +26,8 @@ static gboolean atlas_permission_request(WebKitWebView *view, WebKitPermissionRe
     const char *base = (const char *)data;
     const char *current = webkit_web_view_get_uri(view);
     size_t length = strlen(base);
-    if (!current || strncmp(current, base, length) != 0 ||
+    if (!g_str_has_prefix(base, "http://127.0.0.1:") ||
+        !current || strncmp(current, base, length) != 0 ||
         (current[length] != '/' && current[length] != '\0') ||
         !WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(request)) return FALSE;
     WebKitUserMediaPermissionRequest *media = WEBKIT_USER_MEDIA_PERMISSION_REQUEST(request);
@@ -37,7 +38,7 @@ static gboolean atlas_permission_request(WebKitWebView *view, WebKitPermissionRe
     return TRUE;
 }
 
-static gboolean atlas_open_window(const char *url) {
+static gboolean atlas_open_window(const char *url, const char *base) {
     int argc = 0;
     char **argv = NULL;
     if (!gtk_init_check(&argc, &argv)) return FALSE;
@@ -51,7 +52,7 @@ static gboolean atlas_open_window(const char *url) {
     webkit_settings_set_enable_webrtc(settings, TRUE);
     gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
     g_signal_connect(window, "destroy", G_CALLBACK(atlas_window_destroy), NULL);
-    g_signal_connect(view, "permission-request", G_CALLBACK(atlas_permission_request), (gpointer)url);
+    g_signal_connect(view, "permission-request", G_CALLBACK(atlas_permission_request), (gpointer)base);
     webkit_web_view_load_uri(view, url);
     gtk_widget_show_all(window);
     gtk_main();
@@ -65,6 +66,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -85,6 +87,17 @@ func main() {
 }
 
 func run() error {
+	configHome := os.Getenv("XDG_CONFIG_HOME")
+	if configHome == "" {
+		configHome = filepath.Join(userHome(), ".config")
+	}
+	sharedURL, err := configuredSharedURL(filepath.Join(configHome, "atlas", "server-url"))
+	if err != nil {
+		return err
+	}
+	if sharedURL != "" {
+		return openDesktop(sharedURL)
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -96,10 +109,6 @@ func run() error {
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" {
 		dataHome = filepath.Join(userHome(), ".local", "share")
-	}
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		configHome = filepath.Join(userHome(), ".config")
 	}
 	dataDir := filepath.Join(dataHome, "atlas")
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
@@ -139,10 +148,37 @@ func run() error {
 		return fmt.Errorf("server did not announce a loopback URL: %q", announcement)
 	}
 	url := strings.TrimPrefix(announcement, "ATLAS_URL=")
-	client := http.Client{Timeout: 500 * time.Millisecond}
+	return openDesktop(url)
+}
+
+func configuredSharedURL(path string) (string, error) {
+	value := strings.TrimSpace(os.Getenv("ATLAS_SERVER_URL"))
+	if value == "" {
+		data, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("read shared Atlas server URL: %w", err)
+		}
+		value = strings.TrimSpace(string(data))
+	}
+	if value == "" {
+		return "", nil
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" ||
+		(u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"))) {
+		return "", errors.New("shared Atlas server must be a root HTTPS URL, or loopback HTTP for local testing")
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
+func openDesktop(baseURL string) error {
+	client := http.Client{Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		response, err := client.Get(url + "/healthz")
+		response, err := client.Get(baseURL + "/healthz")
 		if err == nil {
 			response.Body.Close()
 			if response.StatusCode == http.StatusOK {
@@ -150,12 +186,14 @@ func run() error {
 			}
 		}
 		if time.Now().After(deadline) {
-			return errors.New("server did not become healthy")
+			return errors.New("Atlas server did not become healthy; check the shared server address and connection")
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	windowURL := C.CString(url + "/desktop?surface=omarchy")
+	windowURL := C.CString(baseURL + "/desktop?surface=omarchy")
 	defer C.free(unsafe.Pointer(windowURL))
+	permissionOrigin := C.CString(baseURL)
+	defer C.free(unsafe.Pointer(permissionOrigin))
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(signals)
@@ -163,7 +201,7 @@ func run() error {
 		<-signals
 		C.atlas_request_close()
 	}()
-	if C.atlas_open_window(windowURL) == 0 {
+	if C.atlas_open_window(windowURL, permissionOrigin) == 0 {
 		return errors.New("GTK could not connect to a desktop display")
 	}
 	return nil
