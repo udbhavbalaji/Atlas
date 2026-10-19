@@ -187,7 +187,7 @@ func TestDependencyMigrationPreservesCapture(t *testing.T) {
 	}
 	var version int
 	s.db.QueryRow("PRAGMA user_version").Scan(&version)
-	if version != 11 {
+	if version != 12 {
 		t.Fatal(version)
 	}
 }

@@ -56,7 +56,7 @@ func TestDesktopConversationPage(t *testing.T) {
 	}
 	defer s.Close()
 	h := Handler(s)
-	for _, path := range []string{"/desktop", "/desktop.css", "/voice-client-core.js", "/voice-client.js", "/desktop-test"} {
+	for _, path := range []string{"/desktop", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-client.js", "/desktop-test", "/report-test", "/report-test.js"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 {
@@ -64,6 +64,12 @@ func TestDesktopConversationPage(t *testing.T) {
 		}
 		if path == "/desktop" && (!strings.Contains(w.Body.String(), "voice-confirm") || !strings.Contains(w.Body.String(), "voice-start-form")) {
 			t.Fatal("desktop page is missing conversation controls")
+		}
+		if path == "/desktop" && (!strings.Contains(w.Body.String(), "voice-report") || !strings.Contains(w.Body.String(), "/report.js")) {
+			t.Fatal("desktop page is missing reporting controls")
+		}
+		if path == "/report-test" && (!strings.Contains(w.Body.String(), "report-fixture") || !strings.Contains(w.Body.String(), "report-open")) {
+			t.Fatal("report testing page is missing fixture controls")
 		}
 	}
 }

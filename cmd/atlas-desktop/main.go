@@ -43,7 +43,8 @@ static gboolean atlas_open_window(const char *url) {
     if (!gtk_init_check(&argc, &argv)) return FALSE;
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window), "Atlas");
-    gtk_window_set_default_size(GTK_WINDOW(window), 1080, 820);
+    gtk_window_set_default_size(GTK_WINDOW(window), 1180, 820);
+    gtk_widget_set_size_request(window, 850, 640);
     WebKitWebView *view = WEBKIT_WEB_VIEW(webkit_web_view_new());
     WebKitSettings *settings = webkit_web_view_get_settings(view);
     webkit_settings_set_enable_media_stream(settings, TRUE);
@@ -153,7 +154,7 @@ func run() error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	windowURL := C.CString(url + "/desktop")
+	windowURL := C.CString(url + "/desktop?surface=omarchy")
 	defer C.free(unsafe.Pointer(windowURL))
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)

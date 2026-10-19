@@ -39,17 +39,18 @@ final class AtlasDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        let rect = NSRect(x: 0, y: 0, width: 1100, height: 820)
+        let rect = NSRect(x: 0, y: 0, width: 1180, height: 820)
         window = NSWindow(contentRect: rect,
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "Atlas"
+        window.minSize = NSSize(width: 850, height: 640)
         window.center()
         webView = WKWebView(frame: rect)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         window.contentView = webView
-        webView.loadHTMLString("<html><body style='background:#101114;color:#e7e9ed;font:16px system-ui;padding:40px'>Starting Atlas…</body></html>", baseURL: nil)
+        webView.loadHTMLString("<html><body style='background:#f4f6f2;color:#17332b;font:16px system-ui;padding:40px'>Starting Atlas…</body></html>", baseURL: nil)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         startServer()
@@ -92,7 +93,7 @@ final class AtlasDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate
                 do {
                     let url = try readAnnouncement(pipe.fileHandleForReading)
                     guard let health = URL(string: url + "/healthz"),
-                          let page = URL(string: url + "/desktop") else {
+                          let page = URL(string: url + "/desktop?surface=macos") else {
                         throw StartupError.invalidAnnouncement
                     }
                     var healthy = false

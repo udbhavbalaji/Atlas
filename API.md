@@ -290,6 +290,12 @@ The **Voice** testing tab is a browser client for this same contract. Its transp
 
 The testing UI applies initial suggestions to empty controls, exposes source/context and allows explicit copying of supplied context titles/deadlines or choosing a prerequisite target. Then submit the reviewed fields without `prefill` to preview. Explicit edits, clears and skip choices take precedence; normal previews never refill them. Date controls retain the original exact instant when a suggested/copied value is unchanged, including timezone offsets and subsecond precision.
 
+## Conversation reports
+
+`POST /api/v1/conversations/routing/{id}/reports` accepts `{ "version": 1, "request_id": "unique-report-1", "surface": "web", "category": "wrong_answer", "expected": "The outcome I expected", "message_index": -1 }`. Surfaces are `web`, `macos`, `omarchy`, and `ios`; categories are `wrong_answer`, `missed_action`, `unwanted_change`, `confusing_flow`, and `other`. Use `-1` for the whole conversation or a zero-based message index. `expected` must contain 3–2000 non-whitespace Unicode characters. The request ID uses 8–128 letters, digits, underscores, or hyphens.
+
+The first save returns `201` with an ID and the exact conversation snapshot. An identical retry returns the same report with `200`; reusing the ID for different report details returns `409 report_key_conflict`. A changed conversation version returns `409 session_version_conflict`. Reporting does not advance the conversation or mutate saved records. `GET /api/v1/reports` lists local reports, and `GET /api/v1/reports/corpus.jsonl` downloads unlabeled evaluation candidates. Reports can contain private conversation content; the local API has no authentication.
+
 ## Experimental multi-action plan previews
 
 `ATLAS_PLAN_PREVIEW=1` enables preview and revision endpoints under
