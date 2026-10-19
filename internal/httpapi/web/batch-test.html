@@ -4,7 +4,7 @@
 <body><a href="/desktop-test">Desktop checks</a><h1>Batch deletion test</h1>
 <p>Use saved test records. Atlas shows the exact records it proposes to delete and waits for an explicit confirmation. “All” includes every saved record of the named types.</p>
 <form id="start"><label>Provider <select id="provider"><option value="mock">Mock routing</option><option value="jev">Jev routing</option></select></label><label>Request <input id="request" value="Delete all tasks and reminders" required></label><button>Start review</button></form>
-<p>Try “Delete all tasks and reminders”, “Delete Batch Alpha and Batch Beta”, “Delete task and reminder”, or “Delete all tasks and add a reminder”. The last request asks which action to handle first.</p>
+<p>Try “Clear all reminders”, “Delete all tasks and reminders”, “Delete Batch Alpha and Batch Beta”, “Delete task and reminder”, or “Delete all tasks and add a reminder”. The last request asks which action to handle first.</p>
 <div id="result" role="status" aria-live="polite"></div><fieldset id="records" hidden><legend>Records</legend><div id="record-list"></div><button id="select" type="button" hidden>Review selected records</button></fieldset>
 <div id="actions" hidden><button id="approve" type="button">Confirm deletion</button><button id="cancel" type="button">Cancel</button></div><pre id="trace"></pre>
 <form id="reply" hidden><label>Reply or clarify <input id="reply-text" required placeholder="Delete all tasks"></label><button>Send reply</button></form>

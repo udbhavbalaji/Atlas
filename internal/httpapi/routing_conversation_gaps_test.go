@@ -262,6 +262,70 @@ func TestConversationBulkNoteEditReviewsExactSet(t *testing.T) {
 	}
 }
 
+func TestCommonBulkEditPhrasesKeepReviewAndExactSelection(t *testing.T) {
+	t.Run("mark all tasks done", func(t *testing.T) {
+		s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		a, _ := s.Create(t.Context(), "First task")
+		b, _ := s.Create(t.Context(), "Second task")
+		send := gapSession(t, s)
+		c := startGap(t, send, "Mark all tasks done")
+		if c["state"] != "awaiting_batch_edit_confirmation" || len(c["batch_edit"].(map[string]any)["targets"].([]any)) != 2 {
+			t.Fatal(c)
+		}
+		for _, id := range []string{a.ID, b.ID} {
+			state, _ := s.TaskState(t.Context(), id)
+			if state.Task.Status != "open" {
+				t.Fatal("task changed before confirmation", state)
+			}
+		}
+		c = replyGap(t, send, c, "yes")
+		if c["state"] != "answered" {
+			t.Fatal(c)
+		}
+		for _, id := range []string{a.ID, b.ID} {
+			state, _ := s.TaskState(t.Context(), id)
+			if state.Task.Status != "completed" {
+				t.Fatal(state)
+			}
+		}
+	})
+	t.Run("rename notes with explicit selection", func(t *testing.T) {
+		s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		a, _, _ := s.CreateNoteRequest(t.Context(), "", "First body", "", "")
+		b, _, _ := s.CreateNoteRequest(t.Context(), "", "Second body", "", "")
+		send := gapSession(t, s)
+		c := startGap(t, send, "Rename notes to Team")
+		if c["state"] != "awaiting_batch_edit_targets" || len(c["batch_edit"].(map[string]any)["candidates"].([]any)) != 2 {
+			t.Fatal(c)
+		}
+		c = replyGap(t, send, c, a.NoteID)
+		if c["state"] != "awaiting_batch_edit_confirmation" || len(c["batch_edit"].(map[string]any)["targets"].([]any)) != 1 {
+			t.Fatal(c)
+		}
+		before, _ := s.NoteState(t.Context(), a.NoteID)
+		if before.Note.Title == "Team" {
+			t.Fatal("note changed before confirmation", before)
+		}
+		c = replyGap(t, send, c, "yes")
+		if c["state"] != "answered" {
+			t.Fatal(c)
+		}
+		selected, _ := s.NoteState(t.Context(), a.NoteID)
+		untouched, _ := s.NoteState(t.Context(), b.NoteID)
+		if selected.Note.Title != "Team" || untouched.Note.Title == "Team" {
+			t.Fatal(selected, untouched)
+		}
+	})
+}
+
 func TestConversationRelationListingExactAndAmbiguous(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {

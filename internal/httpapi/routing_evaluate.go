@@ -48,7 +48,7 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 		if occurrenceIntent(input.Text) != "" {
 			return localOccurrenceRoute(service, name, input), nil
 		}
-		if edit := batchEditIntent(input.Text); edit != nil && (edit.All || strings.HasSuffix(strings.ToLower(strings.TrimRight(strings.TrimSpace(input.Text), ".!?")), "s")) {
+		if edit := batchEditIntent(input.Text); edit != nil && (edit.All || edit.Kind == "note" || strings.HasSuffix(strings.ToLower(strings.TrimRight(strings.TrimSpace(input.Text), ".!?")), "s")) {
 			return localBatchEditRoute(service, name, input), nil
 		}
 		if ambiguous, err := ambiguousMultiEdit(parent, s, input.Text); err != nil {
