@@ -260,6 +260,14 @@ func (s *Store) Activity(ctx context.Context) ([]Activity, error) {
 	return result, rows.Err()
 }
 
+// RecordsRevision advances with committed record changes, including changes
+// made by the reminder worker. Activity IDs are monotonic and never deleted.
+func (s *Store) RecordsRevision(ctx context.Context) (int64, error) {
+	var revision int64
+	err := s.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(id), 0) FROM activity").Scan(&revision)
+	return revision, err
+}
+
 // Update changes only supplied fields and records one activity entry per actual change.
 func (s *Store) Update(ctx context.Context, id string, title, status *string) (Task, error) {
 	return s.Patch(ctx, id, TaskPatch{Title: title, Status: status})

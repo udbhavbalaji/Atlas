@@ -24,6 +24,8 @@ final class ConversationStore: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var connected = false
     @Published var message = ""
+    private var lastRecordsRevision: Int64?
+    private var snapshotRefreshInFlight = false
 
     private var api: AtlasAPI { AtlasAPI(server: server) }
     var isClosed: Bool { conversation?.state == "cancelled" }
@@ -41,6 +43,7 @@ final class ConversationStore: ObservableObject {
         conversation = nil
         UserDefaults.standard.removeObject(forKey: "atlas.session")
         snapshot = nil
+        lastRecordsRevision = nil
         await reconnect()
     }
 
@@ -56,24 +59,60 @@ final class ConversationStore: ObservableObject {
 
     func reconnect() async {
         guard !server.isEmpty else { return }
+        let target = server
+        let client = AtlasAPI(server: target)
         do {
-            try await api.health()
+            try await client.health()
+            guard server == target else { return }
             connected = true
             if let id = UserDefaults.standard.string(forKey: "atlas.session"), !id.isEmpty {
-                do { conversation = try await api.resume(id) }
+                do { conversation = try await client.resume(id) }
                 catch { message = "Could not resume the last conversation: " + error.localizedDescription }
             }
-            await refreshSnapshot()
+            guard server == target else { return }
+            let baseline = try? await client.recordsRevision()
+            if await refreshSnapshot() {
+                if server == target { lastRecordsRevision = baseline }
+            }
         } catch {
+            guard server == target else { return }
             connected = false
             message = error.localizedDescription
         }
     }
 
-    func refreshSnapshot() async {
+    @discardableResult func refreshSnapshot() async -> Bool {
+        guard !server.isEmpty, !snapshotRefreshInFlight else { return false }
+        let target = server
+        snapshotRefreshInFlight = true
+        defer { snapshotRefreshInFlight = false }
+        do {
+            let next = try await AtlasAPI(server: target).snapshot()
+            guard server == target else { return false }
+            snapshot = next
+            connected = true
+            return true
+        } catch {
+            guard server == target else { return false }
+            if error is URLError { connected = false }
+            return false
+        }
+    }
+
+    func refreshIfChanged() async {
         guard !server.isEmpty else { return }
-        do { snapshot = try await api.snapshot() }
-        catch { snapshot = nil }
+        let target = server
+        do {
+            let revision = try await AtlasAPI(server: target).recordsRevision()
+            guard server == target else { return }
+            connected = true
+            if revision != lastRecordsRevision {
+                if await refreshSnapshot() { lastRecordsRevision = revision }
+            }
+        } catch {
+            guard server == target else { return }
+            if error is URLError { connected = false }
+        }
     }
 
     func start() async {

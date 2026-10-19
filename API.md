@@ -298,6 +298,10 @@ The testing UI applies initial suggestions to empty controls, exposes source/con
 
 The first save returns `201` with an ID and the exact conversation snapshot. An identical retry returns the same report with `200`; reusing the ID for different report details returns `409 report_key_conflict`. A changed conversation version returns `409 session_version_conflict`. Reporting does not advance the conversation or mutate saved records. `GET /api/v1/debug/reports` lists reports on the connected service, and `GET /api/v1/debug/reports/corpus.jsonl` downloads unlabeled evaluation candidates. The older `/api/v1/reports` read routes remain available. Reports can contain private conversation content; Atlas has no built-in authentication, so expose the service only on loopback or a private authenticated network.
 
+## Shared records refresh
+
+`GET /api/v1/records/revision` returns `{ "revision": 123 }`, the highest committed activity ID for task, reminder, note, and relation changes. It starts at `0` on an empty database. Clients can check this small response while active and reload their saved-item lists when it changes. The web and iPhone interfaces check once per second; the web checks immediately on tab focus and the iPhone checks on foreground. This is a change signal for one shared backend, not a database replication protocol. A focused browser check is at `/sync-test`.
+
 ## Experimental multi-action plan previews
 
 `ATLAS_PLAN_PREVIEW=1` enables preview and revision endpoints under

@@ -61,6 +61,12 @@ struct AtlasAPI {
         guard result.status == "ok" else { throw AtlasAPIError.unexpectedResponse }
     }
 
+    func recordsRevision() async throws -> Int64 {
+        struct Revision: Decodable { let revision: Int64 }
+        let result: Revision = try await send("/api/v1/records/revision")
+        return result.revision
+    }
+
     func start(_ text: String) async throws -> Conversation {
         try await send("/api/v1/conversations/routing", method: "POST", body: [
             "provider": "jev", "version": "1", "request_id": UUID().uuidString,

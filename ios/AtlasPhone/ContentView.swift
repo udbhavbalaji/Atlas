@@ -75,6 +75,13 @@ struct ContentView: View {
                 if store.server.isEmpty { showingConnection = true }
                 else { await store.reconnect() }
             }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    await store.refreshIfChanged()
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await store.reconnect() } }
                 if phase == .background { speech.stop() }

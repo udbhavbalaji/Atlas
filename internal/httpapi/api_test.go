@@ -77,6 +77,52 @@ func TestDesktopConversationPage(t *testing.T) {
 	}
 }
 
+func TestRecordsRevisionShowsAnotherClientTaskImmediately(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "atlas.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h := Handler(s)
+	revision := func() int64 {
+		t.Helper()
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/records/revision", nil))
+		var state struct {
+			Revision int64 `json:"revision"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &state) != nil {
+			t.Fatalf("revision: HTTP %d %s", w.Code, w.Body.String())
+		}
+		return state.Revision
+	}
+	before := revision()
+	phone := httptest.NewRecorder()
+	h.ServeHTTP(phone, httptest.NewRequest("POST", "/api/v1/tasks", strings.NewReader(`{"title":"Added on phone"}`)))
+	if phone.Code != 201 {
+		t.Fatal(phone.Code, phone.Body.String())
+	}
+	if after := revision(); after <= before {
+		t.Fatalf("record revision did not advance: %d -> %d", before, after)
+	}
+	laptop := httptest.NewRecorder()
+	h.ServeHTTP(laptop, httptest.NewRequest("GET", "/api/v1/tasks", nil))
+	if laptop.Code != 200 || !strings.Contains(laptop.Body.String(), "Added on phone") {
+		t.Fatal("second client did not see the committed task", laptop.Code, laptop.Body.String())
+	}
+	for _, item := range []struct{ path, body string }{
+		{"/api/v1/notes", `{"body":"Added on laptop"}`},
+		{"/api/v1/reminders", `{"title":"Follow up","scheduled_at":"2030-01-01T09:00:00Z","timezone":"UTC"}`},
+	} {
+		previous := revision()
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, httptest.NewRequest("POST", item.path, strings.NewReader(item.body)))
+		if response.Code != 201 || revision() <= previous {
+			t.Fatalf("%s did not advance records revision: HTTP %d %s", item.path, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestTaskLifecycleAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "atlas.db")
 	s, err := store.Open(path)

@@ -3810,6 +3810,45 @@
           }
         }
       }
+    },
+    "/api/v1/records/revision": {
+      "get": {
+        "summary": "Read the latest committed saved-record change revision",
+        "description": "Clients of one Atlas backend can check this lightweight value and reload saved records when it advances. The revision is the highest committed activity ID; it is 0 on an empty database.",
+        "responses": {
+          "200": {
+            "description": "Current records revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "revision"
+                  ],
+                  "properties": {
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

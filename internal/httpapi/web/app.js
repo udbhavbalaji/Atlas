@@ -22,7 +22,7 @@ async function api(path, method = 'GET', body) {
  const creation = method === 'POST' && (path === 'tasks' || path === 'reminders' || path==='notes');
  const headers = {'Content-Type':'application/json'};
  if(creation){if(!pendingCreationKeys.has(signature))pendingCreationKeys.set(signature,crypto.randomUUID());headers['Idempotency-Key']=pendingCreationKeys.get(signature);}
-  const response = await fetch('/api/v1/' + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+  const response = await fetch('/api/v1/' + path, {method, headers, cache: method === 'GET' ? 'no-store' : 'default', body: body === undefined ? undefined : JSON.stringify(body)});
   if (!response.ok) { let detail; try { const error = (await response.json()).error; detail = typeof error === 'string' ? error : error.message; } catch {} throw new Error(detail || 'Atlas could not save this change. Try again.'); }
   const value = response.status === 204 ? null : await response.json();
  if(creation)pendingCreationKeys.delete(signature);
@@ -68,11 +68,12 @@ function edit(row, t) {
   form.onsubmit = event => { event.preventDefault(); mutate(() => api('tasks/' + t.id, 'PATCH', {title: input.value, details: details.value, due_at: due.value === localDeadline(t.due_at) ? t.due_at : deadlineValue(due.value)}), 'Task updated.'); };
 }
 async function load(preserveEdits = false) {
-  const [next, activity, nextReminders, deliveries,nextNotes,nextDependencies,nextRelations] = await Promise.all([api('tasks'), api('activity'), api('reminders'), api('deliveries'),api('notes'),api('task-dependencies'),api('relations')]); if(preserveEdits && (busy || document.querySelector('.task .edit')))return; reminders=nextReminders; tasks = next; notes=nextNotes;taskDependencies=nextDependencies;if(typeof renderRelations==='function'){recordRelations=nextRelations;renderRelations();}if(typeof updateCaptureContexts==='function')updateCaptureContexts(); if(typeof renderNotes==='function')renderNotes();renderReminders(deliveries); render(); $('activity').replaceChildren();
+  const [next, activity, nextReminders, deliveries,nextNotes,nextDependencies,nextRelations] = await Promise.all([api('tasks'), api('activity'), api('reminders'), api('deliveries'),api('notes'),api('task-dependencies'),api('relations')]); if(preserveEdits && (busy || document.querySelector('.task .edit')))return false; reminders=nextReminders; tasks = next; notes=nextNotes;taskDependencies=nextDependencies;if(typeof renderRelations==='function'){recordRelations=nextRelations;renderRelations();}if(typeof updateCaptureContexts==='function')updateCaptureContexts(); if(typeof renderNotes==='function')renderNotes();renderReminders(deliveries); render(); $('activity').replaceChildren();
   const names = {'relation.added':'Records associated','relation.removed':'Association removed','note.created':'Note added','note.updated':'Note changed','note.deleted':'Note deleted','note.linked':'Note linked','note.unlinked':'Note unlinked','task.created':'Task added', 'task.completed':'Task completed', 'task.updated':'Task changed', 'task.deleted':'Task deleted', 'reminder.task_linked':'Reminder linked to task','reminder.task_unlinked':'Reminder task link removed','reminder.scheduled':'Reminder scheduled', 'reminder.delivered':'Reminder delivered to inbox', 'reminder.snoozed':'Reminder snoozed', 'reminder.dismissed':'Reminder dismissed', 'reminder.occurrence.complete':'Repeat occurrence completed', 'reminder.occurrence.dismiss':'Repeat occurrence dismissed', 'reminder.completed':'Reminder completed', 'reminder.cancelled.task.completed':'Reminder cancelled because task completed', 'reminder.cancelled.task.deleted':'Reminder cancelled because task deleted'};
   for (const a of activity) { const li = document.createElement('li'); const task = a.note_id ? notes.find(n=>n.id===a.note_id) : a.reminder_id ? reminders.find(r => r.id === a.reminder_id) : tasks.find(t => t.id === a.task_id); li.textContent = (names[a.action] || a.action) + (task ? ': ' + (task.title||'Note '+task.id.slice(0,8)) : '') + ' · ' + new Date(a.timestamp).toLocaleString(); $('activity').append(li); }
   if(typeof revealURLRecord==='function')revealURLRecord();
   if (!activity.length) { const li = document.createElement('li'); li.textContent = 'Your activity will appear here.'; $('activity').append(li); }
+  return true;
 }
 async function mutate(operation, success) {
   if (busy) return; busy = true; document.querySelectorAll('button').forEach(b => b.disabled = true);
@@ -83,7 +84,8 @@ async function mutate(operation, success) {
 $('capture').onsubmit = event => { event.preventDefault(); const title = $('title').value; mutate(async () => { await api('tasks', 'POST', {title, details: $('details').value, due_at: deadlineValue($('deadline').value)}); $('title').value = ''; $('details').value = ''; $('deadline').value = ''; $('title').focus(); }, 'Task saved.'); };
 document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { filter = b.dataset.filter; document.querySelectorAll('[data-filter]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); render(); });
 $('refresh').onclick = () => mutate(async () => { await load(); }, 'Up to date.');
-load().catch(() => { $('tasks').setAttribute('aria-busy', 'false'); $('tasks').textContent = 'Tasks could not be loaded.'; message('Cannot reach Atlas. Check the server and press Refresh.', true); });
+let initialLoading=true;
+load().catch(() => { $('tasks').setAttribute('aria-busy', 'false'); $('tasks').textContent = 'Tasks could not be loaded.'; message('Cannot reach Atlas. Check the server and press Refresh.', true); }).finally(()=>{initialLoading=false;});
 
 setInterval(() => {if(!busy && !document.querySelector('.task .edit')) render();}, 60000);
 
@@ -115,7 +117,7 @@ function renderReminders(deliveries) {
  for(const [id,text] of [['reminder-inbox','No reminders due.'],['reminder-upcoming','No upcoming reminders.'],['reminder-history','No dismissed or completed reminders.']]) if(!$(id).children.length){const p=document.createElement('p');p.textContent=text;$(id).append(p);}
  for(const d of deliveries){const li=document.createElement('li');const r=reminders.find(r=>r.id===d.reminder_id);li.textContent=(r?r.title:d.reminder_id)+' · '+d.state+' · scheduled '+new Date(d.scheduled_at).toLocaleString()+(d.delivered_at?' · delivered '+new Date(d.delivered_at).toLocaleString():'');$('delivery-history').append(li);}
  if(!deliveries.length){const li=document.createElement('li');li.textContent='No deliveries yet.';$('delivery-history').append(li);}
- $('reminder-connection').textContent='Inbox updated '+new Date().toLocaleTimeString()+'. Checks every 2 seconds.';
+ $('reminder-connection').textContent='Inbox updated '+new Date().toLocaleTimeString()+'. Checks for changes every second.';
 }
 function rescheduleReminder(row,r) {
  const form=document.createElement('form');form.className='edit';
@@ -130,14 +132,22 @@ function scheduleReminder(test) {
 }
 $('reminder-form').onsubmit=e=>{e.preventDefault();scheduleReminder(false);};
 $('test-reminder').onclick=()=>scheduleReminder(true);
-let polling=false;
-setInterval(async()=>{
- if(busy||polling||document.querySelector('.task .edit'))return;
+let recordsRevision=-1, polling=false;
+async function checkRecordsRevision(){
+ if(document.hidden||busy||initialLoading||polling||document.querySelector('.task .edit'))return;
  polling=true;
- try{const [next,deliveries]=await Promise.all([api('reminders'),api('deliveries')]);if(!busy&&!document.querySelector('.task .edit')){if(JSON.stringify(next)!==JSON.stringify(reminders)){await load(true);}else{$('reminder-connection').textContent='Inbox checked '+new Date().toLocaleTimeString()+'. Checks every 2 seconds.';}}}
- catch{$('reminder-connection').textContent='Cannot reach Atlas. Inbox may be out of date; retrying automatically.';}
+ try{
+  const state=await api('records/revision');
+  if(!Number.isSafeInteger(state.revision))throw new Error('Invalid records revision.');
+  if(state.revision!==recordsRevision){
+   if(await load(true))recordsRevision=state.revision;
+  }else $('reminder-connection').textContent='Saved items checked '+new Date().toLocaleTimeString()+'. Checking every second.';
+ }catch{$('reminder-connection').textContent='Cannot reach Atlas. Saved items may be out of date; retrying automatically.';}
  finally{polling=false;}
-},2000);
+}
+setInterval(checkRecordsRevision,1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkRecordsRevision();});
+window.addEventListener('focus',checkRecordsRevision);
 
 function reminderStatus(r){return r.cancellation_reason ? 'Cancelled because task '+(r.cancellation_reason==='task.deleted'?'was deleted':'was completed') : r.status;}
 function taskReminderForm(row,t){

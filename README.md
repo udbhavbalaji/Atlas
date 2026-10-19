@@ -33,6 +33,8 @@ Open `/desktop` for the conversation, `/` for saved records, `/report-test` for 
 
 For online sharing across devices, run one Atlas backend with a persistent database and make it reachable at a private HTTPS address, such as Tailscale Serve. Open that address in the browser, enter it in the iPhone Connection screen, and configure both desktop shells with the same `ATLAS_SERVER_URL` or their `server-url` files. The desktop shells otherwise keep their own local databases. Existing databases are not merged or migrated by changing the address, and offline edits are not synchronized. See the platform READMEs for setup.
 
+Active saved-item screens check for record changes every second and reload when the shared backend's revision advances. A background iPhone app refreshes on return.
+
 ### Omarchy desktop preview
 
 On Omarchy, run `desktop/linux/build.sh` followed by `dist/linux/atlas-desktop`, or run `desktop/linux/install.sh` to add Atlas to the user application launcher. By default, the desktop window starts and stops its own Atlas service and stores data under the XDG data directory. Set `ATLAS_SERVER_URL` to use a shared service instead. With a Groq key, its free natural language mode interprets ordinary English requests to look up, add, edit, and delete saved records; edits report their old and new values, and deletions require confirmation. Local microphone text appears in the textbox while you speak. See [desktop/linux/README.md](desktop/linux/README.md) for setup and platform limits.

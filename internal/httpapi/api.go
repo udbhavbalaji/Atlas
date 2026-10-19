@@ -51,6 +51,15 @@ func Handler(s *store.Store) http.Handler {
 		})
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"status": "ok"}) })
+	mux.HandleFunc("GET /api/v1/records/revision", func(w http.ResponseWriter, r *http.Request) {
+		revision, err := s.RecordsRevision(r.Context())
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		respond(w, http.StatusOK, map[string]int64{"revision": revision})
+	})
 	mux.HandleFunc("GET /api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 		v, e := s.Tasks(r.Context())
 		if e != nil {
