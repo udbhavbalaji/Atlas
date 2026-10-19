@@ -28,7 +28,10 @@ type routingConversation struct {
 	Answer              *conversationAnswer    `json:"answer,omitempty"`
 	Mutation            *recordMutation        `json:"mutation,omitempty"`
 	Batch               *batchMutation         `json:"batch,omitempty"`
+	BatchEdit           *batchEditMutation     `json:"batch_edit,omitempty"`
 	Association         *associationMutation   `json:"association,omitempty"`
+	RelationList        *relationListing       `json:"relation_list,omitempty"`
+	Occurrence          *occurrenceMutation    `json:"occurrence,omitempty"`
 	Workflow            *workflowPlan          `json:"workflow,omitempty"`
 	CorrectionAttempted bool                   `json:"correction_attempted,omitempty"`
 	ResponseModel       string                 `json:"response_model,omitempty"`
@@ -132,6 +135,28 @@ func (c *routingConversation) prompt() string {
 			prompt += " " + c.Warnings[len(c.Warnings)-1]
 		}
 		return prompt
+	case "awaiting_batch_edit_targets":
+		return "Choose every " + c.BatchEdit.Kind + " to set to " + c.BatchEdit.Status + ". Atlas will show the exact set before changing anything."
+	case "awaiting_batch_edit_confirmation", "applying_batch_edit":
+		parts := []string{}
+		for _, target := range c.BatchEdit.Targets {
+			parts = append(parts, target.Kind+" “"+target.Title+"” ("+target.ID+")")
+		}
+		change := "Set status to " + c.BatchEdit.Status
+		if c.BatchEdit.Kind == "note" {
+			change = "Set " + c.BatchEdit.Field + " to “" + lookupExcerpt(c.BatchEdit.Value) + "”"
+		}
+		return change + " for these records: " + strings.Join(parts, "; ") + ". " + strings.Join(c.BatchEdit.Effects, " ") + " Say yes to apply or cancel."
+	case "awaiting_relation_target":
+		return "Which saved record's relations should I list? Choose its exact ID from the offered records."
+	case "awaiting_occurrence_target":
+		return "Which due repeating reminder occurrence should I acknowledge? Choose its exact ID."
+	case "awaiting_occurrence_confirmation", "applying_occurrence":
+		verb := "Complete"
+		if c.Occurrence.Action == "dismiss" {
+			verb = "Dismiss"
+		}
+		return verb + " the current occurrence of reminder “" + c.Occurrence.Target.Title + "” scheduled for " + lookupTime(c.Occurrence.ScheduledAt, c.Route.Input.Timezone) + "? Say yes or cancel."
 	case "awaiting_association_targets":
 		prompt := "Choose the first and second saved records for this relationship. Atlas will show the exact pair before making a change."
 		if c.Association != nil && c.Association.Operation == "dependency" {
@@ -233,7 +258,7 @@ func routingConversationResponse(w http.ResponseWriter, status int, d store.Sess
 	if n := len(c.Messages); n > 0 && c.Messages[n-1].Role == "assistant" && (c.State == "answered" || c.State == "saved") {
 		prompt = c.Messages[n-1].Text
 	}
-	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "association": c.Association, "workflow": c.Workflow, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled", "confirmation_required": c.State == "awaiting_workflow_start" || c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "awaiting_association_confirmation" || c.State == "applying_association"}})
+	respond(w, status, map[string]any{"id": d.ID, "version": d.Version, "updated_at": d.UpdatedAt, "state": c.State, "prompt": prompt, "question": c.Question, "route": c.Route, "channel": c.Channel, "draft": c.Draft.Fields, "warnings": c.Warnings, "proposal": c.Proposal, "saved": c.Saved, "answer": c.Answer, "mutation": c.Mutation, "batch": c.Batch, "batch_edit": c.BatchEdit, "association": c.Association, "relation_list": c.RelationList, "occurrence": c.Occurrence, "workflow": c.Workflow, "messages": c.Messages, "response_model": c.ResponseModel, "next_request": map[string]any{"method": "POST", "path": "/api/v1/conversations/routing/" + d.ID + "/reply", "body": map[string]any{"version": d.Version, "text": ""}, "terminal": c.State == "cancelled", "confirmation_required": c.State == "awaiting_workflow_start" || c.State == "awaiting_confirmation" || c.State == "confirming" || c.State == "awaiting_delete_confirmation" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "awaiting_batch_edit_confirmation" || c.State == "applying_batch_edit" || c.State == "awaiting_association_confirmation" || c.State == "applying_association" || c.State == "awaiting_occurrence_confirmation" || c.State == "applying_occurrence"}})
 }
 
 func (c *routingConversation) appendAssistant(ctx *http.Request, service routingService) {
@@ -344,6 +369,15 @@ func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
 	if c.Channel == "batch_delete" {
 		return c.prepareBatch(ctx.Context(), s)
 	}
+	if c.Channel == "batch_edit" {
+		return c.prepareBatchEdit(ctx.Context(), s)
+	}
+	if c.Channel == "relation_list" {
+		return c.prepareRelationList(ctx.Context(), s)
+	}
+	if c.Channel == "occurrence" {
+		return c.prepareOccurrence(ctx.Context(), s)
+	}
 	if c.Channel == "association" {
 		return c.prepareAssociation(ctx.Context(), s)
 	}
@@ -378,7 +412,10 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 	c.Saved = nil
 	c.Mutation = nil
 	c.Batch = nil
+	c.BatchEdit = nil
 	c.Association = nil
+	c.RelationList = nil
+	c.Occurrence = nil
 	c.ResponseModel = ""
 	c.Warnings = []string{}
 	if result.ExtractionModel == "local_parser" {
@@ -426,7 +463,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 			}
 			return c.advance(r, s)
 		}
-		if c.Channel != "lookup" && c.Channel != "edit" && c.Channel != "delete" && c.Channel != "association" {
+		if c.Channel != "lookup" && c.Channel != "edit" && c.Channel != "delete" && c.Channel != "association" && c.Channel != "batch_delete" && c.Channel != "batch_edit" && c.Channel != "relation_list" && c.Channel != "occurrence" {
 			seed := prepareChannel(result.Input, strings.TrimSuffix(c.Channel, "s"))
 			c.Draft = applyChannelPrefill(c.Draft, seed)
 			c.Warnings = seed.Warnings
@@ -827,7 +864,7 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 		if in.Value != "" {
 			value = in.Value
 		}
-		if c.State == "saved" && isConfirm(value) {
+		if (c.State == "saved" || c.State == "answered" && (c.BatchEdit != nil || c.Occurrence != nil && c.Occurrence.Acknowledged)) && isConfirm(value) {
 			routingConversationResponse(w, 200, d, c)
 			return
 		}
@@ -839,11 +876,11 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 			apiError(w, 409, "session_closed", "Start a new routing conversation.", false)
 			return
 		}
-		if (c.State == "confirming" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "applying_edit" || c.State == "applying_association") && !isConfirm(value) {
+		if (c.State == "confirming" || c.State == "deleting" || c.State == "deleting_batch" || c.State == "applying_edit" || c.State == "applying_association" || c.State == "applying_batch_edit" || c.State == "applying_occurrence") && !isConfirm(value) {
 			apiError(w, 409, "confirmation_pending", "Retry confirmation to recover the result.", false)
 			return
 		}
-		if c.State != "confirming" && c.State != "deleting_batch" && c.State != "applying_association" {
+		if c.State != "confirming" && c.State != "deleting_batch" && c.State != "applying_association" && c.State != "applying_batch_edit" && c.State != "applying_occurrence" {
 			c.Messages = append(c.Messages, conversationTurn{Role: "user", Text: value})
 			if isCancel(value) {
 				c.State = "cancelled"
@@ -979,6 +1016,36 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 					} else {
 						c.Warnings = []string{"I couldn't match that selection. Select one or more records from the list, or cancel."}
 					}
+				case "awaiting_batch_edit_targets":
+					if c.selectBatchEditTargets(r.Context(), s, value) {
+						c.Warnings = nil
+					} else {
+						c.Warnings = []string{"Choose one or more listed record IDs, or cancel."}
+					}
+				case "awaiting_batch_edit_confirmation":
+					if isConfirm(value) {
+						c.State = "applying_batch_edit"
+					} else {
+						c.Warnings = []string{"The reviewed bulk edit has not started. Confirm it or cancel."}
+					}
+				case "awaiting_relation_target":
+					if c.selectRelationTarget(r.Context(), s, value) {
+						c.Warnings = nil
+					} else {
+						c.Warnings = []string{"Choose a listed record ID."}
+					}
+				case "awaiting_occurrence_target":
+					if c.selectOccurrence(r.Context(), s, value) == nil {
+						c.Warnings = nil
+					} else {
+						c.Warnings = []string{"Choose a due repeating reminder ID."}
+					}
+				case "awaiting_occurrence_confirmation":
+					if isConfirm(value) {
+						c.State = "applying_occurrence"
+					} else {
+						c.Warnings = []string{"The occurrence has not been acknowledged. Confirm it or cancel."}
+					}
 				case "awaiting_association_targets":
 					if c.selectAssociationTargets(value) {
 						c.Warnings = nil
@@ -1041,6 +1108,42 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 					return
 				}
 				c.Warnings = append(c.Warnings, "The reviewed records changed. Review the current list and confirm again.")
+			} else if err != nil {
+				failure(w, err)
+				return
+			}
+			c.appendAssistant(r, service)
+			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+		}
+		if c.State == "applying_batch_edit" {
+			if err = c.commitBatchEdit(r.Context(), s, "routing.batch.edit."+d.ID+"."+strconv.Itoa(d.Version)); errors.Is(err, store.ErrBatchEditChanged) {
+				if err = c.prepareBatchEdit(r.Context(), s); err != nil {
+					failure(w, err)
+					return
+				}
+				c.Warnings = append(c.Warnings, "The reviewed records changed. Review the current set and confirm again.")
+			} else if err != nil {
+				failure(w, err)
+				return
+			}
+			c.appendAssistant(r, service)
+			d, err = s.SaveSession(r.Context(), d.ID, d.Version, c)
+			if err != nil {
+				failure(w, err)
+				return
+			}
+		}
+		if c.State == "applying_occurrence" {
+			if err = c.commitOccurrence(r.Context(), s); errors.Is(err, store.ErrOccurrenceConflict) {
+				if err = c.prepareOccurrence(r.Context(), s); err != nil {
+					failure(w, err)
+					return
+				}
+				c.Warnings = append(c.Warnings, "The reviewed occurrence changed. Review the current due occurrence and confirm again.")
 			} else if err != nil {
 				failure(w, err)
 				return

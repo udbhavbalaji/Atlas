@@ -175,6 +175,9 @@ func compoundBatchRequest(text string) bool {
 // cannot represent. Recognize only explicit commands; model routing handles
 // less direct language and still has an unsupported choice.
 func unsupportedWorkflowReason(text string) string {
+	if edit := batchEditIntent(text); edit != nil && edit.All {
+		return ""
+	}
 	words := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) })
 	for len(words) > 0 && (words[0] == "please" || words[0] == "hey") {
 		words = words[1:]
@@ -224,8 +227,9 @@ func unsupportedWorkflowReason(text string) string {
 	if verb == "make" && has("before") && has("task", "tasks") {
 		return "Please name the prerequisite change, for example, ‘make a task a prerequisite for another task’."
 	}
-	if (verb == "complete" || verb == "finish" || verb == "reopen" || verb == "reschedule" || verb == "edit" || verb == "update") && has("all", "every") && has("task", "tasks", "reminder", "reminders", "note", "notes") {
-		return "I can't change multiple saved records in one conversation action. Tell me which record to change first."
+	pluralScope := has("tasks", "reminders", "notes") && !(has("this", "that") && !has("and"))
+	if (verb == "complete" || verb == "finish" || verb == "reopen" || verb == "dismiss" || verb == "reschedule" || verb == "edit" || verb == "update" || verb == "rename" || verb == "replace" || verb == "change" || verb == "mark" || verb == "set") && (has("all", "every") && has("task", "tasks", "reminder", "reminders", "note", "notes") || pluralScope) {
+		return "I need the exact records and one supported change for this bulk edit. Restate the scope, for example, ‘complete all tasks’ or ‘replace all notes with new text’. No records have changed."
 	}
 	return ""
 }

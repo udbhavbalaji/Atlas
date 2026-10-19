@@ -285,7 +285,7 @@ func TestExplicitWorkflowGuidance(t *testing.T) {
 	for _, tc := range []struct{ request, reason string }{
 		{"Link this note to my task", "Please say which link"},
 		{"Add a dependency between my tasks", "Please name the dependency"},
-		{"Complete all tasks", "can't change multiple"},
+		{"Complete all tasks due today", "exact records"},
 		{"Create a project", "can't create a project"},
 	} {
 		if got := unsupportedWorkflowReason(tc.request); !strings.Contains(got, tc.reason) {
@@ -297,6 +297,9 @@ func TestExplicitWorkflowGuidance(t *testing.T) {
 	}
 	if got := unsupportedWorkflowReason("Change the repeat rule on my reminder"); got != "" {
 		t.Fatalf("supported repeat edit classified as unsupported: %q", got)
+	}
+	if got := unsupportedWorkflowReason("Complete all tasks"); got != "" {
+		t.Fatalf("reviewed bulk edit classified as unsupported: %q", got)
 	}
 }
 
