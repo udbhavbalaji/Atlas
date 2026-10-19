@@ -42,6 +42,20 @@ func evaluateRouting(parent context.Context, s *store.Store, service routingServ
 			result.RoutingToken = service.sign(result)
 			return result, nil
 		}
+		if relationListIntent(input.Text) {
+			return localRelationListRoute(service, name, input), nil
+		}
+		if occurrenceIntent(input.Text) != "" {
+			return localOccurrenceRoute(service, name, input), nil
+		}
+		if edit := batchEditIntent(input.Text); edit != nil && (edit.All || strings.HasSuffix(strings.ToLower(strings.TrimRight(strings.TrimSpace(input.Text), ".!?")), "s")) {
+			return localBatchEditRoute(service, name, input), nil
+		}
+		if ambiguous, err := ambiguousMultiEdit(parent, s, input.Text); err != nil {
+			return routing.Result{}, err
+		} else if ambiguous {
+			return unresolvedWorkflowRoute(service, name, input), nil
+		}
 		if associationIntent(input.Text) != nil {
 			return localAssociationRoute(service, name, input), nil
 		}

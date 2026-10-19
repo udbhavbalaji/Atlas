@@ -1,0 +1,9 @@
+body{font:16px system-ui,sans-serif;color:#1d2733;background:#f7f9fc;margin:0}
+main{max-width:760px;margin:1rem;padding:1.5rem;box-sizing:border-box;background:white;border:1px solid #d7e0e9;border-radius:12px}
+h1{margin:.6rem 0 1rem}p{line-height:1.5}a{color:#075b95}
+form{display:flex;flex-wrap:wrap;gap:.8rem;align-items:end;margin:1.2rem 0}#start label:nth-child(2){flex:1;min-width:230px}#request{width:100%;box-sizing:border-box}
+label{display:grid;gap:.3rem}input,select,button{font:inherit;padding:.55rem .7rem}
+input[type=radio],input[type=checkbox]{margin-right:.5rem}button{cursor:pointer;border:1px solid #0c5f99;border-radius:6px;background:#0c5f99;color:white}
+#actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}#choices label{display:block;padding:.4rem}
+#status{font-weight:600;padding:.8rem;background:#eaf4fb;border-radius:6px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef1f4;padding:1rem;border-radius:6px}
+@media(max-width:600px){main{margin:0;padding:1rem;border:0;border-radius:0}#request{width:100%;box-sizing:border-box}}

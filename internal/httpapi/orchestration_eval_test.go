@@ -119,3 +119,77 @@ func TestLiveJevOrderedWorkflow(t *testing.T) {
 		t.Fatal(c["workflow"])
 	}
 }
+
+// One Jev decision checks an end-to-end conversation crossing a local
+// relation read and a model-routed lookup. Bulk edit and occurrence actions
+// below use the same provider session boundary without extra model calls.
+func TestLiveJevConversationGaps(t *testing.T) {
+	if os.Getenv("ATLAS_LIVE_ORCHESTRATION") != "1" {
+		t.Skip("opt-in live Jev check")
+	}
+	key := os.Getenv("OPENROUTER_API_KEY")
+	if key == "" {
+		t.Fatal("OPENROUTER_API_KEY is required")
+	}
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	a, _ := s.Create(t.Context(), "Live relation alpha")
+	b, _ := s.Create(t.Context(), "Live relation beta")
+	if _, err = s.SetRelation(t.Context(), "task", a.ID, "task", b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	r, _, err := s.CreateRepeatingReminderRequest(t.Context(), "live-gap-repeat", "Live repeat", at.Format(time.RFC3339), "UTC", "", "daily")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ProcessDue(t.Context(), at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: routing.Jev{APIKey: key}, configured: true, secret: "live-gaps"})
+	send := batchTestSend(t, mux)
+	reply := func(c map[string]any, value string) map[string]any {
+		t.Helper()
+		code, next := send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": value})
+		if code != 200 {
+			t.Fatal(code, next)
+		}
+		return next
+	}
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "jev", "version": "1", "request_id": "live-gaps-workflow", "text": "List relations; find my tasks", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_workflow_start" {
+		t.Fatal(code, c)
+	}
+	c = reply(c, "start")
+	if c["state"] != "answered" || c["channel"] != "relation_list" {
+		t.Fatal(c)
+	}
+	c = reply(c, "continue")
+	if c["state"] != "answered" || c["channel"] != "lookup" {
+		t.Fatal(c)
+	}
+	code, c = send("/api/v1/conversations/routing", map[string]any{"provider": "jev", "version": "1", "request_id": "live-gaps-edit", "text": "Complete all tasks", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_batch_edit_confirmation" {
+		t.Fatal(code, c)
+	}
+	c = reply(c, "yes")
+	if c["state"] != "answered" {
+		t.Fatal(c)
+	}
+	code, c = send("/api/v1/conversations/routing", map[string]any{"provider": "jev", "version": "1", "request_id": "live-gaps-occurrence", "text": "Dismiss occurrence of Live repeat", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_occurrence_confirmation" {
+		t.Fatal(code, c)
+	}
+	c = reply(c, "yes")
+	if c["state"] != "answered" {
+		t.Fatal(c)
+	}
+	state, err := s.ReminderState(t.Context(), r.ID)
+	if err != nil || state.Reminder.Status != "scheduled" || len(state.Deliveries) != 2 {
+		t.Fatal(state, err)
+	}
+}
