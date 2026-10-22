@@ -1,10 +1,11 @@
 'use strict';
 
-// Microphone PCM is sent to the local Atlas service while recording. Only the
+// Microphone PCM is sent to a local Atlas service while recording. Only the
 // returned text enters the conversation, after the user reviews and submits it.
 const atlasDesktopAudio = (() => {
   const AudioContextType = window.AudioContext || window.webkitAudioContext;
   const captureSupported = Boolean(navigator.mediaDevices?.getUserMedia && AudioContextType?.prototype.createScriptProcessor && window.WebSocket);
+  const localService = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
   let available = false;
   let serverCapture = false;
   let backend = '';
@@ -181,7 +182,9 @@ const atlasDesktopAudio = (() => {
     if (state !== 'idle') return;
     if ((!serverCapture && !captureSupported) || !available) {
       voiceElement(targetID).focus();
-      status(backend ? 'Local transcription is not configured. Use system dictation or type; see Desktop checks.' : 'Microphone capture is unavailable here. Use system dictation or type.');
+      status(!localService ? 'Voice transcription is available only when Atlas runs locally. Use system dictation or type.' :
+        backend ? 'Local transcription is not configured. Use system dictation or type; see Desktop checks.' :
+          'Microphone capture is unavailable here. Use system dictation or type.');
       return;
     }
     start(targetID);
@@ -193,11 +196,12 @@ const atlasDesktopAudio = (() => {
     socket?.close();
   });
   return {toggle, updateControls, setCapabilities(value) {
-    available = Boolean(value.local_transcription);
-    serverCapture = Boolean(value.server_capture);
+    available = localService && Boolean(value.local_transcription);
+    serverCapture = localService && Boolean(value.server_capture);
     backend = value.backend || '';
     updateControls();
-    if ((captureSupported || serverCapture) && available) status(`Local microphone streaming is ready (${backend}). Audio is discarded after transcription.`);
+    if (!localService) status('Voice transcription is available only when Atlas runs locally. You can type your reply.');
+    else if ((captureSupported || serverCapture) && available) status(`Local microphone streaming is ready (${backend}). Audio is discarded after transcription.`);
   }};
 })();
 

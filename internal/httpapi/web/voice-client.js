@@ -45,6 +45,7 @@ function voiceSpeakPrompt() {
 function voiceRender(state) {
 	if (voiceElement('start-section')) voiceElement('start-section').hidden = true;
 	if (voiceElement('new-chat')) voiceElement('new-chat').hidden = false;
+  if (voiceElement('report')) voiceElement('report').hidden = false;
   voiceElement('session-id').value = state.id;
   try { localStorage.setItem(voiceStorage, state.id); } catch {}
   const models = [state.route?.evaluation?.model, state.route?.extraction_model, state.response_model].filter(Boolean);
@@ -332,6 +333,7 @@ if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
   try { localStorage.removeItem(voiceStorage); } catch {}
   voiceElement('start-section').hidden = false;
   voiceElement('new-chat').hidden = true;
+  if (voiceElement('report')) voiceElement('report').hidden = true;
   voiceElement('reply-form').hidden = true;
   voiceElement('transcript').replaceChildren();
   voiceElement('proposal').replaceChildren();
@@ -355,6 +357,7 @@ voiceElement('reply-form').onsubmit = event => {
 voiceElement('confirm').onclick = () => voiceCall(() => voiceClient.confirm());
 voiceElement('cancel').onclick = () => voiceCall(() => voiceClient.cancel());
 voiceElement('repeat').onclick = voiceSpeakPrompt;
+if (voiceElement('report')) voiceElement('report').onclick = () => AtlasReport.open(voiceClient.state);
 voiceElement('listen-first').onclick = () => voiceListen('first');
 voiceElement('listen-answer').onclick = () => voiceListen('answer');
 if (!VoiceRecognition) voiceElement('mic-status').textContent = VoiceDesktopDictation

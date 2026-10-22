@@ -3,6 +3,7 @@ let routingConversationState=null,routingConversationBusy=false;
 const routingConversationStorage='atlas.routing.conversation.v1';
 function routingConversationRender(state){
  routingConversationState=state;$('routing-conversation-id').value=state.id;
+ const reportButton=$('routing-conversation-report');if(reportButton)reportButton.hidden=false;
  try{localStorage.setItem(routingConversationStorage,state.id);}catch{}
  $('routing-conversation-status').textContent=state.state+' · version '+state.version+' · '+state.prompt;
  $('routing-conversation-json').textContent=JSON.stringify(state,null,2);
@@ -56,4 +57,5 @@ $('routing-conversation-provider').onchange=()=>{$('routing-conversation-fixture
 $('routing-conversation-start').onsubmit=event=>{event.preventDefault();const provider=$('routing-conversation-provider').value;const body={provider,version:'1',request_id:crypto.randomUUID(),text:$('routing-conversation-text').value,timezone:zone,context_query:$('routing-conversation-query').value};if(provider==='mock')body.fixture=$('routing-conversation-fixture').value;routingConversationCall('','POST',body);};
 $('routing-conversation-resume').onsubmit=event=>{event.preventDefault();const id=$('routing-conversation-id').value.trim();if(id)routingConversationCall('/'+encodeURIComponent(id),'GET');};
 $('routing-conversation-reply').onsubmit=event=>{event.preventDefault();if(!routingConversationState)return;routingConversationCall('/'+routingConversationState.id+'/reply','POST',{version:routingConversationState.version,text:$('routing-conversation-answer').value,field:$('routing-conversation-field').value,value:$('routing-conversation-value').value});};
+if($('routing-conversation-report'))$('routing-conversation-report').onclick=()=>AtlasReport.open(routingConversationState);
 try{const id=localStorage.getItem(routingConversationStorage);if(id)routingConversationCall('/'+encodeURIComponent(id),'GET');}catch{}
