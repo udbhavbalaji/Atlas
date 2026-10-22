@@ -26,6 +26,7 @@ func TestRoutingCacheReusesOnlyMatchingSuccessfulEvaluations(t *testing.T) {
 	if err != nil || first.ModelCalls != 1 || first.CacheHit {
 		t.Fatal(first, err)
 	}
+	expectedTaskProbability := first.Decision.Probabilities["task"]
 	state.ReferenceAt = "a later reference time"
 	second, err := c.Evaluate(t.Context(), state, Registry(), "")
 	if err != nil || !second.CacheHit || second.ModelCalls != 0 || calls.Load() != 1 {
@@ -33,7 +34,7 @@ func TestRoutingCacheReusesOnlyMatchingSuccessfulEvaluations(t *testing.T) {
 	}
 	second.Decision.Probabilities["task"] = 0
 	third, _ := c.Evaluate(t.Context(), state, Registry(), "")
-	if third.Decision.Probabilities["task"] != 1-0.01*float64(len(Registry())-1) {
+	if third.Decision.Probabilities["task"] != expectedTaskProbability {
 		t.Fatal("caller mutated cache")
 	}
 	state.Text = "changed"
