@@ -92,7 +92,7 @@ final class AtlasDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate
             let process = Process()
             let pipe = Pipe()
             process.executableURL = serverURL
-            process.arguments = ["-addr", "127.0.0.1:0",
+            process.arguments = ["-addr", "127.0.0.1:8080",
                                  "-db", dataDir.appendingPathComponent("atlas.db").path,
                                  "-openrouter-key-file", dataDir.appendingPathComponent("openrouter.key").path,
                                  "-groq-key-file", dataDir.appendingPathComponent("groq.key").path,

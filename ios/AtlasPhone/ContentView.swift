@@ -44,6 +44,7 @@ struct ContentView: View {
                 .onChange(of: store.conversation?.version) { _, _ in
                     selectedTargets.removeAll()
                     if speakReplies, let prompt = store.conversation?.prompt { speech.speak(prompt) }
+                    else { speech.stopSpeaking() }
                     withAnimation { reader.scrollTo("bottom", anchor: .bottom) }
                 }
             }
@@ -52,10 +53,10 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Label(store.connected ? "Connected" : "Unavailable", systemImage: store.connected ? "circle.fill" : "circle.dotted")
+                    Label(store.connected ? (store.jevReady ? "Connected" : "Jev unavailable") : "Unavailable", systemImage: store.connected ? "circle.fill" : "circle.dotted")
                         .labelStyle(.titleAndIcon)
                         .font(.caption2)
-                        .foregroundStyle(store.connected ? Palette.accent : .orange)
+                        .foregroundStyle(store.connected && store.jevReady ? Palette.accent : .orange)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if store.conversation != nil {
@@ -84,7 +85,10 @@ struct ContentView: View {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await store.reconnect() } }
-                if phase == .background { speech.stop() }
+                if phase == .background {
+                    speech.stop()
+                    speech.stopSpeaking()
+                }
             }
             .onChange(of: speech.transcript) { _, text in
                 guard !text.isEmpty else { return }
@@ -114,6 +118,11 @@ struct ContentView: View {
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(store.busy || store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            if !speech.message.isEmpty {
+                Text(speech.message)
+                    .font(.footnote).foregroundStyle(Palette.muted)
+                    .accessibilityIdentifier("atlas-microphone-status")
+            }
             Text("Your draft stays on this phone until you send it to your Atlas service.")
                 .font(.footnote).foregroundStyle(Palette.muted)
             SavedSummaryView()
@@ -130,7 +139,7 @@ struct ContentView: View {
                 Button("Report") { showingReport = true }
                     .font(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("atlas-report-button")
-                Button("New") { store.newConversation() }
+                Button("New") { speech.stopSpeaking(); store.newConversation() }
                     .font(.subheadline.weight(.semibold))
                     .disabled(store.busy)
             }
@@ -196,13 +205,18 @@ struct ContentView: View {
                 Label("Saved to Atlas", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(Palette.accent).font(.headline)
             }
+            if speech.speaking {
+                Button("Stop speaking", systemImage: "stop.fill") { speech.stopSpeaking() }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("atlas-stop-speaking")
+            }
             reviewActions(conversation)
             if !store.isClosed {
                 editor(text: Binding(get: { store.answer }, set: { store.setAnswer($0) }), hint: replyHint(conversation.state))
                 HStack {
                     microphoneButton
                     Spacer()
-                    Button("Send") { Task { await store.sendAnswer() } }
+                    Button("Send") { speech.stopSpeaking(); Task { await store.sendAnswer() } }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(store.busy || store.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
@@ -348,7 +362,7 @@ struct ContentView: View {
             Label(speech.listening ? "Done" : "Microphone", systemImage: speech.listening ? "stop.circle.fill" : "mic.fill")
         }
         .buttonStyle(.bordered)
-        .disabled(store.busy)
+        .disabled(store.busy || speech.starting)
     }
 }
 

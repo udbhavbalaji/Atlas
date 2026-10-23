@@ -12,4 +12,6 @@ The native window starts on the conversation screen. With a Groq key in `${XDG_C
 
 With a shared backend, Atlas's current microphone streaming is unavailable because its transcription endpoint accepts local clients only. Type or use system dictation in that mode. The model keys and audio backend on the shared server determine its available routing and transcription capabilities. Conversation reports go by HTTP to the shared server's `/api/v1/debug/reports` route.
 
+The shared conversation page gives short spoken summaries for lists of tasks, reminders, and notes while keeping full details on screen. **Stop speaking** or Escape interrupts playback. Open `/speech-test` on the configured server to check this with fixtures, without a model call or record change. An Omarchy window connected to Apex receives these web changes when the Apex service is updated; no separate frontend copy lives in the native launcher.
+
 In Jev mode, natural-language corrections to a pending task or reminder draft trigger one additional Jev decision about which time field to change. Atlas parses the new time locally and shows the revised proposal. If the new task deadline precedes an earlier guessed reminder, Atlas removes that reminder and says so before saving.
