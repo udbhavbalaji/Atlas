@@ -7,11 +7,13 @@ import Speech
 final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published private(set) var listening = false
     @Published private(set) var starting = false
+    @Published private(set) var speaking = false
     @Published var transcript = ""
     @Published var message = ""
 
     private let engine = AVAudioEngine()
     private let synthesizer = AVSpeechSynthesizer()
+    private var activeUtterance: AVSpeechUtterance?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var tapInstalled = false
@@ -22,11 +24,55 @@ final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDel
     }
 
     func speak(_ text: String) {
+        stopSpeaking()
         guard !text.isEmpty else { return }
-        synthesizer.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: text)
+        let utterance = AVSpeechUtterance(string: spokenSummary(text))
         utterance.rate = 0.5
+        activeUtterance = utterance
+        speaking = true
         synthesizer.speak(utterance)
+    }
+
+    func stopSpeaking() {
+        activeUtterance = nil
+        speaking = false
+        synthesizer.stopSpeaking(at: .immediate)
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            if activeUtterance === utterance {
+                activeUtterance = nil
+                speaking = false
+            }
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            if activeUtterance === utterance {
+                activeUtterance = nil
+                speaking = false
+            }
+        }
+    }
+
+    private func spokenSummary(_ text: String) -> String {
+        let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard lines.count > 1, lines[0].hasPrefix("Here are ") else { return text }
+        guard let noun = ["tasks", "reminders", "notes"].first(where: { lines[0].hasSuffix($0 + ":") }) else { return text }
+        let titles = lines.dropFirst().compactMap { line -> String? in
+            guard line.hasPrefix("“"), let end = line.dropFirst().firstIndex(of: "”") else { return nil }
+            return String(line[line.index(after: line.startIndex)..<end])
+        }
+        guard titles.count == lines.count - 1 else { return text }
+        let qualifier = lines[0].contains("open " + noun) ? "open " : lines[0].contains("upcoming " + noun) ? "upcoming " : ""
+        let count = titles.count
+        let item = count == 1 ? String(noun.dropLast()) : noun
+        let prefix = "I found \(count)\(count == 10 ? " or more" : "") \(qualifier)\(item). "
+        let first = titles.prefix(3)
+        let remainder = count - first.count
+        return prefix + first.joined(separator: ", ") + (remainder > 0 ? ". \(remainder) more are shown on screen." : ".")
     }
 
     func start() async {
@@ -34,7 +80,7 @@ final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDel
         guard !starting else { return }
         starting = true
         defer { starting = false }
-        synthesizer.stopSpeaking(at: .immediate)
+        stopSpeaking()
         let speechPermission = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }

@@ -107,7 +107,7 @@ const atlasDesktopAudio = (() => {
       if (currentAttempt === attempt) fail('Microphone did not respond. Check its permission and audio device, then try again.');
     }, 12000);
     try {
-      window.speechSynthesis?.cancel();
+      voiceSpeech.stop();
       if (serverCapture) {
         socket = new WebSocket(`ws://${location.host}/api/v1/audio/stream`);
         socket.onmessage = handleMessage;
