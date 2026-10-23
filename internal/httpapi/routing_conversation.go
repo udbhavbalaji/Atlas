@@ -265,8 +265,14 @@ func (c *routingConversation) appendAssistant(ctx *http.Request, service routing
 	canonical := c.prompt()
 	message := canonical
 	c.ResponseModel = "local"
-	if c.Workflow == nil && c.Route.Provider == "jev" && service.responder != nil && (c.State == "answered" || c.State == "saved") {
+	if c.Workflow == nil && c.Route.Provider != "mock" && service.responder != nil && (c.State == "answered" || c.State == "saved") {
 		facts := map[string]any{"canonical_answer": canonical, "state": c.State, "selected_tool": c.Route.SelectedTool, "user_request": c.Route.Input.Text}
+		listDetails := verifiedListDetails(canonical)
+		if listDetails != "" {
+			facts["response_mode"] = "list_intro"
+		} else {
+			facts["response_mode"] = "full_reply"
+		}
 		if c.Answer != nil {
 			facts["answer"] = c.Answer
 		}
@@ -278,14 +284,56 @@ func (c *routingConversation) appendAssistant(ctx *http.Request, service routing
 		}
 		replyCtx, cancel := context.WithTimeout(ctx.Context(), 20*time.Second)
 		defer cancel()
-		if natural, model, err := service.responder.Respond(replyCtx, facts); err == nil && c.responsePreservesFacts(natural) {
-			message = natural
-			c.ResponseModel = model
-		} else {
-			c.Warnings = append(c.Warnings, "Natural-language reply is unavailable; this answer comes from Atlas's verified result.")
+		if natural, model, err := service.responder.Respond(replyCtx, facts); err == nil {
+			if listDetails != "" {
+				if safeListIntro(natural, c.Answer) {
+					message = strings.TrimSpace(natural) + "\n" + listDetails
+					c.ResponseModel = model
+				}
+			} else if c.responsePreservesFacts(natural) {
+				message = natural
+				c.ResponseModel = model
+			}
+		}
+		if c.ResponseModel == "local" {
+			c.Warnings = append(c.Warnings, "The writing model was unavailable or changed verified facts. Atlas is showing its verified result.")
 		}
 	}
 	c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: message})
+}
+
+func verifiedListDetails(canonical string) string {
+	heading, details, ok := strings.Cut(canonical, "\n")
+	if !ok || !strings.HasPrefix(heading, "Here are ") || details == "" {
+		return ""
+	}
+	return details
+}
+
+func safeListIntro(text string, answer *conversationAnswer) bool {
+	text = strings.TrimSpace(text)
+	if text == "" || len([]rune(text)) > 180 || strings.ContainsAny(text, "\n\r0123456789") {
+		return false
+	}
+	lower := strings.ToLower(text)
+	for _, word := range []string{"completed", "dismissed", "deleted", "changed", "saved", "due", "today", "tomorrow", "yesterday", "emailed", "called", "notified", "created", "updated", "removed", "added", "sent", "finished", "overdue", "urgent", "late", "couldn't", "can't", "didn't"} {
+		if strings.Contains(lower, word) {
+			return false
+		}
+	}
+	for _, word := range strings.FieldsFunc(lower, func(r rune) bool { return r < 'a' || r > 'z' }) {
+		if word == "no" || word == "none" || word == "nothing" || word == "all" || word == "every" || word == "only" || word == "already" || word == "will" || word == "not" {
+			return false
+		}
+	}
+	if answer != nil {
+		for _, source := range answer.Sources {
+			if source.Title != "" && strings.Contains(lower, strings.ToLower(source.Title)) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (c *routingConversation) responsePreservesFacts(text string) bool {
@@ -332,6 +380,9 @@ func (c *routingConversation) responsePreservesFacts(text string) bool {
 		}
 	}
 	lower := strings.ToLower(text)
+	if len(anchors) == 0 {
+		return text == c.prompt()
+	}
 	for _, anchor := range anchors {
 		if !strings.Contains(lower, strings.ToLower(anchor)) {
 			return false

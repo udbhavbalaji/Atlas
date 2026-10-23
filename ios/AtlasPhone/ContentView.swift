@@ -43,7 +43,7 @@ struct ContentView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: store.conversation?.version) { _, _ in
                     selectedTargets.removeAll()
-                    if speakReplies, let prompt = store.conversation?.prompt { speech.speak(prompt) }
+                    if speakReplies, let conversation = store.conversation { speech.speak(speechText(for: conversation)) }
                     else { speech.stopSpeaking() }
                     withAnimation { reader.scrollTo("bottom", anchor: .bottom) }
                 }
@@ -97,6 +97,14 @@ struct ContentView: View {
             }
         }
         .tint(Palette.accent)
+    }
+
+    private func speechText(for conversation: Conversation) -> String {
+        if conversation.state == "answered", let answer = conversation.answer?.text,
+           answer.hasPrefix("Here are "), answer.contains("\n") {
+            return answer
+        }
+        return conversation.prompt
     }
 
     private var startView: some View {
