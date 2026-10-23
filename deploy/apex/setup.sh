@@ -54,7 +54,6 @@ install_service() {
   require_command install
   require_command systemctl
   require_command curl
-  local build_dir
   build_dir=$(mktemp -d)
   trap 'rm -rf -- "$build_dir"' EXIT
   (cd "$repo_root" && go build -o "$build_dir/atlas-server" ./cmd/atlas)
