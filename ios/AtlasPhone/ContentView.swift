@@ -52,10 +52,10 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Label(store.connected ? "Connected" : "Unavailable", systemImage: store.connected ? "circle.fill" : "circle.dotted")
+                    Label(store.connected ? (store.jevReady ? "Connected" : "Jev unavailable") : "Unavailable", systemImage: store.connected ? "circle.fill" : "circle.dotted")
                         .labelStyle(.titleAndIcon)
                         .font(.caption2)
-                        .foregroundStyle(store.connected ? Palette.accent : .orange)
+                        .foregroundStyle(store.connected && store.jevReady ? Palette.accent : .orange)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if store.conversation != nil {
@@ -113,6 +113,11 @@ struct ContentView: View {
                 Button("Send message") { Task { await store.start() } }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(store.busy || store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if !speech.message.isEmpty {
+                Text(speech.message)
+                    .font(.footnote).foregroundStyle(Palette.muted)
+                    .accessibilityIdentifier("atlas-microphone-status")
             }
             Text("Your draft stays on this phone until you send it to your Atlas service.")
                 .font(.footnote).foregroundStyle(Palette.muted)
@@ -348,7 +353,7 @@ struct ContentView: View {
             Label(speech.listening ? "Done" : "Microphone", systemImage: speech.listening ? "stop.circle.fill" : "mic.fill")
         }
         .buttonStyle(.bordered)
-        .disabled(store.busy)
+        .disabled(store.busy || speech.starting)
     }
 }
 

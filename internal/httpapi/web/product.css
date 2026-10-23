@@ -101,11 +101,12 @@ footer { border-color: var(--line); color: #829488; }
 .workspace-header p { margin: 1px 0 0; font-size: 12px; }
 .workspace-actions { display: flex; gap: 7px; flex: none; }
 .workspace-actions button { font-size: 12px; min-height: 34px; padding: 7px 11px; }
-.desktop-conversation { flex: 1; min-height: 220px; overflow-y: auto; display: flex; flex-direction: column; border: 1px solid #dce6dd; border-radius: 22px; background: #fff; padding: 13px 22px 16px; box-shadow: 0 14px 42px #1a3c280d; }
+.desktop-conversation { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; border: 1px solid #dce6dd; border-radius: 22px; background: #fff; padding: 13px 22px 16px; box-shadow: 0 14px 42px #1a3c280d; }
 .desktop-chat-header { display: flex; align-items: center; gap: 8px; padding: 5px 0 11px; border-bottom: 1px solid #eef2ee; }
+.desktop-chat-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .connection-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #61aa78; }
 .desktop-conversation #voice-status { color: #768d7d; font-size: 11px; margin: 0; overflow-wrap: anywhere; }
-.desktop-conversation #voice-transcript { flex: 1; display: flex; flex-direction: column; gap: 11px; min-height: 120px; overflow-y: visible; padding: 16px 2px; }
+.desktop-conversation #voice-transcript { display: flex; flex-direction: column; gap: 11px; min-height: 120px; overflow: visible; padding: 16px 2px; }
 .desktop-conversation #voice-transcript:empty:before { content: 'Your conversation will appear here.'; color: #83988b; align-self: center; margin: auto; font-size: 13px; }
 .desktop-conversation .voice-turn { max-width: min(76%, 650px); padding: 11px 15px; border-radius: 16px; border: 0; box-shadow: none; }
 .desktop-conversation .voice-turn[data-role=user] { align-self: flex-end; background: #e4f0e6; }

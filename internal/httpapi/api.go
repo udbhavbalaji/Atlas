@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 //go:embed web/*
@@ -24,7 +25,7 @@ func Handler(s *store.Store) http.Handler {
 	relationRoutes(mux, s)
 	audioStreamRoutes(mux)
 	planningRoutes(mux)
-	for path, file := range map[string]string{"/": "index.html", "/desktop": "desktop.html", "/desktop-test": "desktop-test.html", "/report-test": "report-test.html", "/report-test.js": "report-test.js", "/report.js": "report.js", "/sync-test": "sync-test.html", "/sync-test.js": "sync-test.js", "/product.css": "product.css", "/batch-test": "batch-test.html", "/batch-edit-test": "batch-edit-test.html", "/relation-list-test": "relation-list-test.html", "/occurrence-test": "occurrence-test.html", "/conversation-gap-test.js": "conversation-gap-test.js", "/conversation-gap-test.css": "conversation-gap-test.css", "/workflow-test": "workflow-test.html", "/association-test": "association-test.html", "/planning-test": "planning-test.html", "/planning-test.js": "planning-test.js", "/app.js": "app.js", "/styles.css": "styles.css", "/desktop.css": "desktop.css", "/desktop-audio.js": "desktop-audio.js", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
+	for path, file := range map[string]string{"/": "index.html", "/desktop": "desktop.html", "/desktop-test": "desktop-test.html", "/desktop-scroll-test": "desktop-scroll-test.html", "/report-test": "report-test.html", "/report-test.js": "report-test.js", "/report.js": "report.js", "/sync-test": "sync-test.html", "/sync-test.js": "sync-test.js", "/product.css": "product.css", "/batch-test": "batch-test.html", "/batch-edit-test": "batch-edit-test.html", "/relation-list-test": "relation-list-test.html", "/occurrence-test": "occurrence-test.html", "/conversation-gap-test.js": "conversation-gap-test.js", "/conversation-gap-test.css": "conversation-gap-test.css", "/workflow-test": "workflow-test.html", "/association-test": "association-test.html", "/planning-test": "planning-test.html", "/planning-test.js": "planning-test.js", "/app.js": "app.js", "/styles.css": "styles.css", "/desktop.css": "desktop.css", "/desktop-audio.js": "desktop-audio.js", "/navigation.js": "navigation.js", "/notes.js": "notes.js", "/search.js": "search.js", "/capture.js": "capture.js", "/sessions.js": "sessions.js", "/providers.js": "providers.js", "/routing.js": "routing.js", "/routing-conversation.js": "routing-conversation.js", "/voice-client-core.js": "voice-client-core.js", "/voice-client.js": "voice-client.js", "/dependencies.js": "dependencies.js", "/relations.js": "relations.js", "/api-test.js": "api-test.js", "/openapi.json": "openapi.json"} {
 		pattern := "GET " + path
 		if path == "/" {
 			pattern = "GET /{$}"
@@ -36,10 +37,10 @@ func Handler(s *store.Store) http.Handler {
 				return
 			}
 			content := "text/javascript; charset=utf-8"
-			if file == "index.html" || file == "desktop.html" || file == "desktop-test.html" || file == "report-test.html" || file == "sync-test.html" || file == "batch-test.html" || file == "batch-edit-test.html" || file == "relation-list-test.html" || file == "occurrence-test.html" || file == "workflow-test.html" || file == "association-test.html" || file == "planning-test.html" {
+			if strings.HasSuffix(file, ".html") {
 				content = "text/html; charset=utf-8"
 			}
-			if file == "styles.css" || file == "desktop.css" || file == "product.css" || file == "conversation-gap-test.css" {
+			if strings.HasSuffix(file, ".css") {
 				content = "text/css; charset=utf-8"
 			}
 			if file == "openapi.json" {

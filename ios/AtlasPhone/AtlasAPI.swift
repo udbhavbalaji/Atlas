@@ -61,6 +61,13 @@ struct AtlasAPI {
         guard result.status == "ok" else { throw AtlasAPIError.unexpectedResponse }
     }
 
+    func jevConfigured() async throws -> Bool {
+        struct Provider: Decodable { let id: String; let configured: Bool }
+        struct Routing: Decodable { let providers: [Provider] }
+        let result: Routing = try await send("/api/v1/routing")
+        return result.providers.contains { $0.id == "jev" && $0.configured }
+    }
+
     func recordsRevision() async throws -> Int64 {
         struct Revision: Decodable { let revision: Int64 }
         let result: Revision = try await send("/api/v1/records/revision")

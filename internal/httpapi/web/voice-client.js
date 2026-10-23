@@ -64,7 +64,6 @@ function voiceRender(state) {
     item.append(role, line);
     transcript.append(item);
   }
-  transcript.scrollTop = transcript.scrollHeight;
   const actions = voiceElement('question-actions');
   actions.replaceChildren();
   if (state.state === 'awaiting_route') {
@@ -196,6 +195,9 @@ function voiceRender(state) {
   voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit', 'applying_association'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
+  const chatBody = voiceElement('chat-body');
+  if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+  else transcript.scrollTop = transcript.scrollHeight;
 }
 
 function voiceUpdateControls() {

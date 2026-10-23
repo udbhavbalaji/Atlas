@@ -56,7 +56,7 @@ func TestDesktopConversationPage(t *testing.T) {
 	}
 	defer s.Close()
 	h := Handler(s)
-	for _, path := range []string{"/desktop", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-client.js", "/desktop-test", "/report-test", "/report-test.js", "/sync-test", "/sync-test.js"} {
+	for _, path := range []string{"/desktop", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-client.js", "/desktop-test", "/desktop-scroll-test", "/report-test", "/report-test.js", "/sync-test", "/sync-test.js"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 {

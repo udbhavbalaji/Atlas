@@ -124,7 +124,7 @@ const atlasDesktopAudio = (() => {
         updateControls();
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}, video: false});
+      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
       if (currentAttempt !== attempt) { stream.getTracks().forEach(track => track.stop()); return; }
       media = stream;
       context = new AudioContextType();
@@ -162,7 +162,11 @@ const atlasDesktopAudio = (() => {
       status(`Recording locally with ${backend}. Click Stop microphone when done (30 second limit).`);
       updateControls();
     } catch (error) {
-      if (currentAttempt === attempt) fail(`Microphone could not start: ${error.message}. Check the device and permission, or type instead.`);
+      if (currentAttempt === attempt) {
+        const unavailable = error.name === 'NotFoundError' || error.name === 'OverconstrainedError' || error.message === 'Invalid constraint';
+        fail(unavailable ? 'No usable microphone input was found. Connect a microphone to this Mac and try again, or type instead.'
+          : `Microphone could not start: ${error.message}. Check the device and permission, or type instead.`);
+      }
     }
   }
 
