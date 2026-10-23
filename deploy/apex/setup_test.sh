@@ -23,13 +23,21 @@ esac
 MOCK
 cat >"$scratch/bin/systemctl" <<'MOCK'
 #!/usr/bin/env bash
-[[ "$*" == '--user is-active --quiet atlas.service' ]]
+case "$*" in
+  '--user is-active --quiet atlas.service'|'--user daemon-reload'|'--user enable --now atlas.service'|'--user restart atlas.service') ;;
+  *) exit 1 ;;
+esac
+MOCK
+cat >"$scratch/bin/go" <<'MOCK'
+#!/usr/bin/env bash
+[[ "$1" == build && "$2" == -o && "$4" == ./cmd/atlas ]] || exit 1
+printf '#!/usr/bin/env bash\n' >"$3"
 MOCK
 cat >"$scratch/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "${@: -1}" >>"$ATLAS_MOCK_LOG"
 MOCK
-chmod +x "$scratch/bin/tailscale" "$scratch/bin/systemctl" "$scratch/bin/curl"
+chmod +x "$scratch/bin/tailscale" "$scratch/bin/systemctl" "$scratch/bin/go" "$scratch/bin/curl"
 
 cp "$fixtures/serve-existing.json" "$ATLAS_SERVE_STATE"
 output=$(bash "$setup" serve)
@@ -61,4 +69,8 @@ output=$(bash "$setup" check)
 rg -q '^http://127.0.0.1:8080/healthz$' "$ATLAS_MOCK_LOG"
 rg -q '^https://atlas.example.ts.net/healthz$' "$ATLAS_MOCK_LOG"
 rg -q '^https://atlas.example.ts.net/api/v1/tasks$' "$ATLAS_MOCK_LOG"
+output=$(HOME="$scratch/home" bash "$setup" install)
+[[ "$output" == *'Atlas is running on http://127.0.0.1:8080'* ]]
+[[ -x "$scratch/home/.local/bin/atlas-server" ]]
+[[ -f "$scratch/home/.config/systemd/user/atlas.service" ]]
 printf 'Apex Serve fixtures passed.\n'
