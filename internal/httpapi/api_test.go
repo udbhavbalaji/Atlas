@@ -56,7 +56,7 @@ func TestDesktopConversationPage(t *testing.T) {
 	}
 	defer s.Close()
 	h := Handler(s)
-	for _, path := range []string{"/desktop", "/desktop?surface=omarchy", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-speech.js", "/voice-client.js", "/desktop-test", "/desktop-scroll-test", "/speech-test", "/speech-test.js", "/report-test", "/report-test.js", "/sync-test", "/sync-test.js"} {
+	for _, path := range []string{"/desktop", "/desktop?surface=omarchy", "/desktop.css", "/product.css", "/report.js", "/voice-client-core.js", "/voice-speech.js", "/voice-client.js", "/desktop-test", "/desktop-scroll-test", "/speech-test", "/speech-test.js", "/response-test", "/response-test.js", "/report-test", "/report-test.js", "/sync-test", "/sync-test.js"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 200 {
@@ -73,6 +73,9 @@ func TestDesktopConversationPage(t *testing.T) {
 		}
 		if path == "/speech-test" && (!strings.Contains(w.Body.String(), "speech-play") || !strings.Contains(w.Body.String(), "speech-stop")) {
 			t.Fatal("speech testing page is missing playback controls")
+		}
+		if path == "/response-test" && (!strings.Contains(w.Body.String(), "response-fixture") || !strings.Contains(w.Body.String(), "response-candidate")) {
+			t.Fatal("response testing page is missing fixture controls")
 		}
 		if path == "/report-test" && (!strings.Contains(w.Body.String(), "report-fixture") || !strings.Contains(w.Body.String(), "report-open")) {
 			t.Fatal("report testing page is missing fixture controls")

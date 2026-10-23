@@ -7,6 +7,7 @@ function check(name, condition) { checks.push(`${condition ? 'PASS' : 'FAIL'} ·
 check('A short reminder summary is spoken', atlasSpokenPrompt(sample).includes('2 open reminders. Pay rent, Call the doctor.'));
 check('Tasks and notes also get concise spoken summaries', atlasSpokenPrompt('Here are the most recent saved tasks:\n“File taxes” (open)') === 'I found 1 task. File taxes.' && atlasSpokenPrompt('Here are the most recent saved notes:\n“Trip ideas”') === 'I found 1 note. Trip ideas.');
 check('The full answer stays available on screen', document.getElementById('speech-sample').textContent === sample);
+check('A written list intro still speaks the verified short summary', atlasSpokenPrompt(atlasSpeechSource({state: 'answered', prompt: 'A few things came up.\n“Pay rent”\n“Call the doctor”', answer: {text: sample}})).includes('2 open reminders. Pay rent, Call the doctor.'));
 const fakeSynthesis = {cancelled: 0, utterance: null, cancel() { this.cancelled++; }, speak(utterance) { this.utterance = utterance; }};
 class FakeUtterance { constructor(text) { this.text = text; } }
 const states = [];

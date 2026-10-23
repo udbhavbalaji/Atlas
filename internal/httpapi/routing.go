@@ -74,12 +74,16 @@ func routingRoutes(mux *http.ServeMux, s *store.Store) {
 	for _, model := range routing.FreeFallbackModels {
 		planners = append(planners, routing.FreePlanner{APIKey: key, Model: model})
 	}
-	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FallbackPlanner{Planners: planners}, responder: routing.FreeResponder{APIKey: key}, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
+	var responder routing.Responder
+	if key != "" {
+		responder = routing.FreeResponder{APIKey: key}
+	}
+	routingRoutesWithService(mux, s, routingService{jev: &routing.Cached{Provider: routing.Jev{APIKey: key}}, free: routing.FallbackPlanner{Planners: planners}, responder: responder, groq: routing.FreePlanner{APIKey: groqKey, Service: "groq"}, configured: key != "", groqConfigured: groqKey != "", secret: rand.Text()})
 }
 func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routingService) {
 	routingConversationRoutes(mux, s, service)
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "policy": routing.DefaultPolicy, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
+		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "response_writer": map[string]any{"configured": service.responder != nil, "model": routing.WritingModel, "final_turns_only": true}, "policy": routing.DefaultPolicy, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
 	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
 		var input routing.Request

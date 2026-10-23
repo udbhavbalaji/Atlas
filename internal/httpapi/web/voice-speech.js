@@ -13,6 +13,12 @@ function atlasSpokenPrompt(prompt) {
   return summary + first.join(', ') + (titles.length > first.length ? `. ${titles.length - first.length} more are shown on screen.` : '.');
 }
 
+function atlasSpeechSource(state) {
+  const canonical = state?.answer?.text;
+  if (state?.state === 'answered' && typeof canonical === 'string' && /^Here are .+:\n/.test(canonical)) return canonical;
+  return state?.prompt || '';
+}
+
 class AtlasVoiceSpeech {
   constructor(synthesis, Utterance, onChange, onError) {
     this.synthesis = synthesis;
@@ -55,4 +61,4 @@ class AtlasVoiceSpeech {
   }
 }
 
-if (typeof module !== 'undefined') module.exports = {atlasSpokenPrompt, AtlasVoiceSpeech};
+if (typeof module !== 'undefined') module.exports = {atlasSpokenPrompt, atlasSpeechSource, AtlasVoiceSpeech};
