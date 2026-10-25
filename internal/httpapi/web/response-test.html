@@ -1,9 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Atlas · Response writing check</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/product.css"></head>
 <body><main><header><div class="brand"><h1>Atlas<span>.</span></h1><span class="environment">RESPONSE CHECK</span></div><a href="/desktop">Back to conversation</a></header>
-<section class="composer report-test-card"><h2>Check response wording</h2><p>Try a simulated writing-model reply against a verified Atlas result. The page uses no saved records, model calls, or writes.</p>
+<section class="composer report-test-card"><h2>Check response wording</h2><p>Try a simulated list introduction against a verified Atlas result. Atlas appends verified list items unchanged. For other answers, only the exact verified result is accepted. The page uses no saved records, model calls, or writes.</p>
 <form id="response-fixture"><label>Verified Atlas result<textarea id="response-canonical" rows="5" maxlength="5000">Here are your open reminders:
 “Pay rent” — tomorrow at 9 AM
-“Call the doctor” — Friday at 2 PM</textarea></label><label>Simulated model reply<textarea id="response-candidate" rows="3" maxlength="1200">Here are the reminders you asked about:</textarea></label><label>Record titles, one per line<textarea id="response-titles" rows="2">Pay rent
-Call the doctor</textarea></label><div class="actions"><button class="primary" type="submit">Preview reply</button><button id="response-unsafe" type="button">Try an unsafe claim</button></div></form><pre id="response-result" role="status" aria-live="polite">Ready.</pre></section>
+“Call the doctor” — Friday at 2 PM</textarea></label><label>Simulated model reply<textarea id="response-candidate" rows="3" maxlength="1200">Here are the reminders you asked about:</textarea></label><div class="actions"><button class="primary" type="submit">Preview reply</button><button id="response-unsafe" type="button">Try an unsafe list claim</button><button id="response-false-claim" type="button">Try a false deletion claim</button></div></form><pre id="response-result" role="status" aria-live="polite">Ready.</pre></section>
 </main><script src="/response-test.js" defer></script></body></html>

@@ -74,7 +74,7 @@ func TestDesktopConversationPage(t *testing.T) {
 		if path == "/speech-test" && (!strings.Contains(w.Body.String(), "speech-play") || !strings.Contains(w.Body.String(), "speech-stop")) {
 			t.Fatal("speech testing page is missing playback controls")
 		}
-		if path == "/response-test" && (!strings.Contains(w.Body.String(), "response-fixture") || !strings.Contains(w.Body.String(), "response-candidate")) {
+		if path == "/response-test" && (!strings.Contains(w.Body.String(), "response-fixture") || !strings.Contains(w.Body.String(), "response-candidate") || !strings.Contains(w.Body.String(), "response-false-claim")) {
 			t.Fatal("response testing page is missing fixture controls")
 		}
 		if path == "/report-test" && (!strings.Contains(w.Body.String(), "report-fixture") || !strings.Contains(w.Body.String(), "report-open")) {
