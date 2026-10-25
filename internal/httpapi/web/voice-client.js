@@ -36,7 +36,7 @@ function voiceFieldValue(key, value, timezone) {
 function voiceSpeakPrompt() {
   const state = voiceClient.state;
   if (!state || !voiceElement('speak').checked || !('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
-  voiceSpeech.speak(state.prompt, voiceElement('language').value);
+  voiceSpeech.speak(atlasSpeechSource(state), voiceElement('language').value);
 }
 
 function voiceRender(state) {
