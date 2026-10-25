@@ -6,13 +6,17 @@ import Speech
 @MainActor
 final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published private(set) var listening = false
+    @Published private(set) var starting = false
+    @Published private(set) var speaking = false
     @Published var transcript = ""
     @Published var message = ""
 
     private let engine = AVAudioEngine()
     private let synthesizer = AVSpeechSynthesizer()
+    private var activeUtterance: AVSpeechUtterance?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
+    private var tapInstalled = false
 
     override init() {
         super.init()
@@ -20,16 +24,63 @@ final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDel
     }
 
     func speak(_ text: String) {
+        stopSpeaking()
         guard !text.isEmpty else { return }
-        synthesizer.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: text)
+        let utterance = AVSpeechUtterance(string: spokenSummary(text))
         utterance.rate = 0.5
+        activeUtterance = utterance
+        speaking = true
         synthesizer.speak(utterance)
+    }
+
+    func stopSpeaking() {
+        activeUtterance = nil
+        speaking = false
+        synthesizer.stopSpeaking(at: .immediate)
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            if activeUtterance === utterance {
+                activeUtterance = nil
+                speaking = false
+            }
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            if activeUtterance === utterance {
+                activeUtterance = nil
+                speaking = false
+            }
+        }
+    }
+
+    private func spokenSummary(_ text: String) -> String {
+        let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard lines.count > 1, lines[0].hasPrefix("Here are ") else { return text }
+        guard let noun = ["tasks", "reminders", "notes"].first(where: { lines[0].hasSuffix($0 + ":") }) else { return text }
+        let titles = lines.dropFirst().compactMap { line -> String? in
+            guard line.hasPrefix("“"), let end = line.dropFirst().firstIndex(of: "”") else { return nil }
+            return String(line[line.index(after: line.startIndex)..<end])
+        }
+        guard titles.count == lines.count - 1 else { return text }
+        let qualifier = lines[0].contains("open " + noun) ? "open " : lines[0].contains("upcoming " + noun) ? "upcoming " : ""
+        let count = titles.count
+        let item = count == 1 ? String(noun.dropLast()) : noun
+        let prefix = "I found \(count)\(count == 10 ? " or more" : "") \(qualifier)\(item). "
+        let first = titles.prefix(3)
+        let remainder = count - first.count
+        return prefix + first.joined(separator: ", ") + (remainder > 0 ? ". \(remainder) more are shown on screen." : ".")
     }
 
     func start() async {
         if listening { stop(); return }
-        synthesizer.stopSpeaking(at: .immediate)
+        guard !starting else { return }
+        starting = true
+        defer { starting = false }
+        stopSpeaking()
         let speechPermission = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
@@ -52,17 +103,27 @@ final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDel
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .duckOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            let input = engine.inputNode
+            let format = input.outputFormat(forBus: 0)
+            guard session.isInputAvailable, format.sampleRate > 0, format.channelCount > 0 else {
+                #if targetEnvironment(simulator)
+                message = "No microphone input is available in Simulator. Connect an input device to this Mac, or type instead."
+                #else
+                message = "No microphone input is available. Check the audio input, or type instead."
+                #endif
+                try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                return
+            }
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
             request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-            self.request = request
             transcript = ""
             message = "Listening… tap Done when you finish."
-            let input = engine.inputNode
-            let format = input.outputFormat(forBus: 0)
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 request.append(buffer)
             }
+            tapInstalled = true
+            self.request = request
             engine.prepare()
             try engine.start()
             listening = true
@@ -85,9 +146,12 @@ final class SpeechController: NSObject, ObservableObject, AVSpeechSynthesizerDel
     }
 
     func stop() {
-        guard request != nil || listening else { return }
+        guard request != nil || listening || tapInstalled else { return }
         if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
         request?.endAudio()
         task?.cancel()
         task = nil

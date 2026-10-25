@@ -23,6 +23,7 @@ final class ConversationStore: ObservableObject {
     @Published private(set) var snapshot: SavedSnapshot?
     @Published private(set) var busy = false
     @Published private(set) var connected = false
+    @Published private(set) var jevReady = false
     @Published var message = ""
     private var lastRecordsRevision: Int64?
     private var snapshotRefreshInFlight = false
@@ -39,6 +40,7 @@ final class ConversationStore: ObservableObject {
         catch { message = error.localizedDescription; return }
         if normalized == server { await reconnect(); return }
         server = normalized
+        jevReady = false
         UserDefaults.standard.set(normalized, forKey: "atlas.server")
         conversation = nil
         UserDefaults.standard.removeObject(forKey: "atlas.session")
@@ -65,6 +67,14 @@ final class ConversationStore: ObservableObject {
             try await client.health()
             guard server == target else { return }
             connected = true
+            let ready = (try? await client.jevConfigured()) ?? false
+            guard server == target else { return }
+            jevReady = ready
+            if !jevReady {
+                message = "Jev is not configured on this Atlas service. Add an OpenRouter key to use conversations."
+            } else if message.hasPrefix("Jev is not configured") {
+                message = ""
+            }
             if let id = UserDefaults.standard.string(forKey: "atlas.session"), !id.isEmpty {
                 do { conversation = try await client.resume(id) }
                 catch { message = "Could not resume the last conversation: " + error.localizedDescription }
@@ -77,6 +87,7 @@ final class ConversationStore: ObservableObject {
         } catch {
             guard server == target else { return }
             connected = false
+            jevReady = false
             message = error.localizedDescription
         }
     }
@@ -118,6 +129,10 @@ final class ConversationStore: ObservableObject {
     func start() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        guard jevReady else {
+            message = "Jev is not configured on this Atlas service. Add an OpenRouter key to use conversations."
+            return
+        }
         await perform {
             let next = try await api.start(text)
             setDraft("")

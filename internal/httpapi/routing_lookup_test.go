@@ -156,6 +156,54 @@ func TestUpcomingReminderListIgnoresPoliteWordsAndPlannedTarget(t *testing.T) {
 	}
 }
 
+func TestOpenReminderLookupExcludesFinishedReminders(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "atlas.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	reference := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	open, err := s.CreateReminder(t.Context(), "Pay rent", reference.Add(24*time.Hour).Format(time.RFC3339), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreateReminder(t.Context(), "Call the doctor", reference.Add(-24*time.Hour).Format(time.RFC3339), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := s.CreateReminder(t.Context(), "Completed item", reference.Add(-48*time.Hour).Format(time.RFC3339), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dismissed, err := s.CreateReminder(t.Context(), "Dismissed item", reference.Add(48*time.Hour).Format(time.RFC3339), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ProcessDue(t.Context(), reference); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReminderMutation(t.Context(), completed.ID, "completed", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReminderMutation(t.Context(), dismissed.ID, "dismissed", ""); err != nil {
+		t.Fatal(err)
+	}
+	state := routing.State{Text: "what open reminders do I have?", Timezone: "UTC", ReferenceAt: reference.Format(time.RFC3339), Context: []provider.ContextRecord{{ID: open.ID, Kind: "reminder", Title: open.Title}}}
+	for _, lookup := range []func(context.Context, *store.Store, routing.State) (conversationAnswer, error){answerLookup, func(ctx context.Context, s *store.Store, state routing.State) (conversationAnswer, error) {
+		return answerPlannedLookup(ctx, s, state, routing.ActionPlan{Action: "lookup", Kind: "reminder", TargetID: open.ID})
+	}} {
+		answer, err := lookup(t.Context(), s, state)
+		if err != nil || len(answer.Sources) != 2 || !strings.Contains(answer.Text, "your open reminders") || !strings.Contains(answer.Text, "Pay rent") || !strings.Contains(answer.Text, "Call the doctor") || strings.Contains(answer.Text, "Completed item") || strings.Contains(answer.Text, "Dismissed item") {
+			t.Fatal(answer, err)
+		}
+	}
+	state.Text = "list all my reminders"
+	answer, err := answerLookup(t.Context(), s, state)
+	if err != nil || len(answer.Sources) != 4 {
+		t.Fatal("all reminders should include finished items", answer, err)
+	}
+}
+
 func TestRoutingLookupDispatchReturnsReadOnlyAnswer(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "atlas.db"))
 	if err != nil {

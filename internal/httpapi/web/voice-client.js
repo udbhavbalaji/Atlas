@@ -7,6 +7,12 @@ const VoiceDesktopDictation = !VoiceRecognition && location.pathname === '/deskt
 let voiceBusy = false;
 let voiceListening = false;
 let voiceRecognizer = null;
+const voiceSpeech = new AtlasVoiceSpeech(window.speechSynthesis, window.SpeechSynthesisUtterance,
+  speaking => { voiceElement('stop-speaking').hidden = !speaking; },
+  () => {
+    voiceElement('speak').checked = false;
+    voiceElement('mic-status').textContent = 'Speech playback is unavailable here; the prompt is shown on screen.';
+  });
 
 function voiceElement(id) { return document.getElementById('voice-' + id); }
 function voiceStatus(message) { voiceElement('status').textContent = message; }
@@ -30,16 +36,7 @@ function voiceFieldValue(key, value, timezone) {
 function voiceSpeakPrompt() {
   const state = voiceClient.state;
   if (!state || !voiceElement('speak').checked || !('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(state.prompt);
-  utterance.lang = voiceElement('language').value;
-  utterance.rate = 1;
-  utterance.onerror = event => {
-    if (event.error === 'interrupted' || event.error === 'canceled') return;
-    voiceElement('speak').checked = false;
-    voiceElement('mic-status').textContent = 'Speech playback is unavailable here; the prompt is shown on screen.';
-  };
-  window.speechSynthesis.speak(utterance);
+  voiceSpeech.speak(state.prompt, voiceElement('language').value);
 }
 
 function voiceRender(state) {
@@ -64,7 +61,6 @@ function voiceRender(state) {
     item.append(role, line);
     transcript.append(item);
   }
-  transcript.scrollTop = transcript.scrollHeight;
   const actions = voiceElement('question-actions');
   actions.replaceChildren();
   if (state.state === 'awaiting_route') {
@@ -196,10 +192,15 @@ function voiceRender(state) {
   voiceElement('cancel').hidden = !active || ['confirming', 'deleting', 'deleting_batch', 'applying_edit', 'applying_association'].includes(state.state);
   voiceElement('repeat').hidden = !state.prompt || !('speechSynthesis' in window);
   voiceUpdateControls();
+  const chatBody = voiceElement('chat-body');
+  if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+  else transcript.scrollTop = transcript.scrollHeight;
 }
 
 function voiceUpdateControls() {
-  for (const button of document.querySelectorAll('#panel-voice button')) button.disabled = voiceBusy;
+  for (const button of document.querySelectorAll('#panel-voice button')) {
+    button.disabled = voiceBusy && button.id !== 'voice-stop-speaking';
+  }
   if (!VoiceRecognition && !VoiceDesktopDictation) {
     voiceElement('listen-first').disabled = true;
     voiceElement('listen-answer').disabled = true;
@@ -212,6 +213,7 @@ function voiceUpdateControls() {
 
 async function voiceCall(action, speak = true, starting = false) {
   if (voiceBusy) return;
+  voiceSpeech.stop();
   voiceBusy = true;
   voiceStatus('Sending to Atlas…');
   if (voiceElement('start-feedback')) voiceElement('start-feedback').textContent = 'Sending to Atlas…';
@@ -250,7 +252,7 @@ function voiceListen(targetID) {
   }
   if (voiceListening) { voiceRecognizer?.stop(); return; }
   if (voiceBusy) return;
-  window.speechSynthesis?.cancel();
+  voiceSpeech.stop();
   const recognizer = new VoiceRecognition();
   voiceRecognizer = recognizer;
   recognizer.lang = voiceElement('language').value;
@@ -329,6 +331,7 @@ voiceElement('start-form').onsubmit = event => {
   }), true, true);
 };
 if (voiceElement('new-chat')) voiceElement('new-chat').onclick = () => {
+  voiceSpeech.stop();
   voiceClient.state = null;
   try { localStorage.removeItem(voiceStorage); } catch {}
   voiceElement('start-section').hidden = false;
@@ -357,6 +360,10 @@ voiceElement('reply-form').onsubmit = event => {
 voiceElement('confirm').onclick = () => voiceCall(() => voiceClient.confirm());
 voiceElement('cancel').onclick = () => voiceCall(() => voiceClient.cancel());
 voiceElement('repeat').onclick = voiceSpeakPrompt;
+voiceElement('stop-speaking').onclick = () => voiceSpeech.stop();
+voiceElement('speak').onchange = () => { if (!voiceElement('speak').checked) voiceSpeech.stop(); };
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && voiceSpeech.speaking) voiceSpeech.stop(); });
+window.addEventListener('pagehide', () => voiceSpeech.stop());
 if (voiceElement('report')) voiceElement('report').onclick = () => AtlasReport.open(voiceClient.state);
 voiceElement('listen-first').onclick = () => voiceListen('first');
 voiceElement('listen-answer').onclick = () => voiceListen('answer');
