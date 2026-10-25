@@ -17,11 +17,11 @@ type workflowPlan struct {
 	Index int      `json:"index"`
 }
 
-var workflowActionStart = regexp.MustCompile(`(?i)^(?:(?:please|hey)\s+|(?:can|could|would)\s+you\s+|i\s+want\s+to\s+)*\b(?:add|create|make|save|note|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
-var workflowConnector = regexp.MustCompile(`(?i)\b(?:and|then|also)\s+(?:(?:then|also|please)\s+)*(?:add|create|make|save|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
+var workflowActionStart = regexp.MustCompile(`(?i)^(?:(?:please|hey)\s+|(?:can|could|would)\s+you\s+|i\s+want\s+to\s+)*\b(?:add|create|make|save|note|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|mark|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
+var workflowConnector = regexp.MustCompile(`(?i)\b(?:and|then|also)\s+(?:(?:then|also|please)\s+)*(?:add|create|make|save|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|mark|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
 var atomicTaskStart = regexp.MustCompile(`(?i)^(?:(?:please|hey)\s+|(?:can|could|would)\s+you\s+)*(?:(?:add|create|make|save)\s+(?:a\s+|the\s+|my\s+)?task\b|i\s+(?:need|have|want)\s+to\b)`)
 var atomicTaskAttachment = regexp.MustCompile(`(?i)(?:\band\s+|,\s*)(?:remind\s+me\b|note\s+that\b|add\s+(?:a\s+)?(?:reminder|note)\b)`)
-var workflowPunctuationAction = regexp.MustCompile(`(?i)[.;,!?]\s*(?:(?:and|then|also|please)\s+)*(?:add|create|make|save|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
+var workflowPunctuationAction = regexp.MustCompile(`(?i)[.;,!?]\s*(?:(?:and|then|also|please)\s+)*(?:add|create|make|save|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|mark|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
 
 func workflowClauses(text string) []string {
 	text = strings.TrimSpace(text)
@@ -125,7 +125,7 @@ func workflowMockFixture(step string) string {
 		switch words[0] {
 		case "find", "show", "list", "search":
 			return "lookup"
-		case "edit", "update", "move", "rename", "complete", "finish", "dismiss", "change":
+		case "edit", "update", "move", "rename", "complete", "finish", "dismiss", "mark", "change":
 			return "edit"
 		case "delete", "remove", "clear":
 			return "delete"

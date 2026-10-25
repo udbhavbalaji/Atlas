@@ -33,6 +33,10 @@ func failure(w http.ResponseWriter, e error) {
 		status, code = 404, "session_not_found"
 	case errors.Is(e, store.ErrSessionConflict):
 		status, code = 409, "session_version_conflict"
+	case errors.Is(e, store.ErrReportInvalid):
+		status, code = 400, "invalid_report"
+	case errors.Is(e, store.ErrReportKeyConflict):
+		status, code = 409, "report_key_conflict"
 	case errors.Is(e, store.ErrRelation):
 		status, code = 400, "invalid_relation"
 	case errors.Is(e, store.ErrDependencyCycle):

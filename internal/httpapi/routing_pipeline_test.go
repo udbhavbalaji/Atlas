@@ -37,13 +37,6 @@ func (e *stagedJev) Evaluate(_ context.Context, state routing.State, actions []r
 	return routing.Evaluation{Decision: routing.Choice{Type: "choice", Choice: choice, Confidence: .9, Probabilities: probabilities}, Model: "jev-fixture", ModelCalls: 1}, nil
 }
 
-type canonicalResponder struct{ calls int }
-
-func (r *canonicalResponder) Respond(_ context.Context, facts map[string]any) (string, string, error) {
-	r.calls++
-	return facts["canonical_answer"].(string), "response-fixture", nil
-}
-
 type unavailablePlanner struct{}
 
 func (unavailablePlanner) Plan(context.Context, routing.State) (routing.PlanResult, error) {
@@ -214,9 +207,8 @@ func TestJevPipelineCompleteLinkedConversation(t *testing.T) {
 	reminderAt := due.Add(-time.Hour)
 	je := &stagedJev{category: "create", tool: "task"}
 	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "task", Kind: "task", Title: "Interview with Maya", DueAt: due.Format(time.RFC3339), ReminderAt: reminderAt.Format(time.RFC3339), NoteBody: "Bring portfolio"}}
-	responder := &canonicalResponder{}
 	mux := http.NewServeMux()
-	routingRoutesWithService(mux, s, routingService{jev: je, free: planner, responder: responder, configured: true, secret: "test"})
+	routingRoutesWithService(mux, s, routingService{jev: je, free: planner, configured: true, secret: "test"})
 	send := func(path string, body any) map[string]any {
 		data, _ := json.Marshal(body)
 		w := httptest.NewRecorder()
@@ -234,8 +226,8 @@ func TestJevPipelineCompleteLinkedConversation(t *testing.T) {
 	if c["state"] != "saved" || c["saved"] == nil {
 		t.Fatal(c)
 	}
-	if je.calls != 2 || planner.calls != 1 || responder.calls == 0 {
-		t.Fatal(je.calls, planner.calls, responder.calls)
+	if je.calls != 2 || planner.calls != 1 {
+		t.Fatal(je.calls, planner.calls)
 	}
 	tasks, err := s.Tasks(t.Context())
 	if err != nil || len(tasks) != 1 {
@@ -340,12 +332,12 @@ func TestShortFollowupUsesRecentSavedEntity(t *testing.T) {
 }
 
 func TestLookupResponseMustPreserveSourceAndTime(t *testing.T) {
-	c := routingConversation{State: "answered", Answer: &conversationAnswer{Text: "Task “Interview with Maya” is open; due Fri, 2 Oct 2026 at 3:00 PM IST.", Sources: []conversationSource{{Type: "task", Title: "Interview with Maya"}}}}
-	if c.responsePreservesFacts("The interview is tomorrow.") {
-		t.Fatal("accepted a reply without grounded facts")
-	}
-	if !c.responsePreservesFacts("Interview with Maya is due Fri, 2 Oct 2026 at 3:00 PM IST.") {
-		t.Fatal("rejected a grounded reply")
+	canonical := "Task “Interview with Maya” is open; due Fri, 2 Oct 2026 at 3:00 PM IST."
+	writer := &writingFixture{text: "Interview with Maya is due Fri, 2 Oct 2026 at 3:00 PM IST."}
+	c := routingConversation{State: "answered", Route: routing.Result{Provider: "jev"}, Answer: &conversationAnswer{Text: canonical, Sources: []conversationSource{{Type: "task", Title: "Interview with Maya"}}}}
+	c.appendAssistant(httptest.NewRequest("GET", "/", nil), routingService{responder: writer})
+	if writer.calls != 0 || c.Messages[0].Text != canonical || c.ResponseModel != "local" {
+		t.Fatal("single-record answer must use verified wording", writer, c)
 	}
 }
 

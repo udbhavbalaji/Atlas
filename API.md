@@ -290,6 +290,18 @@ The **Voice** testing tab is a browser client for this same contract. Its transp
 
 The testing UI applies initial suggestions to empty controls, exposes source/context and allows explicit copying of supplied context titles/deadlines or choosing a prerequisite target. Then submit the reviewed fields without `prefill` to preview. Explicit edits, clears and skip choices take precedence; normal previews never refill them. Date controls retain the original exact instant when a suggested/copied value is unchanged, including timezone offsets and subsecond precision.
 
+## Conversation reports
+
+`POST /api/v1/debug/reports` is the shared backend receiver used by all conversation interfaces. It accepts `{ "session_id": "<routing conversation ID>", "version": 1, "request_id": "unique-report-1", "surface": "web", "category": "wrong_answer", "expected": "The outcome I expected", "message_index": -1 }` over HTTP to the connected Atlas service. The prior `POST /api/v1/conversations/routing/{id}/reports` route remains available for compatibility. The body session ID is required on the debug route and, when supplied on the older route, must match its path ID.
+
+`POST /api/v1/conversations/routing/{id}/reports` accepts `{ "version": 1, "request_id": "unique-report-1", "surface": "web", "category": "wrong_answer", "expected": "The outcome I expected", "message_index": -1 }`. Surfaces are `web`, `macos`, `omarchy`, and `ios`; categories are `wrong_answer`, `missed_action`, `unwanted_change`, `confusing_flow`, and `other`. Use `-1` for the whole conversation or a zero-based message index. `expected` must contain 3–2000 non-whitespace Unicode characters. The request ID uses 8–128 letters, digits, underscores, or hyphens.
+
+The first save returns `201` with an ID and the exact conversation snapshot. An identical retry returns the same report with `200`; reusing the ID for different report details returns `409 report_key_conflict`. A changed conversation version returns `409 session_version_conflict`. Reporting does not advance the conversation or mutate saved records. `GET /api/v1/debug/reports` lists reports on the connected service, and `GET /api/v1/debug/reports/corpus.jsonl` downloads unlabeled evaluation candidates. The older `/api/v1/reports` read routes remain available. Reports can contain private conversation content; Atlas has no built-in authentication, so expose the service only on loopback or a private authenticated network.
+
+## Shared records refresh
+
+`GET /api/v1/records/revision` returns `{ "revision": 123 }`, the highest committed activity ID for task, reminder, note, and relation changes. It starts at `0` on an empty database. Clients can check this small response while active and reload their saved-item lists when it changes. The web and iPhone interfaces check once per second; the web checks immediately on tab focus and the iPhone checks on foreground. This is a change signal for one shared backend, not a database replication protocol. A focused browser check is at `/sync-test`.
+
 ## Experimental multi-action plan previews
 
 `ATLAS_PLAN_PREVIEW=1` enables preview and revision endpoints under

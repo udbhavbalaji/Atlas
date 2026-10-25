@@ -1,10 +1,11 @@
 'use strict';
 
-// Microphone PCM is sent to the local Atlas service while recording. Only the
+// Microphone PCM is sent to a local Atlas service while recording. Only the
 // returned text enters the conversation, after the user reviews and submits it.
 const atlasDesktopAudio = (() => {
   const AudioContextType = window.AudioContext || window.webkitAudioContext;
   const captureSupported = Boolean(navigator.mediaDevices?.getUserMedia && AudioContextType?.prototype.createScriptProcessor && window.WebSocket);
+  const localService = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname);
   let available = false;
   let serverCapture = false;
   let backend = '';
@@ -106,7 +107,7 @@ const atlasDesktopAudio = (() => {
       if (currentAttempt === attempt) fail('Microphone did not respond. Check its permission and audio device, then try again.');
     }, 12000);
     try {
-      window.speechSynthesis?.cancel();
+      voiceSpeech.stop();
       if (serverCapture) {
         socket = new WebSocket(`ws://${location.host}/api/v1/audio/stream`);
         socket.onmessage = handleMessage;
@@ -123,7 +124,7 @@ const atlasDesktopAudio = (() => {
         updateControls();
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}, video: false});
+      const stream = await navigator.mediaDevices.getUserMedia({audio: true});
       if (currentAttempt !== attempt) { stream.getTracks().forEach(track => track.stop()); return; }
       media = stream;
       context = new AudioContextType();
@@ -161,7 +162,11 @@ const atlasDesktopAudio = (() => {
       status(`Recording locally with ${backend}. Click Stop microphone when done (30 second limit).`);
       updateControls();
     } catch (error) {
-      if (currentAttempt === attempt) fail(`Microphone could not start: ${error.message}. Check the device and permission, or type instead.`);
+      if (currentAttempt === attempt) {
+        const unavailable = error.name === 'NotFoundError' || error.name === 'OverconstrainedError' || error.message === 'Invalid constraint';
+        fail(unavailable ? 'No usable microphone input was found. Connect a microphone to this Mac and try again, or type instead.'
+          : `Microphone could not start: ${error.message}. Check the device and permission, or type instead.`);
+      }
     }
   }
 
@@ -181,7 +186,9 @@ const atlasDesktopAudio = (() => {
     if (state !== 'idle') return;
     if ((!serverCapture && !captureSupported) || !available) {
       voiceElement(targetID).focus();
-      status(backend ? 'Local transcription is not configured. Use system dictation or type; see Desktop checks.' : 'Microphone capture is unavailable here. Use system dictation or type.');
+      status(!localService ? 'Voice transcription is available only when Atlas runs locally. Use system dictation or type.' :
+        backend ? 'Local transcription is not configured. Use system dictation or type; see Desktop checks.' :
+          'Microphone capture is unavailable here. Use system dictation or type.');
       return;
     }
     start(targetID);
@@ -193,11 +200,12 @@ const atlasDesktopAudio = (() => {
     socket?.close();
   });
   return {toggle, updateControls, setCapabilities(value) {
-    available = Boolean(value.local_transcription);
-    serverCapture = Boolean(value.server_capture);
+    available = localService && Boolean(value.local_transcription);
+    serverCapture = localService && Boolean(value.server_capture);
     backend = value.backend || '';
     updateControls();
-    if ((captureSupported || serverCapture) && available) status(`Local microphone streaming is ready (${backend}). Audio is discarded after transcription.`);
+    if (!localService) status('Voice transcription is available only when Atlas runs locally. You can type your reply.');
+    else if ((captureSupported || serverCapture) && available) status(`Local microphone streaming is ready (${backend}). Audio is discarded after transcription.`);
   }};
 })();
 
