@@ -242,6 +242,13 @@ Only after explicit user review, submit unchanged `proposal.input` to `POST /api
 
 ## Input routing and channel handoff
 
+`GET /api/v1/routing/tools` lists the implemented Jev pipeline tools with
+their category, channel, read-only marker, description, and focused JSON
+argument schema. The selected tool schema constrains argument extraction on
+providers that support strict schema output. Tool selection and schema-valid
+arguments do not authorize persistence. `/orchestration-test` is the focused
+read-only webpage for inspecting these contracts and evaluating routes.
+
 `GET /api/v1/routing` returns contract/registry version `1`, implemented actions, provider configuration (not proof of access), provisional policy, context/cache budgets and receipt lifetime. The Jev provider reports its `via` (`openrouter`) and pinned `model` (`typesafe/jev-1.13`). Actions are `task`, `reminder`, `note`, `lookup`, `clarify`, `unsupported`; executable channels are `tasks`, `reminders`, `notes`, and read-only `lookup`.
 
 `POST /api/v1/routing/{provider}/evaluate`, with provider `mock`, `jev`, `free`, or `groq`:

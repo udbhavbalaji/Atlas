@@ -83,7 +83,7 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 	if category == "unsupported" {
 		result.State = "unsupported"
 	} else if category != "clarify" {
-		tools := pipelineTools(category)
+		tools := routing.ToolChoices(category)
 		second, toolErr := service.jev.Evaluate(ctx, state, tools, "")
 		if toolErr != nil {
 			return routing.Result{}, fmt.Errorf("tool choice: %w", toolErr)
@@ -100,10 +100,11 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 		if tool != "clarify" && tool != "" {
 			result.State = "routed"
 			result.SelectedTool = tool
-			result.SelectedChannel = pipelineChannel(tool)
-			if result.SelectedChannel == "" {
+			definition, known := routing.Tool(tool)
+			if !known {
 				return routing.Result{}, routing.ErrContract
 			}
+			result.SelectedChannel = definition.Channel
 			state.SelectedTool = tool
 			state.Context, state.ContextTruncated, err = pipelineContext(ctx, s, input.Text, input.RecentConversation, tool, 20)
 			if err != nil {
@@ -128,7 +129,7 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 						}
 						result = pipelineExtractionClarification(result, tool)
 					}
-				} else if !pipelinePlanMatches(tool, planned.Plan) {
+				} else if !routing.ToolPlanMatches(tool, planned.Plan) {
 					if category == "read" {
 						result.ExtractionModel = "local_lookup"
 					} else if fallback, ok := localReminderPlan(state); ok {
@@ -297,71 +298,6 @@ func pipelineChoice(choice routing.Choice) string {
 		return "clarify"
 	}
 	return choice.Choice
-}
-
-func pipelineTools(category string) []routing.Action {
-	switch category {
-	case "create":
-		return []routing.Action{
-			{ID: "task", Description: "Create a task or event; this tool can also save a linked note and reminder in one operation."},
-			{ID: "reminder", Description: "Create a reminder, optionally linked to a task that already exists."},
-			{ID: "note", Description: "Save a standalone note or a note linked to an existing task."},
-			{ID: "clarify", Description: "The record type is genuinely unclear."},
-		}
-	case "read":
-		return []routing.Action{
-			{ID: "lookup_task", Description: "Read task information, including linked notes and reminders."},
-			{ID: "lookup_reminder", Description: "Read reminders, including old, completed, and dismissed reminders."},
-			{ID: "lookup_note", Description: "Read notes and their task links."},
-			{ID: "lookup_all", Description: "Read across tasks, reminders, and notes."},
-			{ID: "clarify", Description: "The requested information is genuinely unclear."},
-		}
-	case "change", "remove":
-		verb := "edit"
-		if category == "remove" {
-			verb = "delete"
-		}
-		return []routing.Action{
-			{ID: verb + "_task", Description: verb + " an existing task, including a recently discussed task and related records when the store's workflow requires it."},
-			{ID: verb + "_reminder", Description: verb + " an existing reminder, including its repeat rule or a recently discussed reminder."},
-			{ID: verb + "_note", Description: verb + " an existing note, including a recently discussed note."},
-			{ID: "clarify", Description: "The target record type is genuinely unclear."},
-		}
-	}
-	return nil
-}
-
-func pipelineChannel(tool string) string {
-	switch {
-	case tool == "task":
-		return "tasks"
-	case tool == "reminder":
-		return "reminders"
-	case tool == "note":
-		return "notes"
-	case strings.HasPrefix(tool, "lookup_"):
-		return "lookup"
-	case strings.HasPrefix(tool, "edit_"):
-		return "edit"
-	case strings.HasPrefix(tool, "delete_"):
-		return "delete"
-	}
-	return ""
-}
-
-func pipelinePlanMatches(tool string, plan routing.ActionPlan) bool {
-	switch {
-	case tool == "task", tool == "reminder", tool == "note":
-		return plan.Action == tool && (plan.Kind == "" || plan.Kind == tool)
-	case strings.HasPrefix(tool, "lookup_"):
-		kind := strings.TrimPrefix(tool, "lookup_")
-		return plan.Action == "lookup" && (kind == "all" || plan.Kind == "" || plan.Kind == kind)
-	case strings.HasPrefix(tool, "edit_"):
-		return plan.Action == "edit" && plan.Kind == strings.TrimPrefix(tool, "edit_")
-	case strings.HasPrefix(tool, "delete_"):
-		return plan.Action == "delete" && plan.Kind == strings.TrimPrefix(tool, "delete_")
-	}
-	return false
 }
 
 func pipelineContext(ctx context.Context, s *store.Store, text, recent, tool string, limit int) ([]provider.ContextRecord, bool, error) {

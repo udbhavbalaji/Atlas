@@ -8,6 +8,9 @@ Its first useful loop is:
 
 Atlas owns context, canonical records, execution, scheduling, policy, and audit history. External reasoning services may help interpret a request, but they produce proposals that Atlas validates before anything is stored or executed.
 
+The incremental hybrid orchestration migration and its current tool contract
+are documented in [docs/hybrid-orchestration.md](docs/hybrid-orchestration.md).
+
 ## Project status
 
 Atlas now has a runnable Go foundation with SQLite-backed task creation, details, optional deadlines, editing, completion/reopening, deletion, and transactional activity history, with a responsive browser interface. The remaining sections describe the intended product and architecture; fixed-time and daily/weekly recurring reminders now deliver to a durable webpage inbox. Persistent plain-text notes now link explicitly to tasks and reminders. Search finds text across tasks, reminders, and notes with type/status filters and direct record links. Capture interprets common English sentences into reviewed tasks, reminders, and notes, with explicit fields for correction and atomic saving. Ambiguous or unsupported wording asks for clarification. The desktop conversation uses Jev to choose among creation, lookup, editing, and deletion. It answers questions from saved tasks, reminders, and notes with record links, reports edits after applying them, and confirms deletions. External notifications and PWA installation/offline support are not implemented yet.

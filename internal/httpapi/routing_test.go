@@ -14,6 +14,34 @@ import (
 	"time"
 )
 
+func TestToolContractPageAndAPI(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	h := Handler(s)
+	page := httptest.NewRecorder()
+	h.ServeHTTP(page, httptest.NewRequest("GET", "/orchestration-test", nil))
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "Selected tool contracts") {
+		t.Fatal(page.Code, page.Body.String())
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/routing/tools", nil))
+	var response struct {
+		Tools []routing.ToolDefinition `json:"tools"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &response) != nil || len(response.Tools) != 13 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	for _, tool := range response.Tools {
+		if tool.ID == "reminder" && (tool.Channel != "reminders" || tool.InputSchema == nil) {
+			t.Fatal(tool)
+		}
+	}
+}
+
 func TestRoutingAPIChannelHandoffAndConfirmedPersistence(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "")
 	s, err := store.Open(filepath.Join(t.TempDir(), "db"))

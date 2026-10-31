@@ -1,5 +1,40 @@
 # Atlas Decisions
 
+## Selected tool contracts for hybrid orchestration
+
+**Status:** Accepted for the first migration increment (2026-10-31).
+
+**Decision:** Use one Go registry for the tools selected by the production Jev
+category/tool pipeline. Each tool names its category, channel, read-only status,
+and focused JSON argument schema. Jev continues to choose a tool; the argument
+model receives that tool's schema where supported. Atlas rejects an extracted
+action or record kind that conflicts with Jev's selected tool. A schema or
+selected tool is a proposal, never execution permission.
+
+**Consequences:** This increment changes no store schema or write policy. The
+existing channel and store validation remain authoritative. The registry is
+visible through a read-only API and focused testing webpage. Provider-neutral
+extraction, multi-operation execution, memory retention, and context retrieval
+follow in separate increments; their contracts should reuse this tool identity.
+
+## Write approval and automatic capture in hybrid orchestration
+
+**Status:** Proposed; resolve before changing write behavior.
+
+The current Jev conversation automatically saves a complete capture, while
+earlier routing documentation describes explicit confirmation. Define the
+approval policy by operation class and an explicit user preference before
+changing either path. Preserve exact store receipts and replay behavior.
+
+## Automatic memory retention and disclosure
+
+**Status:** Proposed; resolve before enabling automatic retention.
+
+Keep explicit notes separate from inferred memories. Proposed automatic
+memories should carry provenance, certainty, privacy class, and a reviewable
+retention decision. Define sensitive-content and external-model disclosure
+rules before automatic memory extraction stores candidates.
+
 ## iPhone client and distribution
 
 **Status:** Accepted

@@ -145,7 +145,11 @@ func (p FreePlanner) Plan(ctx context.Context, state State) (PlanResult, error) 
 			{"role": "user", "content": string(stateJSON)},
 		},
 	}
-	if format := freeResponseFormat(model, "atlas_action", planSchema()); format != nil {
+	schema := planSchema()
+	if selected, ok := Tool(state.SelectedTool); ok {
+		schema = selected.InputSchema
+	}
+	if format := freeResponseFormat(model, "atlas_action", schema); format != nil {
 		request["response_format"] = format
 	}
 	if p.Service == "groq" {
@@ -220,6 +224,9 @@ func (p FreePlanner) Plan(ctx context.Context, state State) (PlanResult, error) 
 		return PlanResult{}, fmt.Errorf("action JSON: %w", ErrContract)
 	}
 	plan = NormalizePlan(plan)
+	if state.SelectedTool != "" && !ToolPlanMatches(state.SelectedTool, plan) {
+		return PlanResult{}, fmt.Errorf("selected tool mismatch: %w", ErrContract)
+	}
 	plan = groundPlan(plan, state)
 	plan = NormalizeEditExtraction(plan, state)
 	plan = NormalizePlanTiming(plan, state)

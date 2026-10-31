@@ -85,6 +85,9 @@ func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routin
 	mux.HandleFunc("GET /api/v1/routing", func(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]any{"version": routing.Version, "registry_version": routing.RegistryVersion, "actions": routing.Registry(), "providers": []map[string]any{{"id": "mock", "configured": true, "mock": true}, {"id": "jev", "configured": service.configured, "mock": false, "configuration_only": true, "via": "openrouter", "model": routing.OpenRouterModel}, {"id": "free", "configured": service.configured, "mock": false, "via": "openrouter", "model": routing.FreeModel}, {"id": "groq", "configured": service.groqConfigured, "mock": false, "via": "groq", "model": routing.GroqModel}}, "response_writer": map[string]any{"configured": service.responder != nil, "model": routing.WritingModel, "final_turns_only": true, "list_intros_only": true}, "policy": routing.DefaultPolicy, "context_budget": map[string]int{"queries": 1, "records": 50}, "persists_on_evaluation": false, "token_lifetime_seconds": 1800, "cache": map[string]int{"ttl_seconds": 300, "max_entries": 128}})
 	})
+	mux.HandleFunc("GET /api/v1/routing/tools", func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 200, map[string]any{"version": routing.Version, "tools": routing.Tools()})
+	})
 	mux.HandleFunc("POST /api/v1/routing/{provider}/evaluate", func(w http.ResponseWriter, r *http.Request) {
 		var input routing.Request
 		if !decode(w, r, &input) {
@@ -138,7 +141,7 @@ func routingRoutesWithService(mux *http.ServeMux, s *store.Store, service routin
 		}
 		respond(w, 200, response)
 	})
-	for path, allow := range map[string]string{"/api/v1/routing": "GET, HEAD", "/api/v1/routing/{provider}/evaluate": "POST", "/api/v1/routing/dispatch": "POST"} {
+	for path, allow := range map[string]string{"/api/v1/routing": "GET, HEAD", "/api/v1/routing/tools": "GET, HEAD", "/api/v1/routing/{provider}/evaluate": "POST", "/api/v1/routing/dispatch": "POST"} {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", allow)
 			apiError(w, 405, "method_not_allowed", "Method is not supported for this endpoint.", false)
