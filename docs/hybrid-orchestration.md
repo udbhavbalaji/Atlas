@@ -24,6 +24,23 @@ collect missing fields, and existing capture/mutation paths own writes.
 `/orchestration-test` webpage shows schemas and can evaluate a route without
 dispatching or saving it. Mock evaluation makes no model call.
 
+## Reviewed reminder and note capture
+
+A reminder request with an attached note now stays in one capture. Jev selects
+the reminder tool, and the extractor can fill its `note_body` argument. If the
+note text is absent, the conversation asks for it instead of silently saving
+only the reminder. If Jev selects a different tool, Atlas asks the user to
+choose the reminder channel rather than save a partial result. The combined
+preview requires one explicit confirmation;
+the store commits the reminder, linked note, and idempotency receipt together.
+This narrows the prior Jev auto-commit behavior for this compound capture.
+Other complete Jev captures retain their current behavior for compatibility.
+
+The conversation section of `/orchestration-test` exercises the same API with
+Mock or Jev. Mock asks for any missing fields without model calls. In both
+cases, the proposal can be inspected before confirming, cancelling, or
+correcting it. The saved result includes the reminder and note link.
+
 ## Migration sequence
 
 1. Add a versioned operation proposal and per-operation result envelope around
@@ -44,17 +61,19 @@ dispatching or saving it. Mock evaluation makes no model call.
 
 ## Decisions still required
 
-The current Jev conversation auto-commits a complete capture, while older API
-documentation describes explicit confirmation. Before changing write behavior,
-decide which operation classes require review and how a user enables automatic
-execution. The current Decisions API also cannot write the final response;
+The current Jev conversation still auto-commits most complete captures, while
+older API documentation describes explicit confirmation. Decide which further
+operation classes require review and how a user enables automatic execution.
+The current Decisions API also cannot write the final response;
 Atlas's canonical response remains authoritative, with an optional separate
 wording model. Memory retention and model disclosure need their own explicit
 policies before automatic memory storage is enabled.
 
 ## Manual check
 
-Open `/orchestration-test`, inspect the `note` and `edit_task` schemas, then
-evaluate a Mock / Task request. The route remains read-only. If a Jev key is
-configured, explicitly select Jev for a live evaluation and check the selected
-tool and model call count. This page never dispatches or commits an operation.
+Open `/orchestration-test`, inspect the `reminder` schema, and evaluate the
+sample request. Evaluation remains read-only. Then start the conversation with
+Mock / Reminder, answer the requested fields, and check that the combined
+proposal is shown before saving. Confirm once and inspect the saved reminder
+and linked note. Repeat with Jev only when a key is configured and a live
+model check is wanted.

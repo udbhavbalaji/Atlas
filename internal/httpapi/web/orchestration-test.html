@@ -7,8 +7,8 @@
 <h2>Selected tool contracts</h2>
 <p>This page shows the schemas Atlas supplies for selected tools. Evaluation is read-only and does not save records. Mock fixtures make no model calls; choosing Jev may make multiple model calls for routing and extraction.</p>
 <label>Provider <select id="provider"><option value="mock">Mock fixture</option><option value="jev">Jev</option></select></label>
-<label>Mock fixture <select id="fixture"><option value="task">Task</option><option value="reminder">Reminder</option><option value="note">Note</option><option value="lookup">Lookup</option><option value="ambiguous">Ambiguous</option></select></label>
-<label>Request <textarea id="request" rows="3">Remind me to call Rahul tomorrow at 10 AM</textarea></label>
+<label>Mock fixture <select id="fixture"><option value="task">Task</option><option value="reminder" selected>Reminder</option><option value="note">Note</option><option value="lookup">Lookup</option><option value="ambiguous">Ambiguous</option></select></label>
+<label>Request <textarea id="request" rows="3">Remind me to call Rahul tomorrow at 10 AM and make a note that we need to discuss the scooter's battery issue.</textarea></label>
 <label>Timezone <input id="timezone" value="Asia/Kolkata"></label>
 <button id="evaluate" type="button">Evaluate route</button>
 <p id="status" aria-live="polite"></p>
@@ -17,9 +17,22 @@
 <h3>Inspected tool schema</h3><pre id="inspection">Choose a tool above.</pre>
 <h3>Available tools and schemas</h3><pre id="tools">Loading…</pre>
 </section>
+<section class="composer">
+<h2>Reminder with attached note</h2>
+<p>Start the request above as a conversation. With Mock, answer any missing fields using the question's field ID. With Jev, inspect the extracted reminder and note. Atlas should show both in one proposal and save neither until you confirm.</p>
+<button id="start" type="button">Start conversation</button>
+<p id="conversation-status" aria-live="polite"></p>
+<label>Question field <input id="answer-field" placeholder="e.g. fields.note_body"></label>
+<label>Answer or correction <input id="answer-value" placeholder="Enter the requested value"></label>
+<button id="answer" type="button" disabled>Send answer</button>
+<button id="confirm" type="button" disabled>Confirm proposal</button>
+<button id="cancel" type="button" disabled>Cancel</button>
+<h3>Conversation state and saved records</h3><pre id="conversation">Start a conversation to inspect the proposal.</pre>
+</section>
 </main><script>
 const $ = id => document.getElementById(id);
 let definitions = [];
+let conversation = null;
 async function loadTools() {
   try {
     const response = await fetch('/api/v1/routing/tools');
@@ -57,6 +70,41 @@ $('evaluate').addEventListener('click', async () => {
     $('selected').textContent = JSON.stringify({state: body.state, category: body.category, selected_tool: body.selected_tool, selected_channel: body.selected_channel, tool_definition: definition || null, proposed_arguments: body.plan || null, model_calls: body.evaluation?.model_calls || 0}, null, 2);
     $('status').textContent = 'Evaluation complete. No record was written.';
   } catch (error) { $('status').textContent = error.message; }
+});
+function showConversation(body) {
+  conversation = body;
+  const question = body.question?.field || '';
+  $('answer-field').value = question;
+  $('conversation').textContent = JSON.stringify({state: body.state, prompt: body.prompt, question: body.question, draft: body.draft, proposal: body.proposal, saved: body.saved, workflow: body.workflow, warnings: body.warnings}, null, 2);
+  $('conversation-status').textContent = body.state === 'saved' ? 'Saved. Inspect the reminder and linked note IDs below.' : body.prompt;
+  $('answer').disabled = body.state === 'saved' || body.state === 'cancelled';
+  $('confirm').disabled = body.state !== 'awaiting_confirmation';
+  $('cancel').disabled = body.state === 'saved' || body.state === 'cancelled';
+}
+async function conversationRequest(path, input) {
+  $('conversation-status').textContent = 'Working…';
+  try {
+    const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(input)});
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || 'Conversation request failed');
+    showConversation(body);
+  } catch (error) { $('conversation-status').textContent = error.message; }
+}
+$('start').addEventListener('click', () => {
+  const input = {version: '1', request_id: crypto.randomUUID(), provider: $('provider').value, text: $('request').value, timezone: $('timezone').value};
+  if (input.provider === 'mock') input.fixture = $('fixture').value;
+  conversationRequest('/api/v1/conversations/routing', input);
+});
+$('answer').addEventListener('click', () => {
+  if (!conversation) return;
+  const input = {version: conversation.version, text: $('answer-value').value, field: $('answer-field').value};
+  conversationRequest('/api/v1/conversations/routing/' + conversation.id + '/reply', input);
+});
+$('confirm').addEventListener('click', () => {
+  if (conversation) conversationRequest('/api/v1/conversations/routing/' + conversation.id + '/reply', {version: conversation.version, text: 'yes'});
+});
+$('cancel').addEventListener('click', () => {
+  if (conversation) conversationRequest('/api/v1/conversations/routing/' + conversation.id + '/reply', {version: conversation.version, text: 'cancel'});
 });
 loadTools();
 </script></body></html>

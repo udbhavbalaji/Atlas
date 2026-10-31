@@ -20,7 +20,7 @@ type toolCriteria struct {
 
 var toolRegistry = []toolCriteria{
 	{"task", "create", "tasks", "Create a task or event; this tool can also save a linked note and reminder in one operation.", "task", "task", []string{"action", "kind", "title", "details", "due_at", "reminder_at", "note_body", "repeat"}, false},
-	{"reminder", "create", "reminders", "Create a reminder, optionally linked to a task that already exists.", "reminder", "reminder", []string{"action", "kind", "title", "reminder_at", "linked_task_id", "note_body", "repeat"}, false},
+	{"reminder", "create", "reminders", "Create a reminder, optionally with an attached note or a link to an existing task.", "reminder", "reminder", []string{"action", "kind", "title", "reminder_at", "linked_task_id", "note_body", "repeat"}, false},
 	{"note", "create", "notes", "Save a standalone note or a note linked to an existing task.", "note", "note", []string{"action", "kind", "note_body", "linked_task_id"}, false},
 	{"lookup_task", "read", "lookup", "Read task information, including linked notes and reminders.", "lookup", "task", []string{"action", "kind", "target_id", "target_query"}, true},
 	{"lookup_reminder", "read", "lookup", "Read reminders, including old, completed, and dismissed reminders.", "lookup", "reminder", []string{"action", "kind", "target_id", "target_query"}, true},

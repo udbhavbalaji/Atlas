@@ -80,6 +80,9 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 	}
 	result := routing.Result{Version: routing.Version, RegistryVersion: routing.RegistryVersion, RequestID: input.RequestID, Provider: "jev", Input: state, Evaluation: first, Policy: routing.DefaultPolicy, State: "needs_clarification"}
 	result.Category = category
+	if reminderWithAttachedNote(input.Text) && category != "create" {
+		return reminderNoteToolClarification(service, result), nil
+	}
 	if category == "unsupported" {
 		result.State = "unsupported"
 	} else if category != "clarify" {
@@ -92,6 +95,9 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 		result.Evaluation.Usage.InputTokens += second.Usage.InputTokens
 		result.Evaluation.Usage.OutputTokens += second.Usage.OutputTokens
 		tool := pipelineChoice(second.Decision)
+		if reminderWithAttachedNote(input.Text) && tool != "reminder" {
+			return reminderNoteToolClarification(service, result), nil
+		}
 		if (tool == "clarify" || tool == "") && category == "read" {
 			if kind := groundedRecentLookupKind(state); kind != "" {
 				tool = "lookup_" + kind
@@ -166,6 +172,16 @@ func evaluateJevPipeline(ctx context.Context, s *store.Store, service routingSer
 	}
 	result.RoutingToken = service.sign(result)
 	return result, nil
+}
+
+func reminderNoteToolClarification(service routingService, result routing.Result) routing.Result {
+	result.State = "needs_clarification"
+	result.Category = ""
+	result.SelectedTool = ""
+	result.SelectedChannel = ""
+	result.Plan = &routing.ActionPlan{Action: "clarify", Clarification: "I heard a reminder with an attached note, but the selected action did not include both. Choose reminder to review them together."}
+	result.RoutingToken = service.sign(result)
+	return result
 }
 
 func localNotePlan(state routing.State) (routing.ActionPlan, bool) {

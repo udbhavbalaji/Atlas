@@ -21,7 +21,36 @@ var workflowActionStart = regexp.MustCompile(`(?i)^(?:(?:please|hey)\s+|(?:can|c
 var workflowConnector = regexp.MustCompile(`(?i)\b(?:and|then|also)\s+(?:(?:then|also|please)\s+)*(?:add|create|make|save|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|mark|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
 var atomicTaskStart = regexp.MustCompile(`(?i)^(?:(?:please|hey)\s+|(?:can|could|would)\s+you\s+)*(?:(?:add|create|make|save)\s+(?:a\s+|the\s+|my\s+)?task\b|i\s+(?:need|have|want)\s+to\b)`)
 var atomicTaskAttachment = regexp.MustCompile(`(?i)(?:\band\s+|,\s*)(?:remind\s+me\b|note\s+that\b|add\s+(?:a\s+)?(?:reminder|note)\b)`)
+var atomicReminderStart = regexp.MustCompile(`(?i)^(?:(?:please|hey)\s+|(?:can|could|would)\s+you\s+)*(?:remind\s+me\b|(?:add|create|set)\s+(?:a\s+)?reminder\b)`)
+var atomicReminderNote = regexp.MustCompile(`(?i)(?:\band\s+|,\s*)(?:(?:make|add|save|take)\s+(?:a\s+)?note\b|note\s+that\b)`)
 var workflowPunctuationAction = regexp.MustCompile(`(?i)[.;,!?]\s*(?:(?:and|then|also|please)\s+)*(?:add|create|make|save|remind|schedule|find|show|list|search|edit|update|move|rename|complete|finish|dismiss|reopen|mark|delete|remove|clear|link|unlink|attach|detach|relate|unrelate|change|send|email|text|post)\b`)
+
+func reminderWithAttachedNote(text string) bool {
+	if !atomicReminderStart.MatchString(strings.TrimSpace(text)) || strings.Contains(text, ";") {
+		return false
+	}
+	attachment := atomicReminderNote.FindStringIndex(text)
+	if attachment == nil {
+		return false
+	}
+	// Keep later explicit actions in the workflow instead of hiding them
+	// inside this reminder's note.
+	for _, action := range workflowConnector.FindAllStringIndex(text, -1) {
+		if action[0] < attachment[0] || action[0] >= attachment[1] {
+			return false
+		}
+	}
+	for _, action := range workflowPunctuationAction.FindAllStringIndex(text, -1) {
+		if action[0] > attachment[1] {
+			return false
+		}
+	}
+	return true
+}
+
+func atomicCapture(text string) bool {
+	return atomicTaskStart.MatchString(text) && atomicTaskAttachment.MatchString(text) || reminderWithAttachedNote(text)
+}
 
 func workflowClauses(text string) []string {
 	text = strings.TrimSpace(text)
@@ -31,9 +60,8 @@ func workflowClauses(text string) []string {
 	if _, explicitNote := interpret.ExplicitNoteBody(text); explicitNote {
 		return nil
 	}
-	// A task with a reminder or note is already one atomic capture. Splitting
-	// those attachment clauses would lose the task context and its time.
-	if atomicTaskStart.MatchString(text) && atomicTaskAttachment.MatchString(text) {
+	// Attached notes and reminders belong to the same reviewed capture.
+	if atomicCapture(text) {
 		return nil
 	}
 	parts := []string{}
@@ -70,7 +98,7 @@ func possibleWorkflow(text string) bool {
 	if _, explicitNote := interpret.ExplicitNoteBody(text); explicitNote {
 		return false
 	}
-	if atomicTaskStart.MatchString(text) && atomicTaskAttachment.MatchString(text) {
+	if atomicCapture(text) {
 		return false
 	}
 	if strings.Contains(text, ";") {

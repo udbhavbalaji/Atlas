@@ -24,7 +24,7 @@ func TestToolContractPageAndAPI(t *testing.T) {
 	h := Handler(s)
 	page := httptest.NewRecorder()
 	h.ServeHTTP(page, httptest.NewRequest("GET", "/orchestration-test", nil))
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "Selected tool contracts") {
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "Selected tool contracts") || !strings.Contains(page.Body.String(), "Reminder with attached note") {
 		t.Fatal(page.Code, page.Body.String())
 	}
 	w := httptest.NewRecorder()
