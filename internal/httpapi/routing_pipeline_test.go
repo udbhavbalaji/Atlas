@@ -104,6 +104,115 @@ func TestJevExplicitNoteNeedsNoModelExtraction(t *testing.T) {
 	}
 }
 
+func TestJevReminderWithAttachedNoteRequiresOneReviewAndSavesBoth(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	at := time.Now().UTC().AddDate(0, 0, 1).Truncate(24 * time.Hour).Add(10 * time.Hour).Format(time.RFC3339)
+	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "reminder", Kind: "reminder", Title: "Call Rahul", ReminderAt: at, NoteBody: "Discuss the scooter's battery issue with Rahul."}}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: &stagedJev{category: "create", tool: "reminder"}, free: planner, configured: true, secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "jev", "version": "1", "request_id": "reminder-note", "text": "Remind me to call Rahul tomorrow at 10 AM and make a note that we need to discuss the scooter's battery issue.", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_confirmation" || c["workflow"] != nil || planner.calls != 1 {
+		t.Fatal(code, c, planner.calls)
+	}
+	proposal := c["proposal"].(map[string]any)["input"].(map[string]any)
+	gotAt, parseErr := time.Parse(time.RFC3339Nano, proposal["reminder_at"].(string))
+	wantAt, _ := time.Parse(time.RFC3339, at)
+	if proposal["note_body"] != planner.plan.NoteBody || parseErr != nil || !gotAt.Equal(wantAt) {
+		t.Fatal(proposal, parseErr)
+	}
+	reminders, reminderErr := s.Reminders(t.Context())
+	notes, noteErr := s.Notes(t.Context())
+	if reminderErr != nil || noteErr != nil || len(reminders) != 0 || len(notes) != 0 {
+		t.Fatal("saved before review", reminders, notes, reminderErr, noteErr)
+	}
+	path := "/api/v1/conversations/routing/" + c["id"].(string) + "/reply"
+	code, c = send(path, map[string]any{"version": c["version"], "text": "yes"})
+	if code != 200 || c["state"] != "saved" || !strings.Contains(c["prompt"].(string), "linked note") {
+		t.Fatal(code, c)
+	}
+	reminders, reminderErr = s.Reminders(t.Context())
+	notes, noteErr = s.Notes(t.Context())
+	if reminderErr != nil || noteErr != nil || len(reminders) != 1 || len(notes) != 1 || notes[0].Body != planner.plan.NoteBody || len(notes[0].Links) != 1 || notes[0].Links[0].TargetType != "reminder" || notes[0].Links[0].TargetID != reminders[0].ID {
+		t.Fatal("linked capture failed", reminders, notes, reminderErr, noteErr)
+	}
+	code, c = send(path, map[string]any{"version": c["version"], "text": "yes"})
+	if code != 200 || c["state"] != "saved" {
+		t.Fatal("confirmation replay failed", code, c)
+	}
+	reminders, _ = s.Reminders(t.Context())
+	notes, _ = s.Notes(t.Context())
+	if len(reminders) != 1 || len(notes) != 1 {
+		t.Fatal("confirmation replay duplicated records", reminders, notes)
+	}
+}
+
+func TestJevReminderWithAttachedNoteAsksWhenExtractionOmitsNote(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	at := time.Now().UTC().AddDate(0, 0, 1).Truncate(24 * time.Hour).Add(10 * time.Hour).Format(time.RFC3339)
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: &stagedJev{category: "create", tool: "reminder"}, free: &fixedPlanner{plan: routing.ActionPlan{Action: "reminder", Kind: "reminder", Title: "Call Rahul", ReminderAt: at}}, configured: true, secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "jev", "version": "1", "request_id": "reminder-note-missing", "text": "Remind me to call Rahul tomorrow at 10 AM and make a note that we need to discuss the battery issue.", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_answer" || c["question"].(map[string]any)["field"] != "fields.note_body" {
+		t.Fatal(code, c)
+	}
+	reminders, _ := s.Reminders(t.Context())
+	if len(reminders) != 0 {
+		t.Fatal("saved incomplete request", reminders)
+	}
+	path := "/api/v1/conversations/routing/" + c["id"].(string) + "/reply"
+	code, c = send(path, map[string]any{"version": c["version"], "field": "fields.note_body", "value": "Discuss the battery issue with Rahul."})
+	if code != 200 || c["state"] != "awaiting_confirmation" {
+		t.Fatal(code, c)
+	}
+	code, c = send(path, map[string]any{"version": c["version"], "text": "cancel"})
+	if code != 200 || c["state"] != "cancelled" {
+		t.Fatal(code, c)
+	}
+	reminders, _ = s.Reminders(t.Context())
+	notes, _ := s.Notes(t.Context())
+	if len(reminders) != 0 || len(notes) != 0 {
+		t.Fatal("cancelled capture wrote records", reminders, notes)
+	}
+}
+
+func TestJevReminderWithAttachedNoteDoesNotSaveWrongTool(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	planner := &fixedPlanner{plan: routing.ActionPlan{Action: "note", Kind: "note", NoteBody: "Discuss the battery issue."}}
+	mux := http.NewServeMux()
+	routingRoutesWithService(mux, s, routingService{jev: &stagedJev{category: "create", tool: "note"}, free: planner, configured: true, secret: "test"})
+	send := batchTestSend(t, mux)
+	code, c := send("/api/v1/conversations/routing", map[string]any{"provider": "jev", "version": "1", "request_id": "wrong-tool-reminder-note", "text": "Remind me to call Rahul tomorrow at 10 AM and make a note that we need to discuss the battery issue.", "timezone": "UTC"})
+	if code != 201 || c["state"] != "awaiting_route" || c["channel"] != "" || planner.calls != 0 {
+		t.Fatal(code, c, planner.calls)
+	}
+	if !strings.Contains(c["prompt"].(string), "review them together") {
+		t.Fatal(c)
+	}
+	notes, _ := s.Notes(t.Context())
+	reminders, _ := s.Reminders(t.Context())
+	if len(notes) != 0 || len(reminders) != 0 {
+		t.Fatal("wrong tool saved partial capture", notes, reminders)
+	}
+	code, c = send("/api/v1/conversations/routing/"+c["id"].(string)+"/reply", map[string]any{"version": c["version"], "text": "reminder"})
+	if code != 200 || c["channel"] != "reminders" || c["state"] != "awaiting_answer" && c["state"] != "awaiting_confirmation" {
+		t.Fatal("reminder review was unavailable", code, c)
+	}
+}
+
 func TestExplicitNoteDoesNotDropRecentTaskLink(t *testing.T) {
 	state := routing.State{SelectedTool: "note", Text: "make a note of this: Bring the portfolio", RecentRecordID: "task-1", RecentRecordKind: "task"}
 	if plan, ok := localNotePlan(state); ok {
