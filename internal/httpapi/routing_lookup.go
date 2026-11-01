@@ -28,7 +28,7 @@ var lookupStopWords = map[string]bool{
 	"are": true, "at": true, "can": true, "check": true, "did": true, "do": true,
 	"for": true, "from": true, "have": true, "i": true, "in": true, "information": true,
 	"is": true, "it": true, "last": true, "latest": true, "list": true, "me": true, "month": true, "my": true,
-	"next": true, "note": true, "notes": true, "of": true, "old": true, "on": true,
+	"next": true, "note": true, "notes": true, "of": true, "old": true, "on": true, "open": true,
 	"past": true, "previous": true, "remind": true, "reminder": true, "reminders": true,
 	"please": true, "could": true, "would": true, "give": true, "provide": true,
 	"scheduled": true, "active": true, "pending": true, "completed": true, "dismissed": true,
@@ -399,27 +399,38 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 		if err != nil {
 			return answer, err
 		}
-		futureOnly := strings.Contains(strings.ToLower(state.Text), "upcoming") || strings.Contains(strings.ToLower(state.Text), "scheduled")
+		question := strings.ToLower(state.Text)
+		futureOnly := strings.Contains(question, "upcoming") || strings.Contains(question, "scheduled")
+		openOnly := strings.Contains(question, "open") || strings.Contains(question, "active") || strings.Contains(question, "pending")
 		sort.SliceStable(reminders, func(i, j int) bool {
-			if futureOnly {
+			if futureOnly || openOnly {
 				return reminders[i].ScheduledAt < reminders[j].ScheduledAt
 			}
 			return reminders[i].ScheduledAt > reminders[j].ScheduledAt
 		})
-		pastOnly := strings.Contains(strings.ToLower(state.Text), "old") || strings.Contains(strings.ToLower(state.Text), "past") || strings.Contains(strings.ToLower(state.Text), "previous") || strings.Contains(strings.ToLower(state.Text), "last")
+		pastOnly := strings.Contains(question, "old") || strings.Contains(question, "past") || strings.Contains(question, "previous") || strings.Contains(question, "last")
 		reference, err := time.Parse(time.RFC3339Nano, state.ReferenceAt)
 		if err != nil {
 			reference = time.Now()
 		}
 		for _, r := range reminders {
 			when, _ := time.Parse(time.RFC3339Nano, r.ScheduledAt)
+			if openOnly && r.Status != "scheduled" && r.Status != "due" {
+				continue
+			}
 			if pastOnly && when.After(reference) {
 				continue
 			}
 			if futureOnly && (when.Before(reference) || r.Status != "scheduled") {
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("“%s” — %s (%s)", r.Title, lookupTime(r.ScheduledAt, state.Timezone), r.Status))
+			line := fmt.Sprintf("“%s” — %s", r.Title, lookupTime(r.ScheduledAt, state.Timezone))
+			if r.Status == "due" {
+				line += " (due)"
+			} else if !openOnly && !futureOnly {
+				line += " (" + r.Status + ")"
+			}
+			lines = append(lines, line)
 			answer.Sources = append(answer.Sources, conversationSource{Type: "reminder", Title: r.Title, URL: "/#reminders/" + r.ID})
 			if len(lines) == 10 {
 				break
@@ -456,12 +467,18 @@ func listLookup(ctx context.Context, s *store.Store, state routing.State, scope 
 		}
 	}
 	if len(lines) == 0 {
+		if scope == "reminder" && (strings.Contains(strings.ToLower(state.Text), "open") || strings.Contains(strings.ToLower(state.Text), "active") || strings.Contains(strings.ToLower(state.Text), "pending")) {
+			answer.Text = "You have no open reminders."
+			return answer, nil
+		}
 		answer.Text = "I couldn't find any saved " + scope + "s."
 		return answer, nil
 	}
 	label := "the most recent saved " + scope + "s"
 	if scope == "reminder" && (strings.Contains(strings.ToLower(state.Text), "upcoming") || strings.Contains(strings.ToLower(state.Text), "scheduled")) {
 		label = "your upcoming reminders"
+	} else if scope == "reminder" && (strings.Contains(strings.ToLower(state.Text), "open") || strings.Contains(strings.ToLower(state.Text), "active") || strings.Contains(strings.ToLower(state.Text), "pending")) {
+		label = "your open reminders"
 	}
 	answer.Text = "Here are " + label + ":\n" + strings.Join(lines, "\n")
 	return answer, nil

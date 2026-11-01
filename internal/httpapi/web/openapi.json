@@ -3,7 +3,7 @@
   "info": {
     "title": "Atlas local API",
     "version": "1.15.1",
-    "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use."
+    "description": "Development contract revision 2. Canonical mutation snapshots are read before transaction commit; later reads can advance. Creation replay returns the original creation receipt, not current resource state. Empty strings clear optional string fields; nulls and unknown/duplicate fields are rejected. JSON object bodies are limited to 65536 bytes. Intended for local single-user use. Multiple interfaces can share one persistent backend over a private HTTPS address; desktop local mode remains available. Conversation reports use the debug receiver on that backend."
   },
   "servers": [
     {
@@ -3593,6 +3593,262 @@
           }
         }
       }
+    },
+    "/api/v1/conversations/routing/{id}/reports": {
+      "post": {
+        "summary": "Save an issue report for a versioned routing conversation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Report saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReport"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Identical request replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session version or request ID conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports": {
+      "get": {
+        "summary": "List conversation reports on the connected Atlas backend (compatibility route)",
+        "responses": {
+          "200": {
+            "description": "Saved reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationReport"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/corpus.jsonl": {
+      "get": {
+        "summary": "Export unlabeled report candidates",
+        "responses": {
+          "200": {
+            "description": "One JSON candidate per line",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debug/reports": {
+      "post": {
+        "summary": "Send an issue report to the connected Atlas backend for a versioned routing conversation",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationDebugReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Report saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReport"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Identical request replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Session version or request ID conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List conversation reports on the connected Atlas backend",
+        "responses": {
+          "200": {
+            "description": "Saved reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationReport"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debug/reports/corpus.jsonl": {
+      "get": {
+        "summary": "Export unlabeled report candidates",
+        "responses": {
+          "200": {
+            "description": "One JSON candidate per line",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/records/revision": {
+      "get": {
+        "summary": "Read the latest committed saved-record change revision",
+        "description": "Clients of one Atlas backend can check this lightweight value and reload saved records when it advances. The revision is the highest committed activity ID; it is 0 on an empty database.",
+        "responses": {
+          "200": {
+            "description": "Current records revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "revision"
+                  ],
+                  "properties": {
+                    "revision": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "format": "int64"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Database error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4203,8 +4459,16 @@
         "type": "object",
         "additionalProperties": false,
         "oneOf": [
-          { "required": ["task_id"] },
-          { "required": ["repeat"] }
+          {
+            "required": [
+              "task_id"
+            ]
+          },
+          {
+            "required": [
+              "repeat"
+            ]
+          }
         ],
         "properties": {
           "task_id": {
@@ -4213,7 +4477,11 @@
           },
           "repeat": {
             "type": "string",
-            "enum": ["", "daily", "weekly"],
+            "enum": [
+              "",
+              "daily",
+              "weekly"
+            ],
             "description": "Future recurrence rule; empty stops repeating. The current occurrence and delivery remain unchanged."
           }
         }
@@ -5950,22 +6218,42 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "text": {"type": "string"},
+              "text": {
+                "type": "string"
+              },
               "sources": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "type": {"type": "string", "enum": ["task", "reminder", "note"]},
-                    "title": {"type": "string"},
-                    "url": {"type": "string"}
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "task",
+                        "reminder",
+                        "note"
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
                   },
-                  "required": ["type", "title", "url"]
+                  "required": [
+                    "type",
+                    "title",
+                    "url"
+                  ]
                 }
               }
             },
-            "required": ["text", "sources"]
+            "required": [
+              "text",
+              "sources"
+            ]
           },
           "persisted": {
             "const": false
@@ -6093,6 +6381,174 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ConversationReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "request_id",
+          "session_id",
+          "session_version",
+          "surface",
+          "category",
+          "expected",
+          "message_index",
+          "snapshot",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "session_version": {
+            "type": "integer"
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "web",
+              "macos",
+              "omarchy",
+              "ios"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "wrong_answer",
+              "missed_action",
+              "unwanted_change",
+              "confusing_flow",
+              "other"
+            ]
+          },
+          "expected": {
+            "type": "string"
+          },
+          "message_index": {
+            "type": "integer"
+          },
+          "snapshot": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        }
+      },
+      "ConversationReportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "request_id",
+          "surface",
+          "category",
+          "expected"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "web",
+              "macos",
+              "omarchy",
+              "ios"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "wrong_answer",
+              "missed_action",
+              "unwanted_change",
+              "confusing_flow",
+              "other"
+            ]
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 2000
+          },
+          "message_index": {
+            "type": "integer",
+            "minimum": -1
+          }
+        }
+      },
+      "ConversationDebugReportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "session_id",
+          "version",
+          "request_id",
+          "surface",
+          "category",
+          "expected"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Existing routing conversation ID"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "web",
+              "macos",
+              "omarchy",
+              "ios"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "wrong_answer",
+              "missed_action",
+              "unwanted_change",
+              "confusing_flow",
+              "other"
+            ]
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 2000
+          },
+          "message_index": {
+            "type": "integer",
+            "minimum": -1
           }
         }
       }

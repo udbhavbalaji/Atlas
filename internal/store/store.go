@@ -53,7 +53,7 @@ func Open(path string) (*Store, error) {
 	}
 	defer tx.Rollback()
 	var version int
-	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 11 {
+	if err = tx.QueryRow("PRAGMA user_version").Scan(&version); err == nil && version > 12 {
 		err = errors.New("database schema is newer than this Atlas version")
 	}
 	if err == nil && version == 0 {
@@ -120,6 +120,12 @@ func Open(path string) (*Store, error) {
 	}
 	if err == nil && version == 10 {
 		_, err = tx.Exec("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT ''; PRAGMA user_version=11;")
+		if err == nil {
+			version = 11
+		}
+	}
+	if err == nil && version == 11 {
+		_, err = tx.Exec(reportMigration)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -252,6 +258,14 @@ func (s *Store) Activity(ctx context.Context) ([]Activity, error) {
 		result = append(result, a)
 	}
 	return result, rows.Err()
+}
+
+// RecordsRevision advances with committed record changes, including changes
+// made by the reminder worker. Activity IDs are monotonic and never deleted.
+func (s *Store) RecordsRevision(ctx context.Context) (int64, error) {
+	var revision int64
+	err := s.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(id), 0) FROM activity").Scan(&revision)
+	return revision, err
 }
 
 // Update changes only supplied fields and records one activity entry per actual change.

@@ -1,0 +1,14 @@
+[Unit]
+Description=Atlas shared backend on apex
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/atlas-server -addr 127.0.0.1:8080 -db %h/.local/share/atlas/atlas.db -openrouter-key-file %h/.config/atlas/openrouter.key -groq-key-file %h/.config/atlas/groq.key
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

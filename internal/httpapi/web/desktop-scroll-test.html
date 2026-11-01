@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Atlas · Chat scroll check</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/desktop.css"><link rel="stylesheet" href="/product.css"></head>
+<body class="product-app"><main class="desktop-main">
+  <header class="app-header"><a href="/desktop">Back to conversation</a><strong>Chat scroll check</strong></header>
+  <div class="desktop-layout">
+    <aside class="desktop-sidebar"><h1>Scroll fixture</h1><p>This page uses generated turns. It does not call Jev or change saved records.</p><button id="check">Run scroll check</button><p id="result" role="status">Ready.</p></aside>
+    <section id="panel-voice" class="desktop-workspace">
+      <div class="workspace-header"><h2>Conversation</h2></div>
+      <section class="desktop-conversation" aria-label="Scroll fixture conversation">
+        <div class="desktop-chat-header"><span class="connection-dot" aria-hidden="true"></span><p>Fixture</p></div>
+        <div id="voice-chat-body" class="desktop-chat-body"><div id="voice-transcript" aria-label="Fixture transcript"></div></div>
+        <form id="voice-reply-form"><label>Reply<textarea id="voice-answer" rows="2" placeholder="Reply stays visible while chat scrolls"></textarea></label></form>
+      </section>
+    </section>
+  </div>
+</main><script>
+const body = document.getElementById('voice-chat-body');
+const transcript = document.getElementById('voice-transcript');
+const result = document.getElementById('result');
+function fill() {
+  transcript.replaceChildren();
+  for (let i = 1; i <= 50; i++) {
+    const turn = document.createElement('div');
+    turn.className = 'voice-turn';
+    turn.dataset.role = i % 2 ? 'user' : 'assistant';
+    const label = document.createElement('strong');
+    label.textContent = i % 2 ? 'You' : 'Atlas';
+    const line = document.createElement('p');
+    line.textContent = `Turn ${i}: A longer message to verify that conversation history scrolls while the reply editor remains visible.`;
+    turn.append(label, line);
+    transcript.append(turn);
+  }
+}
+function check() {
+  fill();
+  const scrollable = body.scrollHeight > body.clientHeight;
+  body.scrollTop = body.scrollHeight;
+  const bottom = body.scrollTop > 0 && body.scrollTop + body.clientHeight >= body.scrollHeight - 2;
+  body.scrollTop = 0;
+  const top = body.scrollTop === 0;
+  const replyVisible = document.getElementById('voice-answer').getBoundingClientRect().bottom <= innerHeight;
+  result.textContent = scrollable && bottom && top && replyVisible ? 'Passed: history scrolls in both directions and reply stays visible.' : `Failed: scrollable=${scrollable}, bottom=${bottom}, top=${top}, replyVisible=${replyVisible}.`;
+}
+document.getElementById('check').onclick = check;
+check();
+</script></body></html>

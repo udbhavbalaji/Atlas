@@ -10,7 +10,7 @@ output_dir="${1:-$repo_root/dist/macos}"
 app="$output_dir/Atlas.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$repo_root/desktop/macos/Info.plist" "$app/Contents/Info.plist"
-swiftc -O -framework AppKit -framework WebKit \
+swiftc -target "$(uname -m)-apple-macosx14.0" -O -framework AppKit -framework WebKit \
   "$repo_root/desktop/macos/AtlasDesktop.swift" -o "$app/Contents/MacOS/Atlas"
 cd "$repo_root"
 CGO_ENABLED=0 go build -trimpath -o "$app/Contents/Resources/atlas-server" ./cmd/atlas

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -265,8 +264,9 @@ func (c *routingConversation) appendAssistant(ctx *http.Request, service routing
 	canonical := c.prompt()
 	message := canonical
 	c.ResponseModel = "local"
-	if c.Workflow == nil && c.Route.Provider == "jev" && service.responder != nil && (c.State == "answered" || c.State == "saved") {
-		facts := map[string]any{"canonical_answer": canonical, "state": c.State, "selected_tool": c.Route.SelectedTool, "user_request": c.Route.Input.Text}
+	listDetails := verifiedListDetails(canonical)
+	if c.Workflow == nil && c.Route.Provider != "mock" && service.responder != nil && c.State == "answered" && listDetails != "" {
+		facts := map[string]any{"canonical_answer": canonical, "state": c.State, "selected_tool": c.Route.SelectedTool, "user_request": c.Route.Input.Text, "response_mode": "list_intro", "list_kind": verifiedListKind(canonical)}
 		if c.Answer != nil {
 			facts["answer"] = c.Answer
 		}
@@ -278,66 +278,52 @@ func (c *routingConversation) appendAssistant(ctx *http.Request, service routing
 		}
 		replyCtx, cancel := context.WithTimeout(ctx.Context(), 20*time.Second)
 		defer cancel()
-		if natural, model, err := service.responder.Respond(replyCtx, facts); err == nil && c.responsePreservesFacts(natural) {
-			message = natural
-			c.ResponseModel = model
-		} else {
-			c.Warnings = append(c.Warnings, "Natural-language reply is unavailable; this answer comes from Atlas's verified result.")
+		if natural, model, err := service.responder.Respond(replyCtx, facts); err == nil {
+			if safeListIntro(natural, canonical) {
+				message = strings.TrimSpace(natural) + "\n" + listDetails
+				c.ResponseModel = model
+			}
+		}
+		if c.ResponseModel == "local" {
+			c.Warnings = append(c.Warnings, "The writing model was unavailable or changed verified facts. Atlas is showing its verified result.")
 		}
 	}
 	c.Messages = append(c.Messages, conversationTurn{Role: "assistant", Text: message})
 }
 
-func (c *routingConversation) responsePreservesFacts(text string) bool {
-	anchors := []string{}
-	if c.State == "saved" && c.Proposal != nil {
-		p := c.Proposal.Input
-		if p.Kind == "note" {
-			anchors = append(anchors, p.NoteBody)
-		} else {
-			anchors = append(anchors, p.Title)
-		}
-		if p.DueAt != "" {
-			anchors = append(anchors, lookupTime(p.DueAt, c.Route.Input.Timezone))
-		}
-		if p.ReminderAt != "" {
-			anchors = append(anchors, lookupTime(p.ReminderAt, c.Route.Input.Timezone))
+func verifiedListDetails(canonical string) string {
+	_, details, ok := strings.Cut(canonical, "\n")
+	if !ok || details == "" || verifiedListKind(canonical) == "" {
+		return ""
+	}
+	return details
+}
+
+func verifiedListKind(canonical string) string {
+	heading, _, _ := strings.Cut(canonical, "\n")
+	if !strings.HasPrefix(heading, "Here are ") {
+		return ""
+	}
+	for _, kind := range []string{"tasks", "reminders", "notes"} {
+		if strings.HasSuffix(heading, " "+kind+":") {
+			return kind
 		}
 	}
-	if c.State == "answered" && c.Mutation != nil {
-		anchors = append(anchors, c.Mutation.Title)
-		if c.Mutation.Action == "edit" {
-			for _, value := range []string{c.Mutation.Old, c.Mutation.New} {
-				if value != "" {
-					if c.Mutation.Field == "due_at" || c.Mutation.Field == "scheduled_at" {
-						value = lookupTime(value, c.Route.Input.Timezone)
-					}
-					anchors = append(anchors, value)
-				}
-			}
-		}
+	return ""
+}
+
+// Only these introductions can precede a verified list. A model-written
+// sentence cannot be proven factual by checking for a few matching words.
+func safeListIntro(text, canonical string) bool {
+	kind := verifiedListKind(canonical)
+	if kind == "" {
+		return false
 	}
-	if c.State == "answered" && c.Answer != nil && c.Mutation == nil {
-		if len(c.Answer.Sources) == 0 {
-			return text == c.Answer.Text
-		}
-		for _, source := range c.Answer.Sources {
-			anchors = append(anchors, source.Title)
-		}
-		anchors = append(anchors, regexp.MustCompile(`(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), [0-9]{1,2} [A-Za-z]+ [0-9]{4} at [0-9]{1,2}:[0-9]{2} [AP]M [A-Za-z_+/:-]+`).FindAllString(c.Answer.Text, -1)...)
-		for _, status := range []string{"completed", "dismissed", "scheduled", "past due"} {
-			if strings.Contains(strings.ToLower(c.Answer.Text), status) {
-				anchors = append(anchors, status)
-			}
-		}
-	}
-	lower := strings.ToLower(text)
-	for _, anchor := range anchors {
-		if !strings.Contains(lower, strings.ToLower(anchor)) {
-			return false
-		}
-	}
-	return true
+	intro := strings.TrimSpace(text)
+	return intro == "Here is what I found:" || intro == "Here's what I found:" ||
+		intro == "Here are your "+kind+":" || intro == "Here are the "+kind+" you asked about:" ||
+		intro == "Here is your "+strings.TrimSuffix(kind, "s")+" list:" ||
+		intro == "Here's your "+strings.TrimSuffix(kind, "s")+" list:"
 }
 
 func (c *routingConversation) advance(ctx *http.Request, s *store.Store) error {
