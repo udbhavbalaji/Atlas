@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas orchestration evals</title><link rel="stylesheet" href="/styles.css">
+<style>
+main{max-width:1120px;margin:0 auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}button{padding:10px 16px;cursor:pointer}section{margin:24px 0;padding:20px;border:1px solid #667;border-radius:12px}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #667;text-align:left}tr[role=button]{cursor:pointer}.pass{color:#147b3a}.gap{color:#bd4d17}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto}#summary{font-size:1.2rem}#details{min-height:120px}
+</style>
+</head>
+<body><main>
+<header><h1>Orchestration evals</h1><a href="/">Back to Atlas</a></header>
+<p>This focused lab runs scripted Jev and extractor cases against temporary databases. It makes no provider requests and never changes your Atlas records. A gap means the observed behavior differs from the target outcome; current gaps are expected while the orchestration overhaul is in progress.</p>
+<section><button id="run" type="button">Run offline suite</button> <button id="download" type="button" disabled>Download JSON report</button> <label>Inspect a CLI report (including live Jev/Groq runs) <input id="import" type="file" accept="application/json,.json"></label><p id="summary" role="status">Ready.</p><p id="slices"></p></section>
+<section><h2>Cases</h2><table><thead><tr><th>Result</th><th>Case</th><th>Slice</th><th>Decisions</th><th>Extraction</th><th>Time</th></tr></thead><tbody id="cases"></tbody></table></section>
+<section><h2>Case details</h2><pre id="details">Select a case after running the suite.</pre></section>
+</main><script>
+const $=id=>document.getElementById(id);let report=null;let suite=null;
+async function loadSuite(){try{const response=await fetch('/api/v1/orchestration-evals');if(!response.ok)throw new Error('Could not load cases');suite=await response.json();$('summary').textContent=`${suite.cases.length} target cases ready.`;}catch(error){$('summary').textContent=error.message;}}
+function renderCase(item){const row=document.createElement('tr');row.setAttribute('role','button');row.tabIndex=0;const values=[item.passed?'Pass':'Gap',item.id,item.slice,item.decision_calls,item.planner_calls,`${item.duration_ms} ms`];for(const value of values){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}row.firstChild.className=item.passed?'pass':'gap';const show=()=>{const specification=suite?.cases.find(c=>c.id===item.id);$('details').textContent=JSON.stringify({specification,result:item},null,2);};row.onclick=show;row.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();show();}};return row;}
+function showReport(next){if(!next||!Array.isArray(next.cases)||typeof next.total!=='number')throw new Error('This is not an Atlas orchestration eval report.');report=next;$('summary').textContent=`${report.mode} · ${report.passed}/${report.total} passed · ${report.gaps} target gaps · ${report.provider_requests||0} provider requests`;const groups=report.slices||{};$('slices').textContent=Object.entries(groups).map(([name,value])=>`${name}: ${value.passed}/${value.total}`).join(' · ');$('cases').replaceChildren(...report.cases.map(renderCase));$('download').disabled=false;}
+$('run').onclick=async()=>{$('run').disabled=true;$('summary').textContent='Running isolated cases…';try{const response=await fetch('/api/v1/orchestration-evals/offline',{method:'POST'});if(!response.ok)throw new Error(`Eval request failed: HTTP ${response.status}`);showReport(await response.json());}catch(error){$('summary').textContent=error.message;}finally{$('run').disabled=false;}};
+$('import').onchange=async event=>{try{const file=event.target.files?.[0];if(!file)return;showReport(JSON.parse(await file.text()));}catch(error){$('summary').textContent=error.message;}};
+$('download').onclick=()=>{if(!report)return;const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='atlas-orchestration-eval.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+loadSuite();
+</script></body></html>
