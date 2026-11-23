@@ -17,11 +17,12 @@ The offline suite injects scripted Jev choices and extractor plans. It measures
 action conservation, review state, linked writes, cancellation, and call count
 **assuming the supplied model choices and arguments**. It does not measure
 whether a real model understood the request. A target gap is reported in JSON
-and does not fail the command unless `-strict` is set. On `development` at
-`53f98ac`, six of twelve initial cases pass. Five reminder-with-note cases
-describe PR 18 behavior not yet present there. On PR 18 at `7c3d528`, eleven
-of twelve pass. The remaining case shows a reminder with an attached note
-followed by a separate deletion being split into three steps instead of two.
+and does not fail the command unless `-strict` is set. On the pre-PR 18
+`development` commit `643a33e`, six of twelve cases passed. After integrating
+PR 18 with that commit, eleven of twelve passed: five cases improved and none
+regressed. The remaining case shows a reminder with an attached note followed
+by a separate deletion being split into three steps instead of two. These
+offline results use scripted model choices and make no provider requests.
 
 Open `/orchestration-eval-test` on the local Atlas server to run these cases,
 inspect each check, and download a report. The page can also import a JSON
@@ -70,10 +71,9 @@ GOCACHE=/tmp/atlas-go-build go run ./cmd/atlas-eval \
   -comparison-out /tmp/atlas-pr18-comparison.json
 ```
 
-The runner is isolated in new files so it can be brought onto PR 18's branch
-before that PR merges. After PR 18 is integrated with the latest `development`,
-run the paired suite again. Existing cases should keep their IDs; change the
-corpus version when their meaning changes.
+The runner is isolated from the conversation implementation so the same
+cases can be compared across revisions. Existing cases should keep their IDs;
+change the corpus version when their meaning changes.
 
 ## What the report means
 

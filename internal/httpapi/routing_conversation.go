@@ -440,7 +440,7 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 				}
 				if c.Channel != "notes" {
 					c.Draft.Note = "skip"
-					if plan.NoteBody != "" {
+					if plan.NoteBody != "" || c.Channel == "reminders" && reminderWithAttachedNote(result.Input.Text) {
 						c.Draft.Note = "add"
 					}
 				}
@@ -455,6 +455,9 @@ func (c *routingConversation) beginRoute(r *http.Request, s *store.Store, result
 			c.Warnings = seed.Warnings
 			if c.Draft.Note == "" && c.Channel != "notes" {
 				c.Draft.Note = "skip"
+			}
+			if c.Channel == "reminders" && reminderWithAttachedNote(result.Input.Text) {
+				c.Draft.Note = "add"
 			}
 			if c.Draft.Reminder == "" && c.Channel == "tasks" {
 				c.Draft.Reminder = "skip"
@@ -953,6 +956,9 @@ func routingConversationRoutes(mux *http.ServeMux, s *store.Store, service routi
 							if c.Draft.Note == "" && channel != "notes" {
 								c.Draft.Note = "skip"
 							}
+							if channel == "reminders" && reminderWithAttachedNote(c.Route.Input.Text) {
+								c.Draft.Note = "add"
+							}
 							if c.Draft.Reminder == "" && channel == "tasks" {
 								c.Draft.Reminder = "skip"
 							}
@@ -1224,6 +1230,11 @@ func loadRoutingConversation(r *http.Request, s *store.Store) (store.SessionDocu
 
 func autoCapture(r *http.Request, s *store.Store, service routingService, d store.SessionDocument, c routingConversation) (store.SessionDocument, routingConversation, error) {
 	if c.Route.Provider != "jev" || c.Route.Category == "" || c.State != "awaiting_confirmation" || c.Proposal == nil {
+		return d, c, nil
+	}
+	// The user requested two saved records. Show the combined proposal and
+	// require one confirmation before committing them together.
+	if c.Channel == "reminders" && reminderWithAttachedNote(c.Route.Input.Text) {
 		return d, c, nil
 	}
 	c.State = "confirming"
