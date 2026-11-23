@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "reminder_note_atomic_review",
+      "slice": "pr18/reminder-note",
+      "text": "Remind me to call Rahul on 2035-01-01 at 10 AM and make a note that we need to discuss the battery issue",
+      "decisions": ["create", "reminder"],
+      "plan": {"action":"reminder","kind":"reminder","title":"Call Rahul","reminder_at":"2035-01-01T10:00:00Z","note_body":"Discuss the battery issue"},
+      "intent": [{"tool":"reminder","attached":["note"]}],
+      "expect": {"first_state":"awaiting_confirmation","first_tool":"reminder","first_counts":{"tasks":0,"reminders":0,"notes":0},"replies":[{"text":"yes","state":"saved"}],"final_counts":{"tasks":0,"reminders":1,"notes":1,"reminder_note_links":1},"final_records":[{"kind":"note","body":"Discuss the battery issue","links":["reminder"]},{"kind":"reminder","title":"Call Rahul","due_at":"2035-01-01T10:00:00Z","status":"scheduled"}]}
+    },
+    {
+      "id": "reminder_note_missing_text",
+      "slice": "pr18/reminder-note",
+      "text": "Remind me to call Rahul on 2035-01-01 at 10 AM and make a note that we need to discuss the battery issue",
+      "decisions": ["create", "reminder"],
+      "plan": {"action":"reminder","kind":"reminder","title":"Call Rahul","reminder_at":"2035-01-01T10:00:00Z"},
+      "intent": [{"tool":"reminder","attached":["note"]}],
+      "expect": {"first_state":"awaiting_answer","first_tool":"reminder","first_question":"fields.note_body","first_counts":{"tasks":0,"reminders":0,"notes":0},"replies":[{"field":"fields.note_body","value":"Discuss the battery issue","state":"awaiting_confirmation"},{"text":"cancel","state":"cancelled"}],"final_counts":{"tasks":0,"reminders":0,"notes":0}}
+    },
+    {
+      "id": "reminder_note_wrong_tool",
+      "slice": "pr18/tool-selection",
+      "text": "Remind me to call Rahul on 2035-01-01 at 10 AM and make a note that we need to discuss the battery issue",
+      "decisions": ["create", "note"],
+      "plan": {"action":"note","kind":"note","note_body":"Discuss the battery issue"},
+      "intent": [{"tool":"reminder","attached":["note"]}],
+      "expect": {"first_state":"awaiting_route","first_counts":{"tasks":0,"reminders":0,"notes":0},"final_counts":{"tasks":0,"reminders":0,"notes":0}}
+    },
+    {
+      "id": "task_with_note_and_reminder",
+      "slice": "overhaul/atomic-capture",
+      "text": "Create a task to prepare for the interview on 2035-01-01 at 10 AM, remind me at 9 AM, and note that I should bring my portfolio",
+      "decisions": ["create", "task"],
+      "plan": {"action":"task","kind":"task","title":"Prepare for the interview","due_at":"2035-01-01T10:00:00Z","reminder_at":"2035-01-01T09:00:00Z","note_body":"Bring my portfolio"},
+      "intent": [{"tool":"task","attached":["reminder","note"]}],
+      "expect": {"first_state":"saved","first_tool":"task","first_counts":{"tasks":1,"reminders":1,"notes":1,"reminder_note_links":1},"final_counts":{"tasks":1,"reminders":1,"notes":1,"reminder_note_links":1},"final_records":[{"kind":"note","body":"Bring my portfolio","links":["reminder","task"]},{"kind":"reminder","title":"Prepare for the interview","due_at":"2035-01-01T09:00:00Z","status":"scheduled"},{"kind":"task","title":"Prepare for the interview","due_at":"2035-01-01T10:00:00Z","status":"open"}]}
+    },
+    {
+      "id": "separate_create_actions",
+      "slice": "overhaul/action-conservation",
+      "text": "Create a task to buy milk; create a note about the recipe",
+      "intent": [{"tool":"task"},{"tool":"note"}],
+      "expect": {"first_state":"awaiting_workflow_start","operation_count":2,"first_counts":{"tasks":0,"reminders":0,"notes":0},"final_counts":{"tasks":0,"reminders":0,"notes":0}}
+    },
+    {
+      "id": "external_action_guard",
+      "slice": "overhaul/unsupported",
+      "text": "Send an email to Rahul",
+      "decisions": ["unsupported"],
+      "intent": [],
+      "expect": {"first_state":"unsupported","first_counts":{"tasks":0,"reminders":0,"notes":0},"final_counts":{"tasks":0,"reminders":0,"notes":0}}
+    },
+    {
+      "id": "lookup_existing_task",
+      "slice": "overhaul/retrieval",
+      "text": "When is my interview with Maya?",
+      "seed": [{"kind":"task","title":"Interview with Maya","due_at":"2035-01-01T10:00:00Z"}],
+      "decisions": ["read", "lookup_task"],
+      "plan_error": true,
+      "intent": [{"tool":"lookup_task"}],
+      "expect": {"first_state":"answered","first_tool":"lookup_task","first_counts":{"tasks":1,"reminders":0,"notes":0},"final_counts":{"tasks":1,"reminders":0,"notes":0},"context_contains":["Interview with Maya"],"prompt_contains":["Interview with Maya","2035"],"final_records":[{"kind":"task","title":"Interview with Maya","due_at":"2035-01-01T10:00:00Z","status":"open"}]}
+    },
+    {
+      "id": "reminder_note_confirmation_replay",
+      "slice": "pr18/recovery",
+      "text": "Remind me to call Rahul on 2035-01-01 at 10 AM and make a note that we need to discuss the battery issue",
+      "decisions": ["create", "reminder"],
+      "plan": {"action":"reminder","kind":"reminder","title":"Call Rahul","reminder_at":"2035-01-01T10:00:00Z","note_body":"Discuss the battery issue"},
+      "intent": [{"tool":"reminder","attached":["note"]}],
+      "expect": {"first_state":"awaiting_confirmation","first_tool":"reminder","first_counts":{"tasks":0,"reminders":0,"notes":0},"replies":[{"text":"yes","state":"saved"},{"text":"yes","state":"saved"}],"final_counts":{"tasks":0,"reminders":1,"notes":1,"reminder_note_links":1},"final_records":[{"kind":"note","body":"Discuss the battery issue","links":["reminder"]},{"kind":"reminder","title":"Call Rahul","due_at":"2035-01-01T10:00:00Z","status":"scheduled"}]}
+    },
+    {
+      "id": "reminder_note_cancel",
+      "slice": "pr18/review",
+      "text": "Remind me to call Rahul on 2035-01-01 at 10 AM and make a note that we need to discuss the battery issue",
+      "decisions": ["create", "reminder"],
+      "plan": {"action":"reminder","kind":"reminder","title":"Call Rahul","reminder_at":"2035-01-01T10:00:00Z","note_body":"Discuss the battery issue"},
+      "intent": [{"tool":"reminder","attached":["note"]}],
+      "expect": {"first_state":"awaiting_confirmation","first_tool":"reminder","first_counts":{"tasks":0,"reminders":0,"notes":0},"replies":[{"text":"cancel","state":"cancelled"}],"final_counts":{"tasks":0,"reminders":0,"notes":0}}
+    },
+    {
+      "id": "batch_edit_requires_review",
+      "slice": "overhaul/review",
+      "text": "Complete all tasks",
+      "seed": [{"kind":"task","title":"Alpha"},{"kind":"task","title":"Beta"}],
+      "intent": [{"tool":"edit_batch"}],
+      "expect": {"first_state":"awaiting_batch_edit_confirmation","first_tool":"edit_batch","first_counts":{"tasks":2,"reminders":0,"notes":0},"final_counts":{"tasks":2,"reminders":0,"notes":0},"final_records":[{"kind":"task","title":"Alpha","status":"open"},{"kind":"task","title":"Beta","status":"open"}]}
+    },
+    {
+      "id": "batch_delete_requires_review",
+      "slice": "overhaul/review",
+      "text": "Delete all tasks",
+      "seed": [{"kind":"task","title":"Alpha"},{"kind":"task","title":"Beta"}],
+      "intent": [{"tool":"delete_batch"}],
+      "expect": {"first_state":"awaiting_delete_confirmation","first_tool":"delete_batch","first_counts":{"tasks":2,"reminders":0,"notes":0},"final_counts":{"tasks":2,"reminders":0,"notes":0},"final_records":[{"kind":"task","title":"Alpha","status":"open"},{"kind":"task","title":"Beta","status":"open"}]}
+    },
+    {
+      "id": "attached_note_then_separate_delete",
+      "slice": "overhaul/action-conservation",
+      "text": "Remind me to call Rahul on 2035-01-01 at 10 AM and make a note that we need to discuss the battery issue; delete the old reminder",
+      "intent": [{"tool":"reminder","attached":["note"]},{"tool":"delete_reminder"}],
+      "expect": {"first_state":"awaiting_workflow_start","operation_count":2,"first_counts":{"tasks":0,"reminders":0,"notes":0},"final_counts":{"tasks":0,"reminders":0,"notes":0}}
+    }
+  ]
+}
